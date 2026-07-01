@@ -1,8 +1,8 @@
 provide_settings:
   llm:
-    provider: "SiliconFlow"
+    provider: "OpenAI"
     config:
-      model: "deepseek-ai/DeepSeek-R1"
+      model: "qwen-plus"
 #      api_key: "sk-xxxx"  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: ""
 
@@ -53,9 +53,10 @@ provide_settings:
 ##      api_key: "sk_xxxxxx"  # Uncomment to override the `NOVITA_API_KEY` set in the environment variable
 
   embedding:
-    provider: "SiliconflowEmbedding"
+    provider: "OpenAIEmbedding"
     config:
-      model: "BAAI/bge-m3"
+      model: "text-embedding-v4"
+      dimension: 1024
 #      api_key: ""  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: "" # Uncomment to override the `OPENAI_BASE_URL` set in the environment variable
 #      dimension: 1536 # Uncomment to customize the embedding dimension 
