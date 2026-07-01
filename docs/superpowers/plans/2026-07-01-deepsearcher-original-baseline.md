@@ -25,7 +25,7 @@
 - Preserve: `docs/superpowers/specs/2026-06-28-deepsearcher-original-baseline-design.md`
 - Preserve: `docs/superpowers/plans/2026-07-01-deepsearcher-original-baseline.md`
 
-- [ ] **Step 1: 检查远程仓库**
+- [x] **Step 1: 检查远程仓库**
 
 Run:
 
@@ -35,7 +35,7 @@ git remote -v
 
 Expected: `origin` 指向 `wyl0828/deep-searcher-study`，`upstream` 指向 `zilliztech/deep-searcher`。
 
-- [ ] **Step 2: 获取官方 master**
+- [x] **Step 2: 获取官方 master**
 
 Run:
 
@@ -45,7 +45,7 @@ git fetch upstream master --prune
 
 Expected: 生成或更新 `upstream/master`。
 
-- [ ] **Step 3: 检查文档路径冲突**
+- [x] **Step 3: 检查文档路径冲突**
 
 Run:
 
@@ -55,7 +55,7 @@ git ls-tree -r --name-only upstream/master -- docs/superpowers
 
 Expected: 无输出；若存在相同路径，停止切换并先比较内容。
 
-- [ ] **Step 4: 创建学习分支**
+- [x] **Step 4: 创建学习分支**
 
 Run:
 
@@ -65,7 +65,7 @@ git switch -c study-baseline --track upstream/master
 
 Expected: 当前分支为 `study-baseline`，现有 `docs/superpowers/` 仍保留。
 
-- [ ] **Step 5: 记录基线**
+- [x] **Step 5: 记录基线**
 
 Run:
 
@@ -76,7 +76,7 @@ git status --short --branch
 
 Expected: HEAD 指向官方提交；只有本项目设计和计划文档未跟踪。
 
-- [ ] **Step 6: 提交设计与计划**
+- [x] **Step 6: 提交设计与计划**
 
 Run:
 
@@ -93,7 +93,7 @@ Expected: 本地提交成功，不推送。
 - Preserve: `uv.lock`
 - Create (ignored): `.venv/`
 
-- [ ] **Step 1: 安装与上游锁文件同期的 uv 0.7.8**
+- [x] **Step 1: 安装与上游锁文件同期的 uv 0.7.8**
 
 Run:
 
@@ -104,7 +104,7 @@ Invoke-RestMethod https://astral.sh/uv/0.7.8/install.ps1 | Invoke-Expression
 
 Expected: `C:\Users\32957\.local\bin\uv.exe` 安装成功。
 
-- [ ] **Step 2: 验证 uv**
+- [x] **Step 2: 验证 uv**
 
 Run:
 
@@ -114,7 +114,7 @@ Run:
 
 Expected: 输出 `uv 0.7.8`。
 
-- [ ] **Step 3: 安装 Python 3.10**
+- [x] **Step 3: 安装 Python 3.10**
 
 Run:
 
@@ -124,7 +124,7 @@ Run:
 
 Expected: uv 报告 Python 3.10 已安装。
 
-- [ ] **Step 4: 严格按锁文件同步依赖**
+- [x] **Step 4: 严格按锁文件同步依赖**
 
 Run:
 
@@ -134,7 +134,7 @@ Run:
 
 Expected: 创建 `.venv`，且 `uv.lock` 未发生变化。
 
-- [ ] **Step 5: 验证解释器和关键包**
+- [x] **Step 5: 验证解释器和关键包**
 
 Run:
 
@@ -154,7 +154,7 @@ Expected: Python 为 3.10.x，DeepSearcher 从当前仓库导入，PyMilvus 为 
 - Create: `infra/milvus/docker-compose.yml`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: 创建 Compose 文件**
+- [x] **Step 1: 创建 Compose 文件**
 
 Create `infra/milvus/docker-compose.yml` with:
 
@@ -226,7 +226,7 @@ networks:
     name: milvus
 ```
 
-- [ ] **Step 2: 排除本地运行数据**
+- [x] **Step 2: 排除本地运行数据**
 
 Append to `.gitignore`:
 
@@ -238,7 +238,7 @@ Append to `.gitignore`:
 /logs/
 ```
 
-- [ ] **Step 3: 验证 Compose 配置**
+- [x] **Step 3: 验证 Compose 配置**
 
 Run:
 
@@ -248,7 +248,7 @@ docker compose -f infra/milvus/docker-compose.yml config --quiet
 
 Expected: 退出码为 0。
 
-- [ ] **Step 4: 提交基础设施**
+- [x] **Step 4: 提交基础设施**
 
 Run:
 
@@ -264,7 +264,7 @@ Expected: 提交成功；`infra/milvus/volumes/` 不在提交中。
 **Files:**
 - Create (ignored): `infra/milvus/volumes/`
 
-- [ ] **Step 1: 验证 Docker Engine**
+- [x] **Step 1: 验证 Docker Engine**
 
 Run:
 
@@ -274,7 +274,7 @@ docker info --format "{{.ServerVersion}}"
 
 Expected: 输出 Docker Server 版本。若连接失败，启动 Docker Desktop 后重试。
 
-- [ ] **Step 2: 验证端口空闲**
+- [x] **Step 2: 验证端口空闲**
 
 Run:
 
@@ -284,7 +284,7 @@ Get-NetTCPConnection -LocalPort 19530 -ErrorAction SilentlyContinue
 
 Expected: 启动前无监听进程。
 
-- [ ] **Step 3: 启动 Milvus**
+- [x] **Step 3: 启动 Milvus**
 
 Run:
 
@@ -294,7 +294,7 @@ docker compose -f infra/milvus/docker-compose.yml up -d
 
 Expected: 创建 `milvus-etcd`、`milvus-minio`、`milvus-standalone`。
 
-- [ ] **Step 4: 验证容器健康**
+- [x] **Step 4: 验证容器健康**
 
 Run:
 
@@ -305,7 +305,7 @@ Test-NetConnection 127.0.0.1 -Port 19530
 
 Expected: 三个容器运行，Milvus 最终为 healthy，`TcpTestSucceeded` 为 `True`。
 
-- [ ] **Step 5: 验证 PyMilvus 客户端**
+- [x] **Step 5: 验证 PyMilvus 客户端**
 
 Run:
 
@@ -320,7 +320,7 @@ Expected: 服务端版本为 2.5.8，并返回 Collection 列表。
 **Files:**
 - Modify: `deepsearcher/config.yaml`
 
-- [ ] **Step 1: 将向量库连接改为 Docker Milvus**
+- [x] **Step 1: 将向量库连接改为 Docker Milvus**
 
 Replace the active `vector_db` block with:
 
@@ -334,7 +334,7 @@ Replace the active `vector_db` block with:
       db: "default"
 ```
 
-- [ ] **Step 2: 固定一个同时提供 LLM 与 Embedding 的提供商**
+- [x] **Step 2: 固定一个同时提供 LLM 与 Embedding 的提供商**
 
 Set the active providers to:
 
@@ -349,7 +349,7 @@ Set the active providers to:
       model: "BAAI/bge-m3"
 ```
 
-- [ ] **Step 3: 验证 YAML 和连接配置**
+- [x] **Step 3: 验证 YAML 和连接配置**
 
 Run:
 
@@ -359,7 +359,7 @@ Run:
 
 Expected: 断言通过并输出 Docker Milvus URI。
 
-- [ ] **Step 4: 提交配置差异**
+- [x] **Step 4: 提交配置差异**
 
 Run:
 
@@ -393,7 +393,7 @@ Run:
 ```powershell
 New-Item -ItemType Directory -Force logs | Out-Null
 $uv = "C:\Users\32957\.local\bin\uv.exe"
-$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8000") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
+$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8500") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
 $backend.Id
 ```
 
@@ -404,7 +404,7 @@ Expected: 返回后台进程 PID。
 Run:
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/openapi.json).StatusCode
+(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8500/openapi.json).StatusCode
 ```
 
 Expected: `200`。
@@ -424,7 +424,7 @@ Expected: 无模型、Embedding 或 Milvus 初始化异常。
 **Files:**
 - Create (ignored): `data/baseline/aurora-facts.pdf`
 
-- [ ] **Step 1: 创建固定事实 PDF**
+- [x] **Step 1: 创建固定事实 PDF**
 
 Run:
 
@@ -468,7 +468,7 @@ $body = @{
   collection_description = "DeepSearcher original baseline facts"
   batch_size = 256
 } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/load-files/ -ContentType "application/json" -Body $body
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8500/load-files/ -ContentType "application/json" -Body $body
 ```
 
 Expected: 返回 `Files loaded successfully.`。
@@ -488,7 +488,7 @@ Expected: 列表包含 `deepsearcher`，实体数量大于 0。
 Run:
 
 ```powershell
-$response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/query/?original_query=Who%20owns%20Project%20Aurora%20and%20what%20is%20its%20approved%20production%20launch%20date%3F&max_iter=3"
+$response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8500/query/?original_query=Who%20owns%20Project%20Aurora%20and%20what%20is%20its%20approved%20production%20launch%20date%3F&max_iter=3"
 $response | ConvertTo-Json -Depth 8
 ```
 
@@ -499,13 +499,13 @@ Expected: `result` 同时包含 `Lin Qiao` 和 `September 15, 2026`，并返回 
 Run:
 
 ```powershell
-$connection = Get-NetTCPConnection -LocalPort 8000 -State Listen
+$connection = Get-NetTCPConnection -LocalPort 8500 -State Listen
 Stop-Process -Id $connection.OwningProcess
 Start-Sleep -Seconds 2
 $uv = "C:\Users\32957\.local\bin\uv.exe"
-$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8000") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
+$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8500") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 5
-$response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/query/?original_query=Who%20owns%20Project%20Aurora%20and%20what%20is%20its%20approved%20production%20launch%20date%3F&max_iter=3"
+$response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8500/query/?original_query=Who%20owns%20Project%20Aurora%20and%20what%20is%20its%20approved%20production%20launch%20date%3F&max_iter=3"
 $response | ConvertTo-Json -Depth 8
 ```
 

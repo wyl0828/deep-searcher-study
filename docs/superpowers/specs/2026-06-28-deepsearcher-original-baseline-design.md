@@ -96,9 +96,9 @@ Milvus 服务端固定为 2.5.8，与上游锁文件中的 PyMilvus 2.5.8 对齐
 
 ## 7. Python 环境
 
-- 安装 uv，不使用全局 pip 修改系统 Python。
+- 使用与上游锁文件最后更新时间一致的 uv 0.7.8，不使用全局 pip 修改系统 Python。最新 uv 0.11 会重写该旧锁文件，不能作为本基线执行器。
 - 由 uv 安装并选择 Python 3.10。
-- 使用官方 `uv.lock` 执行 `uv sync --frozen`，首次基线不更新锁文件。
+- 使用官方 `uv.lock` 执行 `uv sync --frozen`，所有 `uv run` 同样带 `--frozen`，首次基线不更新锁文件。
 - 验证实际解释器版本、`deepsearcher` 导入和 PyMilvus 版本。
 - 若 `uv sync --frozen` 失败，先定位平台依赖；不得立即删除锁文件或升级依赖。
 
@@ -260,7 +260,7 @@ Docker 路线确实无法使用时，才暂停并重新设计“WSL2 内运行�
 - PyMilvus 版本为上游锁定版本。
 - Milvus Standalone 2.5.8 容器健康。
 - 端口 19530 可连接，`list_collections()` 成功。
-- FastAPI 在 `127.0.0.1:8000` 启动。
+- FastAPI 在 `127.0.0.1:8500` 启动。当前 Windows/Hyper-V 将 8000 纳入 TCP 排除端口范围，因此本地基线显式使用已通过绑定测试的 8500。
 - `GET /openapi.json` 返回成功。
 - PDF 成功入库，Milvus 中存在对应 Collection。
 - 至少一个问题返回与 PDF 明确事实一致的答案。
