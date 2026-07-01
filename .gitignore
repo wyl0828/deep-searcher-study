@@ -197,3 +197,8 @@ pyrightconfig.json
 .DS_Store
 
 *.db
+
+# DeepSearcher local baseline
+/infra/milvus/volumes/
+/data/
+/logs/
