@@ -2,7 +2,7 @@
 
 ## Status
 
-Execution is in progress. Source, Python, Milvus, FastAPI startup, core tests, and the test PDF are verified. The real PDF ingestion and answer checks are pending because no local `.env` file with `SILICONFLOW_API_KEY` exists yet.
+Execution is in progress. Source, Python, Milvus, FastAPI startup, core tests, and the test PDF are verified. A local `.env` file now exists and is ignored, but SiliconFlow rejects its credential with HTTP 401, so real PDF ingestion and answer checks remain pending.
 
 ## Versions
 
@@ -57,7 +57,14 @@ Result: `78 passed in 3.09s`.
 
 ## Pending end-to-end evidence
 
-The baseline is not complete until all of these checks pass with a real provider credential:
+The first real ingestion attempt parsed the PDF and created collection `deepsearcher`, then failed at the Embedding boundary:
+
+- `POST https://api.siliconflow.cn/v1/embeddings`: HTTP 401
+- Independent `GET https://api.siliconflow.cn/v1/models`: HTTP 401
+- `.env` diagnostics: exactly one key entry, no BOM, no surrounding quotes, no leading/trailing whitespace, and no placeholder text
+- Milvus collection `deepsearcher`: `row_count = 0`
+
+This proves that configuration loading, PDF parsing, and Milvus collection creation work, while the current credential is not accepted by SiliconFlow. The baseline is not complete until all of these checks pass with a valid SiliconFlow credential:
 
 1. Start FastAPI with the ignored `.env` file.
 2. Load the test PDF through `POST /load-files/`.
@@ -74,4 +81,3 @@ The baseline is not complete until all of these checks pass with a real provider
 - The test PDF and Milvus data are not tracked.
 - No core DeepSearcher Agent, Loader, Vector DB, offline-loading, or query implementation has been modified.
 - No API key has been written to a tracked file.
-
