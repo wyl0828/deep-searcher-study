@@ -2,7 +2,7 @@
 
 ## Status
 
-Execution is in progress. Source, Python, Milvus, FastAPI startup, core tests, and the test PDF are verified. A local `.env` file now exists and is ignored, but SiliconFlow rejects its credential with HTTP 401, so real PDF ingestion and answer checks remain pending.
+Passed on 2026-07-01. The official source baseline, locked Python environment, Docker Milvus, FastAPI, real PDF ingestion, Agent query, persistence re-query, focused tests, and Git safety checks are verified.
 
 ## Versions
 
@@ -13,6 +13,8 @@ Execution is in progress. Source, Python, Milvus, FastAPI startup, core tests, a
 - PyMilvus: `2.5.8`
 - Milvus server: `2.5.8`
 - Docker Engine: `29.4.1`
+- LLM: Alibaba Cloud Model Studio OpenAI-compatible `qwen-plus`
+- Embedding: Alibaba Cloud Model Studio OpenAI-compatible `text-embedding-v4`, 1024 dimensions
 
 The baseline uses uv 0.7.8 because current uv 0.11 rewrites the repository's older lock file. All project commands use `--frozen`; `uv.lock` remains identical to upstream.
 
@@ -41,7 +43,7 @@ tests/loader/file_loader/test_pdf_loader.py
 tests/utils/test_log.py
 ```
 
-Result: `78 passed in 3.09s`.
+Final result: `78 passed in 1.95s`.
 
 ## Test PDF
 
@@ -55,25 +57,34 @@ Result: `78 passed in 3.09s`.
   - The approved budget is 2.4 million yuan.
   - The primary deployment region is Shanghai.
 
-## Pending end-to-end evidence
+## Provider resolution
 
 The first real ingestion attempt parsed the PDF and created collection `deepsearcher`, then failed at the Embedding boundary:
 
 - `POST https://api.siliconflow.cn/v1/embeddings`: HTTP 401
 - Independent `GET https://api.siliconflow.cn/v1/models`: HTTP 401
 - `.env` diagnostics: exactly one key entry, no BOM, no surrounding quotes, no leading/trailing whitespace, and no placeholder text
-- Milvus collection `deepsearcher`: `row_count = 0`
+- Milvus collection `deepsearcher` at that point: `row_count = 0`
 
-This proves that configuration loading, PDF parsing, and Milvus collection creation work, while the current credential is not accepted by SiliconFlow. The baseline is not complete until all of these checks pass with a valid SiliconFlow credential:
+The credential belonged to the user-provided Alibaba Cloud Model Studio Beijing workspace rather than SiliconFlow. After switching to the workspace's OpenAI-compatible interface:
 
-1. Start FastAPI with the ignored `.env` file.
-2. Load the test PDF through `POST /load-files/`.
-3. Confirm collection `deepsearcher` contains entities.
-4. Query the owner and launch date through `GET /query/`.
-5. Confirm the answer contains `Lin Qiao` and `September 15, 2026`.
-6. Record token consumption.
-7. Restart FastAPI and confirm the persisted collection is still queryable.
-8. Run the final Git and secret-safety audit.
+- `GET /models`: HTTP 200, 220 models listed.
+- `text-embedding-v4` probe: returned 1024 dimensions.
+- `qwen-plus` probe: returned exactly `OK`, consuming 14 tokens.
+- `.env` now stores `OPENAI_API_KEY` and `OPENAI_BASE_URL`; both remain ignored and are never printed.
+- The Anthropic-compatible endpoint is not used because the OpenAI-compatible endpoint supports both chat and embeddings.
+
+## End-to-end evidence
+
+- FastAPI start: `GET http://127.0.0.1:8500/openapi.json` returned HTTP 200.
+- PDF ingestion: `POST /load-files/` returned `Files loaded successfully.`.
+- Milvus direct query returned the complete PDF text.
+- After flush, collection `deepsearcher` reported `row_count = 1`.
+- Query: `Who owns Project Aurora and what is its approved production launch date?`
+- Agent route: `ChainOfRAG`, three search iterations, one retrieved chunk.
+- Answer: `Lin Qiao owns Project Aurora, and its approved production launch date is September 15, 2026.`
+- Token consumption: `1795`.
+- Persistence: after stopping and restarting FastAPI, the same `max_iter=3` query returned the same facts without re-ingesting the PDF.
 
 ## Git safety
 
@@ -81,3 +92,7 @@ This proves that configuration loading, PDF parsing, and Milvus collection creat
 - The test PDF and Milvus data are not tracked.
 - No core DeepSearcher Agent, Loader, Vector DB, offline-loading, or query implementation has been modified.
 - No API key has been written to a tracked file.
+- Final tracked runtime-risk scan count: `0`.
+- Final tracked secret-pattern scan count: `0`.
+- `uv.lock` matches `upstream/master`.
+- The only changes from upstream are `.gitignore`, `deepsearcher/config.yaml`, the design/plan/verification documents, and `infra/milvus/docker-compose.yml`.

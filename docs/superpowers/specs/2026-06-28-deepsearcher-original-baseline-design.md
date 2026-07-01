@@ -184,8 +184,9 @@ vector_db:
 
 ## 10. 模型与密钥
 
-- LLM 和 Embedding 必须选用 DeepSearcher 当前支持的提供商。
-- 在详细实施计划生成前，用户需要确认已有 API Key 对应的平台。
+- LLM 使用阿里云百炼北京工作空间的 OpenAI 兼容接口，模型为 `qwen-plus`。
+- Embedding 使用同一兼容接口的 `text-embedding-v4`，固定输出 1024 维向量。
+- 工作空间地址通过 `OPENAI_BASE_URL` 注入，API Key 通过 `OPENAI_API_KEY` 注入；Anthropic 兼容入口不参与本基线。
 - API Key 只通过 PowerShell 会话环境变量或本地 `.env` 注入。
 - `.env` 必须保持在 Git 忽略范围内。
 - 密钥不得写入 `config.yaml`、命令历史示例、测试报告或截图。

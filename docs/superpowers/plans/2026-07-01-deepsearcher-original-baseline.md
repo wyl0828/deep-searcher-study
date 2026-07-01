@@ -14,7 +14,7 @@
 
 - Create: `infra/milvus/docker-compose.yml` — 固定版本的 Milvus、etcd、MinIO 本地基础设施。
 - Modify: `.gitignore` — 排除 Milvus 数据、日志、测试 PDF 和本地密钥。
-- Modify: `deepsearcher/config.yaml` — 将向量库从本地文件切换到 Docker Milvus；模型提供商固定为 SiliconFlow。
+- Modify: `deepsearcher/config.yaml` — 将向量库从本地文件切换到 Docker Milvus；模型通过阿里云百炼 OpenAI 兼容入口调用。
 - Create: `data/baseline/aurora-facts.pdf` — 不进入 Git 的端到端测试 PDF。
 - Create: `docs/verification/2026-07-01-original-baseline.md` — 保存实际版本、命令和验收结果。
 - Preserve: `deepsearcher/agent/`、`deepsearcher/loader/`、`deepsearcher/vector_db/`、`deepsearcher/offline_loading.py`、`deepsearcher/online_query.py`。
@@ -340,13 +340,14 @@ Set the active providers to:
 
 ```yaml
   llm:
-    provider: "SiliconFlow"
+    provider: "OpenAI"
     config:
-      model: "deepseek-ai/DeepSeek-R1"
+      model: "qwen-plus"
   embedding:
-    provider: "SiliconflowEmbedding"
+    provider: "OpenAIEmbedding"
     config:
-      model: "BAAI/bge-m3"
+      model: "text-embedding-v4"
+      dimension: 1024
 ```
 
 - [x] **Step 3: 验证 YAML 和连接配置**
@@ -376,13 +377,14 @@ Expected: 只提交提供商和连接配置，不包含密钥。
 - Create (ignored): `logs/backend.stdout.log`
 - Create (ignored): `logs/backend.stderr.log`
 
-- [ ] **Step 1: 验证模型密钥已在当前进程设置**
+- [x] **Step 1: 验证模型密钥已在当前进程设置**
 
-Create an ignored `.env` file containing one line named `SILICONFLOW_API_KEY`, then run:
+Create an ignored `.env` file containing `OPENAI_API_KEY` and the user-provided Beijing workspace `OPENAI_BASE_URL`, then run:
 
 ```powershell
-$line = Get-Content .env | Where-Object { $_ -match '^SILICONFLOW_API_KEY=.+' } | Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($line)) { throw "SILICONFLOW_API_KEY is required in .env for the end-to-end baseline" }
+$key = Get-Content .env | Where-Object { $_ -match '^OPENAI_API_KEY=.+' } | Select-Object -First 1
+$base = Get-Content .env | Where-Object { $_ -match '^OPENAI_BASE_URL=https://.+/compatible-mode/v1$' } | Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($key) -or [string]::IsNullOrWhiteSpace($base)) { throw "OPENAI_API_KEY and OPENAI_BASE_URL are required in .env" }
 git check-ignore .env
 ```
 
@@ -421,7 +423,7 @@ Get-Content logs/backend.stderr.log -Tail 100
 
 Expected: 无模型、Embedding 或 Milvus 初始化异常。
 
-Execution note: 启动烟测使用了仅存在于子进程环境中的非真实 bootstrap 值，没有发起模型请求。FastAPI 在 8500 返回 OpenAPI 200；真实端到端调用仍要求 Task 6 Step 1 的有效 SiliconFlow Key。
+Execution note: 阿里云百炼工作空间的 `/models`、`qwen-plus` 聊天和 `text-embedding-v4` 1024 维向量探测均通过。FastAPI 在 8500 返回 OpenAPI 200。
 
 ### Task 7: 完成真实 PDF 入库与问答
 
@@ -460,7 +462,7 @@ print(path.resolve())
 
 Expected: 生成 `data/baseline/aurora-facts.pdf`，文件大小大于 0。
 
-- [ ] **Step 2: 调用官方入库接口**
+- [x] **Step 2: 调用官方入库接口**
 
 Run:
 
@@ -477,7 +479,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8500/load-files/ -ContentTy
 
 Expected: 返回 `Files loaded successfully.`。
 
-- [ ] **Step 3: 验证 Milvus Collection**
+- [x] **Step 3: 验证 Milvus Collection**
 
 Run:
 
@@ -487,7 +489,7 @@ Run:
 
 Expected: 列表包含 `deepsearcher`，实体数量大于 0。
 
-- [ ] **Step 4: 调用官方查询接口**
+- [x] **Step 4: 调用官方查询接口**
 
 Run:
 
@@ -498,7 +500,7 @@ $response | ConvertTo-Json -Depth 8
 
 Expected: `result` 同时包含 `Lin Qiao` 和 `September 15, 2026`，并返回 `consume_token`。
 
-- [ ] **Step 5: 验证持久化**
+- [x] **Step 5: 验证持久化**
 
 Run:
 
@@ -515,12 +517,14 @@ $response | ConvertTo-Json -Depth 8
 
 Expected: 无需重新入库即可返回相同事实。
 
+Execution note: 首次查询返回 `Lin Qiao owns Project Aurora, and its approved production launch date is September 15, 2026.`，消耗 1795 Token。重启 FastAPI 后，未重新入库的 `max_iter=3` 查询再次返回相同事实。
+
 ### Task 8: 记录结果并完成审计
 
 **Files:**
 - Create: `docs/verification/2026-07-01-original-baseline.md`
 
-- [ ] **Step 1: 写入实际验证记录**
+- [x] **Step 1: 写入实际验证记录**
 
 The report must contain:
 
@@ -559,7 +563,7 @@ The report must contain:
 - No core DeepSearcher business source modified
 ```
 
-- [ ] **Step 2: 运行安全扫描**
+- [x] **Step 2: 运行安全扫描**
 
 Run:
 
@@ -567,12 +571,12 @@ Run:
 git status --short
 git diff --name-only upstream/master...HEAD
 git ls-files | Select-String -Pattern "(^|/)\.env$|\.venv|aurora-facts\.pdf|infra/milvus/volumes"
-git grep -n -E "sk-[A-Za-z0-9]{16,}|SILICONFLOW_API_KEY="
+git grep -n -E "sk-[A-Za-z0-9_-]{16,}"
 ```
 
 Expected: 只有设计、计划、Compose、忽略规则、配置和验证报告差异；密钥及运行数据扫描无结果。
 
-- [ ] **Step 3: 验证核心源码未修改**
+- [x] **Step 3: 验证核心源码未修改**
 
 Run:
 
@@ -582,7 +586,7 @@ git diff --exit-code upstream/master...HEAD -- deepsearcher/agent deepsearcher/l
 
 Expected: 退出码为 0。
 
-- [ ] **Step 4: 提交验证记录**
+- [x] **Step 4: 提交验证记录**
 
 Run:
 
