@@ -93,32 +93,33 @@ Expected: 本地提交成功，不推送。
 - Preserve: `uv.lock`
 - Create (ignored): `.venv/`
 
-- [ ] **Step 1: 安装 uv**
+- [ ] **Step 1: 安装与上游锁文件同期的 uv 0.7.8**
 
 Run:
 
 ```powershell
-winget install --id=astral-sh.uv -e --accept-package-agreements --accept-source-agreements
+$env:UV_NO_MODIFY_PATH = "1"
+Invoke-RestMethod https://astral.sh/uv/0.7.8/install.ps1 | Invoke-Expression
 ```
 
-Expected: WinGet 报告安装成功或已安装。
+Expected: `C:\Users\32957\.local\bin\uv.exe` 安装成功。
 
 - [ ] **Step 2: 验证 uv**
 
 Run:
 
 ```powershell
-uv --version
+& "C:\Users\32957\.local\bin\uv.exe" --version
 ```
 
-Expected: 输出 uv 版本。
+Expected: 输出 `uv 0.7.8`。
 
 - [ ] **Step 3: 安装 Python 3.10**
 
 Run:
 
 ```powershell
-uv python install 3.10
+& "C:\Users\32957\.local\bin\uv.exe" python install 3.10
 ```
 
 Expected: uv 报告 Python 3.10 已安装。
@@ -128,7 +129,7 @@ Expected: uv 报告 Python 3.10 已安装。
 Run:
 
 ```powershell
-uv sync --frozen --python 3.10
+& "C:\Users\32957\.local\bin\uv.exe" sync --frozen --python 3.10
 ```
 
 Expected: 创建 `.venv`，且 `uv.lock` 未发生变化。
@@ -138,9 +139,10 @@ Expected: 创建 `.venv`，且 `uv.lock` 未发生变化。
 Run:
 
 ```powershell
-uv run python --version
-uv run python -c "import deepsearcher; print(deepsearcher.__file__)"
-uv run python -c "import pymilvus; print(pymilvus.__version__)"
+$uv = "C:\Users\32957\.local\bin\uv.exe"
+& $uv run --frozen python --version
+& $uv run --frozen python -c "import deepsearcher; print(deepsearcher.__file__)"
+& $uv run --frozen python -c "import pymilvus; print(pymilvus.__version__)"
 git diff --exit-code -- uv.lock
 ```
 
@@ -308,7 +310,7 @@ Expected: 三个容器运行，Milvus 最终为 healthy，`TcpTestSucceeded` 为
 Run:
 
 ```powershell
-uv run python -c "from pymilvus import MilvusClient; c=MilvusClient(uri='http://127.0.0.1:19530', token='root:Milvus'); print(c.get_server_version()); print(c.list_collections())"
+& "C:\Users\32957\.local\bin\uv.exe" run --frozen python -c "from pymilvus import MilvusClient; c=MilvusClient(uri='http://127.0.0.1:19530', token='root:Milvus'); print(c.get_server_version()); print(c.list_collections())"
 ```
 
 Expected: 服务端版本为 2.5.8，并返回 Collection 列表。
@@ -352,7 +354,7 @@ Set the active providers to:
 Run:
 
 ```powershell
-uv run python -c "from deepsearcher.configuration import Configuration; c=Configuration(); v=c.get_provider_config('vector_db'); assert v['provider']=='Milvus'; assert v['config']['uri']=='http://127.0.0.1:19530'; print(v)"
+& "C:\Users\32957\.local\bin\uv.exe" run --frozen python -c "from deepsearcher.configuration import Configuration; c=Configuration(); v=c.get_provider_config('vector_db'); assert v['provider']=='Milvus'; assert v['config']['uri']=='http://127.0.0.1:19530'; print(v)"
 ```
 
 Expected: 断言通过并输出 Docker Milvus URI。
@@ -390,8 +392,8 @@ Run:
 
 ```powershell
 New-Item -ItemType Directory -Force logs | Out-Null
-$uv = (Get-Command uv).Source
-$backend = Start-Process -FilePath $uv -ArgumentList @("run","uvicorn","main:app","--host","127.0.0.1","--port","8000") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
+$uv = "C:\Users\32957\.local\bin\uv.exe"
+$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8000") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
 $backend.Id
 ```
 
@@ -449,7 +451,7 @@ for line in lines:
     y -= 24
 pdf.save()
 print(path.resolve())
-'@ | uv run --with reportlab python -
+'@ | & "C:\Users\32957\.local\bin\uv.exe" run --frozen --with reportlab python -
 ```
 
 Expected: 生成 `data/baseline/aurora-facts.pdf`，文件大小大于 0。
@@ -476,7 +478,7 @@ Expected: 返回 `Files loaded successfully.`。
 Run:
 
 ```powershell
-uv run python -c "from pymilvus import MilvusClient; c=MilvusClient(uri='http://127.0.0.1:19530', token='root:Milvus'); print(c.list_collections()); print(c.get_collection_stats('deepsearcher'))"
+& "C:\Users\32957\.local\bin\uv.exe" run --frozen python -c "from pymilvus import MilvusClient; c=MilvusClient(uri='http://127.0.0.1:19530', token='root:Milvus'); print(c.list_collections()); print(c.get_collection_stats('deepsearcher'))"
 ```
 
 Expected: 列表包含 `deepsearcher`，实体数量大于 0。
@@ -500,8 +502,8 @@ Run:
 $connection = Get-NetTCPConnection -LocalPort 8000 -State Listen
 Stop-Process -Id $connection.OwningProcess
 Start-Sleep -Seconds 2
-$uv = (Get-Command uv).Source
-$backend = Start-Process -FilePath $uv -ArgumentList @("run","uvicorn","main:app","--host","127.0.0.1","--port","8000") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
+$uv = "C:\Users\32957\.local\bin\uv.exe"
+$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8000") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 5
 $response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/query/?original_query=Who%20owns%20Project%20Aurora%20and%20what%20is%20its%20approved%20production%20launch%20date%3F&max_iter=3"
 $response | ConvertTo-Json -Depth 8
