@@ -1,8 +1,8 @@
 provide_settings:
   llm:
-    provider: "OpenAI"
+    provider: "SiliconFlow"
     config:
-      model: "o1-mini"
+      model: "deepseek-ai/DeepSeek-R1"
 #      api_key: "sk-xxxx"  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: ""
 
@@ -53,9 +53,9 @@ provide_settings:
 ##      api_key: "sk_xxxxxx"  # Uncomment to override the `NOVITA_API_KEY` set in the environment variable
 
   embedding:
-    provider: "OpenAIEmbedding"
+    provider: "SiliconflowEmbedding"
     config:
-      model: "text-embedding-ada-002"
+      model: "BAAI/bge-m3"
 #      api_key: ""  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: "" # Uncomment to override the `OPENAI_BASE_URL` set in the environment variable
 #      dimension: 1536 # Uncomment to customize the embedding dimension 
@@ -147,7 +147,7 @@ provide_settings:
     provider: "Milvus"
     config:
       default_collection: "deepsearcher"
-      uri: "./milvus.db"
+      uri: "http://127.0.0.1:19530"
       token: "root:Milvus"
       db: "default"
 
