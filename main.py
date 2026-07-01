@@ -1,5 +1,10 @@
 import argparse
+import os
 from typing import Dict, List, Union
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -101,7 +106,7 @@ def load_files(
             paths_or_directory=paths,
             collection_name=collection_name,
             collection_description=collection_description,
-            batch_size=batch_size,
+            batch_size=batch_size if batch_size is not None else 256,
         )
         return {"message": "Files loaded successfully."}
     except Exception as e:
@@ -151,7 +156,7 @@ def load_website(
             urls=urls,
             collection_name=collection_name,
             collection_description=collection_description,
-            batch_size=batch_size,
+            batch_size=batch_size if batch_size is not None else 256,
         )
         return {"message": "Website loaded successfully."}
     except Exception as e:

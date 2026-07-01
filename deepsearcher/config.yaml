@@ -3,6 +3,7 @@ provide_settings:
     provider: "OpenAI"
     config:
       model: "qwen-plus"
+#      model: "gemini-2.5-flash"  # Gemini - disabled, switched to Alibaba Cloud Bailian
 #      api_key: "sk-xxxx"  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: ""
 
@@ -56,6 +57,7 @@ provide_settings:
     provider: "OpenAIEmbedding"
     config:
       model: "text-embedding-v4"
+#      model: "models/gemini-embedding-2"  # Gemini - disabled, switched to Alibaba Cloud Bailian
       dimension: 1024
 #      api_key: ""  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: "" # Uncomment to override the `OPENAI_BASE_URL` set in the environment variable
