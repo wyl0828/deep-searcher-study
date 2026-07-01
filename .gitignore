@@ -202,3 +202,9 @@ pyrightconfig.json
 /infra/milvus/volumes/
 /data/
 /logs/
+
+# DeepSearcher learning console
+/frontend/node_modules/
+/frontend/.npm-cache/
+/frontend/dist/
+/frontend/logs/

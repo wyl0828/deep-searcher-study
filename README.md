@@ -596,6 +596,35 @@ nest_asyncio.apply()
 See the [Evaluation](./evaluation) directory for more details.
 
 ---
+## 🧭 中文学习控制台
+
+仓库中的 `frontend/` 提供一个中文双泳道学习界面，用来观察 PDF 入库与 RAG 问答的可确认阶段。页面通过同源本地代理调用现有 FastAPI，不会向浏览器暴露 API Key，也不会伪造后端未返回的子查询、召回片段或内部推理 Trace。
+
+先启动 Milvus 与 DeepSearcher FastAPI：
+
+```powershell
+docker compose -f infra/milvus/docker-compose.yml up -d
+uv run --frozen uvicorn main:app --host 127.0.0.1 --port 8500
+```
+
+首次安装并构建前端：
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+启动学习控制台：
+
+```powershell
+uv run --frozen uvicorn frontend.server:app --host 127.0.0.1 --port 8600
+```
+
+浏览器打开 `http://127.0.0.1:8600`。可通过环境变量 `DEEPSEARCHER_API_URL` 修改被代理的 FastAPI 地址。
+
+---
 ## 📌 Future Plans
 - Enhance web crawling functionality
 - Support more vector databases (e.g., FAISS...)
