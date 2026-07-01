@@ -386,7 +386,7 @@ if ([string]::IsNullOrWhiteSpace($env:SILICONFLOW_API_KEY)) { throw "SILICONFLOW
 
 Expected: 无异常。密钥不得打印。
 
-- [ ] **Step 2: 启动 FastAPI**
+- [x] **Step 2: 启动 FastAPI**
 
 Run:
 
@@ -399,7 +399,7 @@ $backend.Id
 
 Expected: 返回后台进程 PID。
 
-- [ ] **Step 3: 验证 OpenAPI**
+- [x] **Step 3: 验证 OpenAPI**
 
 Run:
 
@@ -409,7 +409,7 @@ Run:
 
 Expected: `200`。
 
-- [ ] **Step 4: 检查启动日志**
+- [x] **Step 4: 检查启动日志**
 
 Run:
 
@@ -418,6 +418,8 @@ Get-Content logs/backend.stderr.log -Tail 100
 ```
 
 Expected: 无模型、Embedding 或 Milvus 初始化异常。
+
+Execution note: 启动烟测使用了仅存在于子进程环境中的非真实 bootstrap 值，没有发起模型请求。FastAPI 在 8500 返回 OpenAPI 200；真实端到端调用仍要求 Task 6 Step 1 的有效 SiliconFlow Key。
 
 ### Task 7: 完成真实 PDF 入库与问答
 
