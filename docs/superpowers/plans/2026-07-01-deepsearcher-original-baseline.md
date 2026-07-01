@@ -378,13 +378,15 @@ Expected: 只提交提供商和连接配置，不包含密钥。
 
 - [ ] **Step 1: 验证模型密钥已在当前进程设置**
 
-Run:
+Create an ignored `.env` file containing one line named `SILICONFLOW_API_KEY`, then run:
 
 ```powershell
-if ([string]::IsNullOrWhiteSpace($env:SILICONFLOW_API_KEY)) { throw "SILICONFLOW_API_KEY is required for the end-to-end baseline" }
+$line = Get-Content .env | Where-Object { $_ -match '^SILICONFLOW_API_KEY=.+' } | Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($line)) { throw "SILICONFLOW_API_KEY is required in .env for the end-to-end baseline" }
+git check-ignore .env
 ```
 
-Expected: 无异常。密钥不得打印。
+Expected: 无异常且 `.env` 被 Git 忽略。命令不得输出密钥内容。
 
 - [x] **Step 2: 启动 FastAPI**
 
@@ -393,7 +395,7 @@ Run:
 ```powershell
 New-Item -ItemType Directory -Force logs | Out-Null
 $uv = "C:\Users\32957\.local\bin\uv.exe"
-$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8500") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
+$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","--env-file",".env","uvicorn","main:app","--host","127.0.0.1","--port","8500") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
 $backend.Id
 ```
 
@@ -505,7 +507,7 @@ $connection = Get-NetTCPConnection -LocalPort 8500 -State Listen
 Stop-Process -Id $connection.OwningProcess
 Start-Sleep -Seconds 2
 $uv = "C:\Users\32957\.local\bin\uv.exe"
-$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","uvicorn","main:app","--host","127.0.0.1","--port","8500") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
+$backend = Start-Process -FilePath $uv -ArgumentList @("run","--frozen","--env-file",".env","uvicorn","main:app","--host","127.0.0.1","--port","8500") -WorkingDirectory "D:\code\deep-searcher-study" -RedirectStandardOutput "D:\code\deep-searcher-study\logs\backend.stdout.log" -RedirectStandardError "D:\code\deep-searcher-study\logs\backend.stderr.log" -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 5
 $response = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8500/query/?original_query=Who%20owns%20Project%20Aurora%20and%20what%20is%20its%20approved%20production%20launch%20date%3F&max_iter=3"
 $response | ConvertTo-Json -Depth 8
