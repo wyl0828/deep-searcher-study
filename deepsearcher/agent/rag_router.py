@@ -78,11 +78,17 @@ class RAGRouter(RAGAgent):
 
     def retrieve(self, query: str, **kwargs) -> Tuple[List[RetrievalResult], int, dict]:
         agent, n_token_router = self._route(query)
+        trace_collector = kwargs.get("trace_collector")
+        if trace_collector is not None:
+            trace_collector.select_agent(agent.__class__.__name__, n_token_router)
         retrieved_results, n_token_retrieval, metadata = agent.retrieve(query, **kwargs)
         return retrieved_results, n_token_router + n_token_retrieval, metadata
 
     def query(self, query: str, **kwargs) -> Tuple[str, List[RetrievalResult], int]:
         agent, n_token_router = self._route(query)
+        trace_collector = kwargs.get("trace_collector")
+        if trace_collector is not None:
+            trace_collector.select_agent(agent.__class__.__name__, n_token_router)
         answer, retrieved_results, n_token_retrieval = agent.query(query, **kwargs)
         return answer, retrieved_results, n_token_router + n_token_retrieval
 

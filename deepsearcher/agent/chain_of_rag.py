@@ -133,7 +133,9 @@ class ChainOfRAG(RAGAgent):
         )
         return self.llm.remove_think(chat_response.content), chat_response.total_tokens
 
-    def _retrieve_and_answer(self, query: str) -> Tuple[str, List[RetrievalResult], int]:
+    def _retrieve_and_answer(
+        self, query: str, trace_collector=None
+    ) -> Tuple[str, List[RetrievalResult], int]:
         consume_tokens = 0
         if self.route_collection:
             selected_collections, n_token_route = self.collection_router.invoke(
@@ -143,6 +145,8 @@ class ChainOfRAG(RAGAgent):
             selected_collections = self.collection_router.all_collections
             n_token_route = 0
         consume_tokens += n_token_route
+        if trace_collector is not None:
+            trace_collector.record_collections(selected_collections, n_token_route)
         all_retrieved_results = []
         for collection in selected_collections:
             log.color_print(f"<search> Search [{query}] in [{collection}]...  </search>\n")
@@ -152,6 +156,8 @@ class ChainOfRAG(RAGAgent):
             )
             all_retrieved_results.extend(retrieved_results)
         all_retrieved_results = deduplicate_results(all_retrieved_results)
+        if trace_collector is not None:
+            trace_collector.record_documents_retrieved(all_retrieved_results)
         chat_response = self.llm.chat(
             [
                 {
@@ -163,8 +169,13 @@ class ChainOfRAG(RAGAgent):
                 }
             ]
         )
+        intermediate_answer = self.llm.remove_think(chat_response.content)
+        if trace_collector is not None:
+            trace_collector.record_intermediate_answer(
+                intermediate_answer, chat_response.total_tokens
+            )
         return (
-            self.llm.remove_think(chat_response.content),
+            intermediate_answer,
             all_retrieved_results,
             consume_tokens + chat_response.total_tokens,
         )
@@ -238,18 +249,31 @@ class ChainOfRAG(RAGAgent):
                 - dict: A dictionary containing additional information, including the intermediate contexts.
         """
         max_iter = kwargs.pop("max_iter", self.max_iter)
+        trace_collector = kwargs.pop("trace_collector", None)
         intermediate_contexts = []
         all_retrieved_results = []
         token_usage = 0
         for iter in range(max_iter):
             log.color_print(f">> Iteration: {iter + 1}\n")
+            if trace_collector is not None:
+                trace_collector.start_iteration(iter + 1)
             followup_query, n_token0 = self._reflect_get_subquery(query, intermediate_contexts)
-            intermediate_answer, retrieved_results, n_token1 = self._retrieve_and_answer(
-                followup_query
-            )
+            if trace_collector is not None:
+                trace_collector.record_subquery(followup_query, n_token0)
+                intermediate_answer, retrieved_results, n_token1 = self._retrieve_and_answer(
+                    followup_query, trace_collector=trace_collector
+                )
+            else:
+                intermediate_answer, retrieved_results, n_token1 = self._retrieve_and_answer(
+                    followup_query
+                )
             supported_retrieved_results, n_token2 = self._get_supported_docs(
                 retrieved_results, followup_query, intermediate_answer
             )
+            if trace_collector is not None:
+                trace_collector.record_documents_supported(
+                    supported_retrieved_results, n_token2
+                )
 
             all_retrieved_results.extend(supported_retrieved_results)
             intermediate_idx = len(intermediate_contexts) + 1
@@ -263,6 +287,8 @@ class ChainOfRAG(RAGAgent):
                     query, intermediate_contexts
                 )
                 token_usage += n_token_check
+                if trace_collector is not None:
+                    trace_collector.record_reflection(has_enough_info, n_token_check)
 
                 if has_enough_info:
                     log.color_print(
@@ -307,6 +333,9 @@ class ChainOfRAG(RAGAgent):
                 }
             ]
         )
+        trace_collector = kwargs.get("trace_collector")
+        if trace_collector is not None:
+            trace_collector.record_final_answer(chat_response.total_tokens)
         log.color_print("\n==== FINAL ANSWER====\n")
         log.color_print(self.llm.remove_think(chat_response.content))
         return (

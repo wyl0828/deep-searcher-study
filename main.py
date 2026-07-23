@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from deepsearcher.configuration import Configuration, init_config
 from deepsearcher.offline_loading import load_from_local_files, load_from_website
-from deepsearcher.online_query import query
+from deepsearcher.online_query import query, query_with_trace
 
 app = FastAPI()
 
@@ -176,6 +176,10 @@ def perform_query(
         ge=1,
         examples=[3],
     ),
+    include_trace: bool = Query(
+        False,
+        description="Include a safe structured execution trace in the response.",
+    ),
 ):
     """
     Perform a query against the loaded data.
@@ -191,6 +195,14 @@ def perform_query(
         HTTPException: If the query fails.
     """
     try:
+        if include_trace:
+            result_text, _, consume_token, trace = query_with_trace(original_query, max_iter)
+            return {
+                "result": result_text,
+                "consume_token": consume_token,
+                "trace": trace,
+            }
+
         result_text, _, consume_token = query(original_query, max_iter)
         return {"result": result_text, "consume_token": consume_token}
     except Exception as e:

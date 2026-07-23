@@ -74,5 +74,6 @@ export async function queryDeepSearcher(question, maxIter) {
     answer: payload.result,
     totalTokens: payload.consume_token,
     latencyMs: payload.latency_ms,
+    trace: payload.trace || null,
   };
 }

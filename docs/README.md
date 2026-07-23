@@ -1,42 +1,42 @@
-# DeepSearcher Documentation
+# DeepSearcher 文档
 
-This directory contains the documentation for DeepSearcher, powered by MkDocs.
+本目录存放 DeepSearcher 的项目文档，文档站点由 MkDocs 构建。
 
-## Setup
+## 环境准备
 
-1. Install MkDocs and required plugins:
+1. 安装 MkDocs 及所需插件：
 
 ```bash
 pip install mkdocs mkdocs-material mkdocs-jupyter pymdown-extensions
 ```
 
-2. Clone the repository:
+2. 克隆仓库：
 
 ```bash
 git clone https://github.com/zilliztech/deep-searcher.git
 cd deep-searcher
 ```
 
-## Development
+## 本地开发
 
-To serve the documentation locally:
+在本地启动文档站点：
 
 ```bash
 mkdocs serve
 ```
 
-This will start a local server at http://127.0.0.1:8000/ where you can preview the documentation.
+命令会在 http://127.0.0.1:8000/ 启动本地服务，可通过浏览器预览文档。
 
-## Building
+## 构建
 
-To build the static site:
+构建静态站点：
 
 ```bash
 mkdocs build
 ```
 
-This will generate the static site in the `site` directory.
+生成的静态文件位于 `site` 目录。
 
-## Deployment
+## 部署
 
-The documentation is automatically deployed when changes are pushed to the main branch using GitHub Actions. 
+代码推送到主分支后，GitHub Actions 会自动部署文档站点。

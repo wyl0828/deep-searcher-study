@@ -2,6 +2,7 @@ from typing import List, Tuple
 
 # from deepsearcher.configuration import vector_db, embedding_model, llm
 from deepsearcher import configuration
+from deepsearcher.trace import TraceCollector
 from deepsearcher.vector_db.base import RetrievalResult
 
 
@@ -24,6 +25,23 @@ def query(original_query: str, max_iter: int = 3) -> Tuple[str, List[RetrievalRe
     """
     default_searcher = configuration.default_searcher
     return default_searcher.query(original_query, max_iter=max_iter)
+
+
+def query_with_trace(original_query: str, max_iter: int = 3):
+    """Query the knowledge base and return an additional structured execution trace."""
+    collector = TraceCollector(original_query)
+    default_searcher = configuration.default_searcher
+    answer, results, consume_tokens = default_searcher.query(
+        original_query,
+        max_iter=max_iter,
+        trace_collector=collector,
+    )
+    return (
+        answer,
+        results,
+        consume_tokens,
+        collector.build(total_tokens=consume_tokens, final_results=results),
+    )
 
 
 def retrieve(

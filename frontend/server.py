@@ -40,6 +40,17 @@ class QueryRequest(BaseModel):
     max_iter: int = Field(default=3, ge=1, le=10)
 
 
+def map_query_response(payload: dict, latency_ms: int) -> dict:
+    response = {
+        "result": payload.get("result", ""),
+        "consume_token": payload.get("consume_token"),
+        "latency_ms": latency_ms,
+    }
+    if "trace" in payload:
+        response["trace"] = payload["trace"]
+    return response
+
+
 def validate_collection_name(value: str) -> str:
     normalized = value.strip()
     if not COLLECTION_PATTERN.fullmatch(normalized):
@@ -160,7 +171,11 @@ async def query(request: QueryRequest) -> dict:
         async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
             response = await client.get(
                 f"{BACKEND_URL}/query/",
-                params={"original_query": question, "max_iter": request.max_iter},
+                params={
+                    "original_query": question,
+                    "max_iter": request.max_iter,
+                    "include_trace": True,
+                },
             )
         if not response.is_success:
             raise HTTPException(
@@ -172,11 +187,10 @@ async def query(request: QueryRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="FastAPI 返回了无法解析的响应") from exc
 
-    return {
-        "result": payload.get("result", ""),
-        "consume_token": payload.get("consume_token"),
-        "latency_ms": round((perf_counter() - started) * 1000),
-    }
+    return map_query_response(
+        payload,
+        latency_ms=round((perf_counter() - started) * 1000),
+    )
 
 
 if DIST_DIR.exists():

@@ -8,15 +8,17 @@ describe("浏览器 API", () => {
   });
 
   it("提交问题并规范化查询结果", async () => {
+    const trace = { version: 1, agent: "ChainOfRAG", iterations: [] };
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ result: "答案", consume_token: 42, latency_ms: 120 }),
+      json: async () => ({ result: "答案", consume_token: 42, latency_ms: 120, trace }),
     });
 
     await expect(queryDeepSearcher("问题", 3)).resolves.toEqual({
       answer: "答案",
       totalTokens: 42,
       latencyMs: 120,
+      trace,
     });
   });
 

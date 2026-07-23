@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from deepsearcher.agent import ChainOfRAG
 from deepsearcher.vector_db.base import RetrievalResult
 from deepsearcher.llm.base import ChatResponse
+from deepsearcher.trace import TraceCollector
 
 from tests.agent.test_base import BaseAgentTest
 
@@ -162,6 +163,22 @@ class TestChainOfRAG(BaseAgentTest):
         self.assertEqual(len(results), 1)
         self.assertEqual(tokens, 25)  # 5 + 10 + 5 + 5
         self.assertIn("intermediate_context", metadata)
+
+    def test_retrieve_records_structured_trace(self):
+        query = "What is deep learning?"
+        collector = TraceCollector(query)
+
+        results, tokens, _ = self.chain_of_rag.retrieve(
+            query, max_iter=1, trace_collector=collector
+        )
+        trace = collector.build(total_tokens=tokens, final_results=results)
+
+        self.assertEqual(len(trace["iterations"]), 1)
+        iteration = trace["iterations"][0]
+        self.assertTrue(iteration["subquery"])
+        self.assertGreaterEqual(iteration["retrieved_count"], 1)
+        self.assertTrue(iteration["collections"])
+        self.assertTrue(iteration["intermediate_answer"])
         
     def test_query(self):
         """Test the query method."""
@@ -234,4 +251,5 @@ class TestChainOfRAG(BaseAgentTest):
 
 if __name__ == "__main__":
     import unittest
-    unittest.main() 
+
+    unittest.main()

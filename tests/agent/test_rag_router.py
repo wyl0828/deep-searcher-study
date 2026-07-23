@@ -4,6 +4,7 @@ from deepsearcher.agent import NaiveRAG, ChainOfRAG, DeepSearch
 from deepsearcher.agent.rag_router import RAGRouter
 from deepsearcher.vector_db.base import RetrievalResult
 from deepsearcher.llm.base import ChatResponse
+from deepsearcher.trace import TraceCollector
 
 from tests.agent.test_base import BaseAgentTest
 
@@ -118,6 +119,19 @@ class TestRAGRouter(BaseAgentTest):
         self.assertEqual(answer, "Paris is the capital of France")
         self.assertEqual(results, mock_retrieved_results)
         self.assertEqual(tokens, 15)  # 5 from route + 10 from query
+
+    def test_query_records_selected_agent_in_trace(self):
+        query = "What is the capital of France?"
+        collector = TraceCollector(query)
+        self.rag_router._route = MagicMock(return_value=(self.chain_of_rag, 5))
+        self.chain_of_rag.query = MagicMock(return_value=("answer", [], 10))
+
+        self.rag_router.query(query, trace_collector=collector)
+        trace = collector.build(total_tokens=15, final_results=[])
+
+        self.assertEqual(trace["agent"], "ChainOfRAG")
+        self.assertEqual(trace["summary"]["routing_tokens"], 5)
+        self.chain_of_rag.query.assert_called_once_with(query, trace_collector=collector)
     
     def test_find_last_digit(self):
         """Test the find_last_digit method."""
@@ -159,4 +173,5 @@ class TestRAGRouter(BaseAgentTest):
 
 if __name__ == "__main__":
     import unittest
-    unittest.main() 
+
+    unittest.main()

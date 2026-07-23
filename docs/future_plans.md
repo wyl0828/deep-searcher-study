@@ -1,8 +1,8 @@
-# Future Plans
+# 后续计划
 
-- Enhance web crawling functionality
-- Support more vector databases (e.g., FAISS...)
-- Add support for additional large models
-- Provide RESTful API interface (**DONE**)
+- 增强网页抓取能力
+- 支持更多向量数据库（例如 FAISS）
+- 支持更多大语言模型
+- 提供 RESTful API 接口（**已完成**）
 
-We welcome contributions! Star & Fork the project and help us build a more powerful DeepSearcher! 🎯 
+欢迎参与贡献！欢迎 Star、Fork 项目，一起把 DeepSearcher 做得更强大。🎯

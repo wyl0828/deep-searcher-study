@@ -16,12 +16,12 @@ import {
   PlayIcon,
   ShareIcon,
   SparklesIcon,
-  TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getHealth, ingestPdf, queryDeepSearcher } from "./api";
+import { TracePanel } from "./TracePanel";
 
 const INGESTION_STEPS = [
   { marker: "1", title: "PDF 解析", description: "提取文档文本", icon: DocumentTextIcon },
@@ -147,6 +147,7 @@ export function App() {
   const [answer, setAnswer] = useState("");
   const [latencyMs, setLatencyMs] = useState(null);
   const [totalTokens, setTotalTokens] = useState(null);
+  const [trace, setTrace] = useState(null);
   const [logs, setLogs] = useState([]);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
@@ -212,12 +213,14 @@ export function App() {
     setAnswer("");
     setLatencyMs(null);
     setTotalTokens(null);
+    setTrace(null);
     addLog(`开始查询：${question.trim() || "问题为空"}`);
     try {
       const result = await queryDeepSearcher(question, maxIter);
       setAnswer(result.answer);
       setLatencyMs(result.latencyMs);
       setTotalTokens(result.totalTokens);
+      setTrace(result.trace);
       setQueryState("success");
       addLog(`查询完成：耗时 ${(result.latencyMs / 1000).toFixed(2)} 秒`, "success");
       addLog(`后端返回总 Token：${result.totalTokens ?? "未提供"}`, "success");
@@ -383,27 +386,12 @@ export function App() {
               </div>
             </article>
 
-            <article className="event-panel">
-              <div className="panel-heading">
-                <h2>事件日志 <span>（仅显示可观测阶段）</span></h2>
-                <button type="button" onClick={() => setLogs([])} disabled={!logs.length}>
-                  <TrashIcon aria-hidden="true" />
-                  清空
-                </button>
-              </div>
-              <div className="event-list" aria-live="polite">
-                {logs.length ? (
-                  logs.map((log) => (
-                    <div className={`event-item event-item--${log.tone}`} key={log.id}>
-                      <time>{log.time}</time>
-                      <span>{log.message}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="empty-log">入库或查询后，这里会记录可确认的事件。</p>
-                )}
-              </div>
-            </article>
+            <TracePanel
+              trace={trace}
+              logs={logs}
+              state={queryState}
+              onClearLogs={() => setLogs([])}
+            />
           </section>
         </main>
 
@@ -448,7 +436,7 @@ export function App() {
 
           <div className="trace-note">
             <InformationCircleIcon aria-hidden="true" />
-            <p>右侧为本次查询的最终统计结果，不包含内部推理细节或中间状态。</p>
+            <p>查询过程展示结构化执行事件与检索证据，不包含隐藏推理过程。</p>
           </div>
         </aside>
       </div>

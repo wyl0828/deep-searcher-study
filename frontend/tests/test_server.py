@@ -3,7 +3,12 @@ import base64
 
 import pytest
 
-from frontend.server import decode_pdf, probe_backend, validate_collection_name
+from frontend.server import (
+    decode_pdf,
+    map_query_response,
+    probe_backend,
+    validate_collection_name,
+)
 
 
 def encode(data: bytes) -> str:
@@ -64,3 +69,17 @@ def test_probe_backend_bypasses_windows_system_proxy(monkeypatch):
 
     assert asyncio.run(probe_backend()) is True
     assert captured["trust_env"] is False
+
+
+def test_map_query_response_preserves_structured_trace():
+    trace = {"version": 1, "iterations": [{"number": 1}]}
+
+    assert map_query_response(
+        {"result": "答案", "consume_token": 42, "trace": trace},
+        latency_ms=1234,
+    ) == {
+        "result": "答案",
+        "consume_token": 42,
+        "trace": trace,
+        "latency_ms": 1234,
+    }

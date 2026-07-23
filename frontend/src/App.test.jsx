@@ -30,6 +30,17 @@ beforeEach(() => {
     answer: "这是来自测试的最终答案。",
     totalTokens: 88,
     latencyMs: 240,
+    trace: {
+      version: 1,
+      agent: "ChainOfRAG",
+      original_query: "DeepSearcher 如何工作？",
+      iterations: [],
+      summary: {
+        iteration_count: 0,
+        supported_document_count: 0,
+        total_tokens: 88,
+      },
+    },
   });
 });
 
@@ -38,7 +49,7 @@ it("展示两条中文流程和不可观测说明", async () => {
 
   expect(screen.getByText("离线入库")).toBeInTheDocument();
   expect(screen.getByText("在线问答")).toBeInTheDocument();
-  expect(screen.getByText(/不包含内部推理细节/)).toBeInTheDocument();
+  expect(screen.getByText(/不包含隐藏推理过程/)).toBeInTheDocument();
   expect(await screen.findByText("qwen-plus")).toBeInTheDocument();
 });
 
@@ -50,6 +61,7 @@ it("运行查询后展示真实返回的答案与总 Token", async () => {
   await user.click(screen.getByRole("button", { name: "运行查询" }));
 
   expect(await screen.findByText("这是来自测试的最终答案。")).toBeInTheDocument();
-  expect(screen.getByText("88")).toBeInTheDocument();
+  expect(screen.getAllByText("88").length).toBeGreaterThan(0);
+  expect(screen.getByText("ChainOfRAG")).toBeInTheDocument();
   expect(apiMocks.queryDeepSearcher).toHaveBeenCalledWith("DeepSearcher 如何工作？", 3);
 });
