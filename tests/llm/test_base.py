@@ -1,6 +1,7 @@
 import unittest
-from deepsearcher.llm.base import BaseLLM, ChatResponse
 from unittest.mock import patch
+
+from deepsearcher.llm.base import BaseLLM, ChatResponse
 
 
 class TestBaseLLM(unittest.TestCase):
@@ -9,7 +10,7 @@ class TestBaseLLM(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Clear environment variables temporarily
-        self.env_patcher = patch.dict('os.environ', {}, clear=True)
+        self.env_patcher = patch.dict("os.environ", {}, clear=True)
         self.env_patcher.start()
 
     def tearDown(self):
@@ -21,43 +22,42 @@ class TestBaseLLM(unittest.TestCase):
         content = "Test content"
         total_tokens = 100
         response = ChatResponse(content=content, total_tokens=total_tokens)
-        
+
         self.assertEqual(response.content, content)
         self.assertEqual(response.total_tokens, total_tokens)
         self.assertEqual(
-            repr(response),
-            f"ChatResponse(content={content}, total_tokens={total_tokens})"
+            repr(response), f"ChatResponse(content={content}, total_tokens={total_tokens})"
         )
 
     def test_literal_eval_python_code_block(self):
         """Test literal_eval with Python code block."""
-        content = '''```python
+        content = """```python
 {"key": "value", "number": 42}
-```'''
+```"""
         result = BaseLLM.literal_eval(content)
         self.assertEqual(result, {"key": "value", "number": 42})
 
     def test_literal_eval_json_code_block(self):
         """Test literal_eval with JSON code block."""
-        content = '''```json
+        content = """```json
 {"key": "value", "number": 42}
-```'''
+```"""
         result = BaseLLM.literal_eval(content)
         self.assertEqual(result, {"key": "value", "number": 42})
 
     def test_literal_eval_str_code_block(self):
         """Test literal_eval with str code block."""
-        content = '''```str
+        content = """```str
 {"key": "value", "number": 42}
-```'''
+```"""
         result = BaseLLM.literal_eval(content)
         self.assertEqual(result, {"key": "value", "number": 42})
 
     def test_literal_eval_plain_code_block(self):
         """Test literal_eval with plain code block."""
-        content = '''```
+        content = """```
 {"key": "value", "number": 42}
-```'''
+```"""
         result = BaseLLM.literal_eval(content)
         self.assertEqual(result, {"key": "value", "number": 42})
 
@@ -75,17 +75,24 @@ class TestBaseLLM(unittest.TestCase):
 
     def test_literal_eval_with_whitespace(self):
         """Test literal_eval with extra whitespace."""
-        content = '''
+        content = """
         
         {"key": "value"}
         
-        '''
+        """
         result = BaseLLM.literal_eval(content)
         self.assertEqual(result, {"key": "value"})
 
+    def test_literal_eval_extracts_one_list_from_explanation_text(self):
+        content = 'The selected values are: ["first", "second"].'
+
+        result = BaseLLM.literal_eval(content)
+
+        self.assertEqual(result, ["first", "second"])
+
     def test_literal_eval_nested_structures(self):
         """Test literal_eval with nested data structures."""
-        content = '''
+        content = """
         {
             "string": "value",
             "number": 42,
@@ -93,14 +100,14 @@ class TestBaseLLM(unittest.TestCase):
             "dict": {"nested": "value"},
             "mixed": [1, {"key": "value"}, [2, 3]]
         }
-        '''
+        """
         result = BaseLLM.literal_eval(content)
         expected = {
             "string": "value",
             "number": 42,
             "list": [1, 2, 3],
             "dict": {"nested": "value"},
-            "mixed": [1, {"key": "value"}, [2, 3]]
+            "mixed": [1, {"key": "value"}, [2, 3]],
         }
         self.assertEqual(result, expected)
 
@@ -118,11 +125,11 @@ class TestBaseLLM(unittest.TestCase):
 
     def test_remove_think_with_tags(self):
         """Test remove_think with think tags."""
-        content = '''<think>
+        content = """<think>
         This is the reasoning process.
         Multiple lines of thought.
         </think>
-        This is the actual response.'''
+        This is the actual response."""
         result = BaseLLM.remove_think(content)
         self.assertEqual(result.strip(), "This is the actual response.")
 
@@ -134,13 +141,12 @@ class TestBaseLLM(unittest.TestCase):
 
     def test_remove_think_multiple_tags(self):
         """Test remove_think with multiple think tags - should only remove first block."""
-        content = '''<think>First think block</think>
+        content = """<think>First think block</think>
         Actual response
-        <think>Second think block</think>'''
+        <think>Second think block</think>"""
         result = BaseLLM.remove_think(content)
         self.assertEqual(
-            result.strip(),
-            "Actual response\n        <think>Second think block</think>"
+            result.strip(), "Actual response\n        <think>Second think block</think>"
         )
 
     def test_remove_think_empty_tags(self):
@@ -151,4 +157,4 @@ class TestBaseLLM(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

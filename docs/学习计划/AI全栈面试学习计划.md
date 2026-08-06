@@ -8,19 +8,24 @@
 
 这不是一份“把名词背熟”的课表，而是一条从源码证据出发的面试训练路径。每天遵循同一闭环：**读源码 → 画数据流 → 做实验 → 留证据 → 口述回答 → 不看答案自测**。遇到不会的问题，先定位代码和测试，再补理论；不要把计划中的优化说成项目已经实现。
 
-路径约定：本文写完整路径时均从仓库根目录起算；在同一小节中为减少重复，`agent/...`、`loader/...`、`embedding/...`、`vector_db/...` 默认相对于 `deepsearcher/`，`App.jsx`、`api.js`、`TracePanel.jsx` 默认相对于 `frontend/src/`。所有测试路径均从仓库根目录起算。
+路径约定：本文写完整路径时均从仓库根目录起算；在同一小节中为减少重复，`agent/...`、`loader/...`、`embedding/...`、`vector_db/...` 默认相对于 `deepsearcher/`，`App.tsx`、`product-api.ts`、`ConsoleApp.jsx`、`api.js`、`TracePanel.jsx` 默认相对于 `frontend/src/`。所有测试路径均从仓库根目录起算。
 
 ### 当前仓库的事实基线
 
-- Python 要求为 3.10 及以上，后端使用 FastAPI；前端使用 React 19、Vite 6、Vitest。
+- 2026-08-02 已完成本次整体优化并暂时封版；当前重点转为学习、演示和面试表达。最终用户
+  认证/RBAC、大文件直传等保留项只有在产品边界明确后再启动，不能混入当前已完成功能口径。
+
+- Python 要求为 3.10 及以上，后端使用 FastAPI；前端使用 React 19、TypeScript、React Router、TanStack Query、Vite 6、Vitest。
 - 当前 `deepsearcher/config.yaml` 通过 OpenAI-compatible 客户端调用千问：LLM 为 `qwen-plus`，Embedding 为 `text-embedding-v4`，维度为 1024。
 - 向量库配置为独立 Milvus 服务：`http://127.0.0.1:19530`。本机基线采用 Docker Milvus，不是 Milvus Lite。
 - 默认查询由 `RAGRouter` 在 `DeepSearch` 与 `ChainOfRAG` 之间选择；`NaiveRAG` 保留为直接基线，但不在默认路由列表中。
 - `ChainOfRAG.early_stopping` 默认是 `False`；因此默认会运行到 `max_iter`，Trace 中的反思字段通常为空，而不是“反思失败”。
 - Milvus dense 检索默认指标是 L2，`RetrievalResult.score` 实际承接 Milvus 返回的 `distance`；界面不应无条件把它解释为“越大越相似”。
-- Trace 是程序显式记录的路由、子查询、集合、文档摘要、支持性筛选和 Token 数据，不是模型隐藏思维链。
-- 当前 Trace 主要接入 `ChainOfRAG`；如果路由到 `DeepSearch`，可能只有 Agent 与汇总信息，没有逐轮明细。
-- 当前系统没有正式的离线 RAG 评测集、鉴权、限流、多租户隔离、缓存或 SSE 流式 Trace。全量测试也存在需要单独核对的基线失败，面试时只能报告最近一次真实测试结果。
+- Trace 是程序显式记录的路由、轮次、检索/支持计数、受支持证据和 Token 数据，不是模型隐藏思维链；原问题、子查询、Collection 名和中间答案不进入公开 Trace。
+- Trace v2 已接入 `NaiveRAG`、`ChainOfRAG` 和 `DeepSearch` 的逐轮阶段，产品链路通过 SSE 增量返回统计事件。
+- 当前默认前端是产品工作台，支持知识库、文档任务状态、持久化对话和引用抽屉；原学习控制台保留在 `/console`。
+- 产品工作台使用 TanStack Query 缓存服务端状态，用 fetch ReadableStream 消费 SSE，并用 AbortController 停止回答；核心已有每进程查询准入限制，但仍没有最终用户登录/RBAC、分布式限流或跨用户共享缓存。
+- 核心 API 已有请求级租户上下文、Collection 白名单、配置版本和回滚，但产品数据库仍是本地单用户模型；系统仍没有正式业务黄金评测集、持久化分布式任务队列或正式 SLO。测试数字必须引用最近一次真实输出。
 
 ### 可复制的启动与验证命令（PowerShell）
 
@@ -67,9 +72,14 @@ PDF → PDFLoader → RecursiveCharacterTextSplitter → Chunk/wider_text
     → DeepSearch 或 ChainOfRAG → CollectionRouter → Embedding → Milvus
     → 支持文档/上下文 → qwen-plus → 最终回答与 Token/Trace
 
-全栈链路
-React App → frontend/src/api.js → frontend/server.py 本地代理
-    → main.py FastAPI → 千问/Milvus → JSON → TracePanel
+产品工作台链路
+React App.tsx → product-api.ts → frontend/product/routes.py
+    → SQLite 状态 / BackgroundTasks / main.py FastAPI
+    → 千问/Milvus → Message + Citation → 引用抽屉
+
+学习控制台链路
+/console → ConsoleApp.jsx → api.js → frontend/server.py
+    → main.py FastAPI → 千问/Milvus → 完整 JSON → TracePanel
 ```
 
 ### 1.2 模块证据表
@@ -84,11 +94,12 @@ React App → frontend/src/api.js → frontend/server.py 本地代理
 | `CollectionRouter` | 在多 Collection 中缩小检索范围 | Collection 有自然语言描述时，LLM 能做语义路由；单集合时零 Token 直接返回 | `deepsearcher/agent/collection_router.py`；`tests/agent/test_collection_router.py` | 规则/Embedding 路由更稳定便宜，LLM 路由更灵活 | 返回值白名单校验、缓存、路由评测 |
 | `RAGRouter` | 在不同 RAG 策略间选择一个 Agent | 简单问题可走更直接策略，复杂问题可走迭代策略 | `deepsearcher/agent/rag_router.py`；`tests/agent/test_rag_router.py` | 规则分类器/小模型路由更可控；并行多 Agent 更贵 | 索引上下界校验、置信度、回退策略、路由指标 |
 | `NaiveRAG` | 建立一次检索再生成的基线 | 链路短、成本低，便于和复杂 RAG 做 A/B 对比 | `deepsearcher/agent/naive_rag.py`；`tests/agent/test_naive_rag.py` | Query rewrite、rerank、迭代检索提高复杂问题召回，但延迟更高 | 正式基准数据与对比报表 |
-| `DeepSearch` | 将复杂问题拆成子查询，迭代补齐信息缺口 | 并发处理子查询并对结果做相关性判断，适合多跳问题 | `deepsearcher/agent/deep_search.py`；`tests/agent/test_deep_search.py` | ChainOfRAG 的逐步问答更可解释；普通 RAG 更便宜 | Internet 搜索仍是 TODO；逐轮 Trace 未完整接入 |
+| `DeepSearch` | 将复杂问题拆成子查询，迭代补齐信息缺口 | 并发处理子查询并对结果做相关性判断，适合多跳问题 | `deepsearcher/agent/deep_search.py`；`tests/agent/test_deep_search.py` | ChainOfRAG 的逐步问答更可解释；普通 RAG 更便宜 | Internet 搜索仍是 TODO；缺少正式多跳质量评测 |
 | `ChainOfRAG` | 逐轮生成 follow-up query、检索、生成中间答案并筛选支持文档 | 让下一轮使用上一轮上下文，减少一次检索覆盖不了的知识缺口 | `deepsearcher/agent/chain_of_rag.py`；`tests/agent/test_chain_of_rag.py` | CoRAG 论文含训练与拒绝采样，本项目只是受其推理思想启发 | 论文训练流程、默认 early stopping、严格引用对齐 |
-| `TraceCollector` | 把可观测事件组织成稳定 JSON，同时减少敏感信息暴露 | 显式埋点比解析日志可靠；限制可见文档并清理路径/URL 参数 | `deepsearcher/trace.py`；`tests/test_trace.py`、`tests/test_query_api.py` | OpenTelemetry 适合跨服务追踪；事件流适合实时 UI | SSE/WebSocket、持久化、Trace ID、DeepSearch 全链路事件 |
-| FastAPI + 本地代理 | 对外提供查询/入库接口，并把浏览器文件上传转换为后端可读临时路径 | 浏览器不能直接传本机路径；同源代理统一错误与超时并隐藏上游地址 | `main.py`、`frontend/server.py`；`frontend/tests/test_server.py` | 直接 CORS 调后端层级少，但暴露地址且难统一安全策略 | 鉴权、限流、后台任务、取消、生产级错误码 |
-| React + `TracePanel` | 展示服务状态、入库、查询、答案和逐轮 Agent 事件 | `useState` 管理局部交互状态，组件拆分让 Trace 独立测试 | `frontend/src/App.jsx`、`api.js`、`TracePanel.jsx` 及同名测试 | 状态机更适合复杂异步流程；React Query 更适合服务状态缓存 | 路由、多用户状态、实时流、完整键盘标签页交互验证 |
+| `TraceCollector` | 把可观测事件组织成稳定 JSON/SSE，同时减少敏感信息暴露 | 显式埋点比解析日志可靠；公开事件仅含阶段/数量，最终只保留受支持证据 | `deepsearcher/trace.py`；`tests/test_trace.py`、`tests/test_query_api.py` | OpenTelemetry 适合跨服务追踪；SSE 更适合当前单向进度 | 事件持久化/重放、跨服务 Span 和正式保留策略 |
+| FastAPI 用户工作台 + 产品 API | 提供知识库、文档、会话、消息和引用接口，并把浏览器上传转换为 DeepSearcher 可读路径 | 产品接口保存业务状态；旧 `/api/ingest` 与 `/api/query` 继续兼容学习控制台 | `frontend/server.py`、`frontend/product/`；`frontend/tests/test_product_api.py`、`test_product_data.py` | 独立后端服务边界更清晰但部署更复杂；当前同进程便于本地运行 | 鉴权、租户 ACL、持久任务队列、取消、正式错误追踪 |
+| React 产品工作台 | 展示知识库、文档任务、持久化对话、Markdown 答案、实时阶段和引用来源 | React Router 表达页面，TanStack Query 管服务端状态，ReadableStream 管事件，AbortController 管停止 | `frontend/src/App.tsx`、`product-api.ts`、`workspace.css`、`App.test.jsx` | Redux/状态机更适合复杂客户端业务；当前 Query Cache + 局部流状态更轻 | 反馈持久化、搜索、完整运行时 schema、自动浏览器 E2E 套件 |
+| `/console` + `TracePanel` | 保留服务状态、直接入库、查询参数与逐轮 Agent Trace 的学习调试界面 | 与产品界面隔离，避免把内部 Trace 直接当成普通用户产品信息架构 | `ConsoleApp.jsx`、`api.js`、`TracePanel.jsx` 及测试 | 可并入管理后台，但会增加权限和页面复杂度 | DeepSearch 完整逐轮事件、实时 Trace、完整键盘/读屏验证 |
 
 ### 1.3 你必须能画出的依赖关系
 
@@ -239,9 +250,9 @@ FastAPI 使用全局 configuration 中已装配的对象
 1. **今日目标：** 读懂 provider、入库、网站、查询四组接口及 Pydantic 校验。
 2. **必读源码：** `main.py`、`tests/test_query_api.py`。
 3. **相关理论：** GET/POST 语义、幂等性、状态码、OpenAPI。
-4. **必做实验：** 用 `Invoke-RestMethod` 调用 `/query/`，分别携带和不携带 `include_trace`。
-5. **可交付成果：** 接口契约表和“保留旧响应”的兼容性说明。
-6. **当日面试题：** 查询为什么用 GET 有争议，何时改 POST？
+4. **必做实验：** 用 `Invoke-RestMethod` 以 JSON Body 调用 `POST /query`，分别携带和不携带 `include_trace`，并观察 `X-Request-ID`。
+5. **可交付成果：** POST 查询、稳定错误信封、鉴权与限流的接口契约表。
+6. **当日面试题：** 为什么问题不能放进 GET URL？POST、请求 ID 和幂等重试分别解决什么问题？
 7. **自测标准：** 能说出每个输入约束、返回字段和异常映射。
 
 #### 第 14 天：同步、异步与阻塞调用
@@ -256,13 +267,13 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 #### 第 15 天：本地代理、上传与错误映射
 
-1. **今日目标：** 理解 Base64 PDF、临时目录、同源代理与超时。
-2. **必读源码：** `frontend/server.py`、`frontend/tests/test_server.py`。
-3. **相关理论：** BFF、CORS、路径穿越、MIME/魔数校验、502/503。
-4. **必做实验：** 上传 TXT、伪 PDF、超限 PDF、非法 Collection；验证 400、502、503 分工。
-5. **可交付成果：** 威胁模型：输入、信任边界、校验、残余风险。
-6. **当日面试题：** `Path(filename).name` 和 `TemporaryDirectory` 分别防什么？
-7. **自测标准：** 能解释临时文件为何只在请求范围存在，以及后端何时必须读完。
+1. **今日目标：** 区分产品工作台 multipart 上传与旧控制台 Base64 兼容链路，理解 202、任务状态和错误映射。
+2. **必读源码：** `frontend/server.py`、`frontend/product/routes.py`、`frontend/product/services/documents.py`、`product-api.ts` 及对应测试。
+3. **相关理论：** BFF、multipart、CORS、路径穿越、MIME/魔数校验、202 Accepted、任务状态机、502/503。
+4. **必做实验：** 分别从产品页和 `/console` 上传 PDF；再提交 TXT、伪 PDF、超限和重复 PDF，观察 HTTP 状态、Document 状态与错误对象。
+5. **可交付成果：** 两条上传时序图，以及输入、信任边界、状态转换和残余风险清单。
+6. **当日面试题：** 为什么产品接口已经改成 multipart，仍不能称为生产级异步入库？
+7. **自测标准：** 能解释产品文件为什么持久化、旧临时文件何时删除，以及 `BackgroundTasks` 为什么不等于可靠队列。
 
 #### 第 16 天：TraceCollector 与安全边界
 
@@ -274,25 +285,25 @@ FastAPI 使用全局 configuration 中已装配的对象
 6. **当日面试题：** 为什么 Trace 不是模型思维链？
 7. **自测标准：** 能逐字段说明“谁记录、何时记录、如何脱敏、如何测试”。
 
-#### 第 17 天：React 状态与 API 适配
+#### 第 17 天：React Router、TanStack Query 与 API 适配
 
-1. **今日目标：** 理解 App 的状态、事件、派生展示和 API 规范化。
-2. **必读源码：** `frontend/src/App.jsx`、`api.js`、同名测试、[React 状态模型](https://react.dev/learn/state-a-components-memory)。
-3. **相关理论：** state snapshot、单向数据流、受控输入、异步竞态。
-4. **必做实验：** 画出点击“运行查询”后所有 state 的变化；模拟成功与错误响应。
-5. **可交付成果：** React 状态转换图和两条竞态风险说明。
-6. **当日面试题：** 为什么 API 层要把 snake_case 规范化为前端字段？
-7. **自测标准：** 能定位问题、加载、成功、错误、Trace、日志各自的 state 所有者。
+1. **今日目标：** 理解产品页面路由、服务端状态缓存、Mutation、缓存失效和 TypeScript API 模型。
+2. **必读源码：** `frontend/src/App.tsx`、`product-api.ts`、`main.tsx`、`App.test.jsx`、[React 状态模型](https://react.dev/learn/state-a-components-memory)。
+3. **相关理论：** 客户端状态与服务端状态、Query Key、缓存失效、受控输入、异步竞态、SPA 路由。
+4. **必做实验：** 画出“创建知识库 → 上传 PDF → 轮询到 ready → 创建对话 → 提问 → 刷新恢复”的 Query/Mutation 变化。
+5. **可交付成果：** 路由表、Query Key 表、Mutation 失效矩阵和两条竞态风险说明。
+6. **当日面试题：** 为什么这里使用 TanStack Query，而不是把知识库、文档和对话全部放进 `useState`？
+7. **自测标准：** 能定位每个服务端状态的 Query Key、刷新触发点、pending/error 所有者和页面跳转边界。
 
-#### 第 18 天：标签页、测试与周复盘
+#### 第 18 天：引用交互、旧控制台与测试复盘
 
-1. **今日目标：** 理解 TracePanel 的组件边界、ARIA 与前后端测试金字塔。
-2. **必读源码：** `TracePanel.jsx`、`TracePanel.test.jsx`、[W3C Tabs 模式](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/)。
-3. **相关理论：** `tablist/tab/tabpanel`、键盘操作、单元/集成/E2E 测试。
-4. **必做实验：** 只用键盘切换标签和展开轮次；运行 Python/React 定向测试并保存输出。
-5. **可交付成果：** 可访问性差距清单、测试覆盖矩阵、第 3 周 5 分钟录音。
-6. **当日面试题：** `role="tab"` 是否等于完成了无障碍？
-7. **自测标准：** 能指出已有测试证明什么、没有证明什么。
+1. **今日目标：** 理解 CitationDrawer 的焦点恢复、回答操作、文档轮询，以及 `/console` TracePanel 的独立定位。
+2. **必读源码：** `App.tsx` 中 `CitationDrawer`、`AssistantMessage`、`ChatPage`、`KnowledgeDetailPage`，以及 `ConsoleApp.jsx`、`TracePanel.jsx` 和相关测试。
+3. **相关理论：** Dialog/Drawer 焦点管理、键盘可达性、轮询、乐观与失效刷新、单元/集成/E2E 测试。
+4. **必做实验：** 只用键盘打开和关闭引用来源并检查焦点恢复；观察文档轮询停止条件；运行前端测试和生产构建。
+5. **可交付成果：** 可访问性差距清单、产品页/控制台测试覆盖矩阵、第 3 周 5 分钟录音。
+6. **当日面试题：** 为什么“有 ARIA 属性”和“焦点能恢复”仍不能证明完整无障碍？
+7. **自测标准：** 能指出重新生成、反馈、搜索、取消和 SSE 中哪些已经实现，哪些只是界面或路线图。
 
 ### 第 4 周：评测、生产化与面试表达
 
@@ -400,12 +411,12 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 #### 5. 为什么前端要经过本地代理？
 
-- **一句话回答：** 代理作为 BFF 统一同源访问、文件临时落盘、上游地址、超时和中文错误，同时避免浏览器接触模型密钥。
-- **2～3 分钟深入回答：** React 通过 `/api/ingest` 上传 Base64，代理验证扩展名、PDF 魔数、20 MiB 限制和 Collection 名称，再写入 `TemporaryDirectory`，因为 DeepSearcher 原接口接收后端本地路径。查询代理将 POST body 转成后端 GET 参数，并附带 `include_trace=True`。这也让浏览器不需要开放宽泛 CORS。代价是多一跳、内存中 Base64 约有膨胀、代理可能成为瓶颈。
-- **连续追问：** 为什么不用 multipart？临时文件何时删除？8500 不可用为什么是 503？
-- **项目证据：** `frontend/server.py`、`frontend/src/api.js`、`frontend/tests/test_server.py`。
-- **取舍与替代：** 可让后端原生接收 multipart 或对象存储 URL，减少 Base64 和双层 API；但需要修改业务接口。
-- **诚实边界：** 当前代理没有鉴权、上传病毒扫描、请求 ID、限流或分布式部署下的共享文件机制。
+- **一句话回答：** 用户工作台作为 BFF 统一同源 API、业务状态、文件落盘、上游地址和中文错误，同时避免浏览器接触模型密钥与 Milvus。
+- **2～3 分钟深入回答：** 产品页通过 multipart 调 `/api/knowledge-bases/{id}/documents`，服务端校验扩展名、Content-Type、PDF 魔数、20 MiB 和 SHA-256 重复，保存 Document/IngestJob 后返回 202，再由 BackgroundTasks 用服务端路径调用 DeepSearcher `/load-files/`。旧 `/console` 为兼容原演示仍通过 `/api/ingest` 发送 Base64，并使用临时目录。两套接口都说明浏览器不能直接把本机路径交给 8500。
+- **连续追问：** 为什么 202 不等于可靠异步？进程崩溃后任务怎么办？为什么旧 Base64 接口仍保留？
+- **项目证据：** `frontend/server.py`、`frontend/product/routes.py`、`frontend/product/services/documents.py`、`product-api.ts` 及对应测试。
+- **取舍与替代：** 当前同进程设计本地部署简单；生产可用对象存储直传、持久化队列和独立 Worker，代价是状态一致性与运维复杂度。
+- **诚实边界：** 当前已有服务到服务令牌、租户/Collection ACL、请求 ID 和每进程查询限流；仍没有最终用户登录/RBAC、上传病毒扫描、分布式配额或可靠任务调度，BackgroundTasks 不是任务队列。
 
 #### 6. 当前项目最大的三个技术债是什么？先修哪个？
 
@@ -452,7 +463,7 @@ FastAPI 使用全局 configuration 中已装配的对象
 - **连续追问：** 为什么最后一轮不再反思？一个任务失败会怎样？如何限制子查询爆炸？
 - **项目证据：** `agent/deep_search.py` 的 `_generate_sub_queries`、`async_retrieve`、`_generate_gap_queries`。
 - **取舍与替代：** 可设并发 semaphore、单任务容错、查询去重和预算上限；会增加控制逻辑。
-- **诚实边界：** Internet 检索变量仍标为 TODO，且 DeepSearch 的逐轮 Trace 尚未完整接入。
+- **诚实边界：** Internet 检索变量仍标为 TODO；逐轮阶段已接入，但不包含也不声称展示模型隐藏推理。
 
 #### 11. ChainOfRAG 与 CoRAG 论文相同和不同在哪里？
 
@@ -595,12 +606,12 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 #### 26. 全局配置单例在并发和多租户场景有什么问题？
 
-- **一句话回答：** `init_config` 会替换模块级共享实例，所有请求共用同一 LLM、Embedding、Vector DB 和 Agent，配置切换可能互相影响且无法提供租户隔离。
-- **2～3 分钟深入回答：** `main.py` 导入时初始化一次；`/set-provider-config/` 修改同一 `config` 后重新装配 globals。并发请求可能在切换前后拿到不同组合，客户端线程安全也未声明；多 worker 又各有独立副本，配置状态不一致。生产应把不可变客户端放应用生命周期，把租户/请求配置显式传递，并通过版本化配置、锁或重建流程保证一致性。
+- **一句话回答：** 旧 `init_config` 会替换模块级共享实例，无法隔离并发请求和租户；当前 FastAPI 已改为请求级 runtime 租约、共享版本控制面和服务端 Collection 白名单。
+- **2～3 分钟深入回答：** 旧实现让 `/set-provider-config/` 重装配 globals，正在执行的请求与多个 worker 可能看到不一致状态。当前 `RuntimeControlStore` 用共享 SQLite 事务保存租户活动版本，worker 本地 `RuntimeRegistry` 按需构建不可变 runtime；请求通过 `Depends` 获得租约，发布后旧请求自然完成再回收。租户身份、模型策略、版本和 Collection 权限进入 `RuntimeRequestContext`，回滚会原子恢复配置与权限。
 - **连续追问：** 加锁够吗？多进程如何同步？连接池由谁关闭？
-- **项目证据：** `configuration.py` 的 global 声明与 `init_config`；`main.py::set_provider_config`。
+- **项目证据：** `deepsearcher/runtime_registry.py`、`main.py::get_runtime`、`main.py::publish_tenant_runtime`；`init_config` 仅作为 CLI/库兼容入口保留。
 - **取舍与替代：** 全局单例适合本地单用户、减少重复连接；DI 和 registry 提升隔离但更复杂。
-- **诚实边界：** 当前不能声称支持多租户或无损在线切模。
+- **诚实边界：** 已验证同一共享控制库下的双 worker 租户隔离与无损版本切换；跨主机需改用共享关系数据库，当前工作台仍是默认 `local` 单用户产品形态。
 
 #### 27. 超时、错误映射和重试应该怎样设计？
 
@@ -629,14 +640,14 @@ FastAPI 使用全局 configuration 中已装配的对象
 - **取舍与替代：** fail-fast 保证正确性，best-effort 提高可用性；RAG 对静默错误尤其危险，应优先可解释失败。
 - **诚实边界：** 当前行为尚未改造，不能把日志记录说成完整容错。
 
-#### 30. 为什么当前 Trace 非流式，如何升级为 SSE？
+#### 30. 为什么产品问答选择 SSE，当前如何实现？
 
-- **一句话回答：** 当前 `query_with_trace` 等 Agent 全部完成后一次 `build()` 返回 JSON；升级需把 Collector 变成事件发布器，后端和代理逐事件转发，前端增量归并。
-- **2～3 分钟深入回答：** 现有方法调用简单、兼容旧 `/query/`，但用户要等最终结果才看到过程。SSE 适合服务端单向事件：定义 `routing`、`iteration_started`、`documents`、`reflection`、`final`、`error`，带 `trace_id/event_id`；FastAPI 用 streaming response，代理保持流不缓冲，React 用 EventSource/fetch stream 更新状态。还要处理顺序、心跳、断线重连、取消与最终一致性。
-- **连续追问：** GET SSE 如何携带长问题？鉴权 token 放哪里？断线后是否重放？
-- **项目证据：** `online_query.py::query_with_trace`、`trace.py::build`、代理 `/api/query` 当前都返回完整 JSON。
+- **一句话回答：** 查询进度是服务端到浏览器的单向流，SSE 比 WebSocket 更简单；项目用 POST Body + fetch ReadableStream 解决长问题，再按版本化事件增量更新 UI。
+- **2～3 分钟深入回答：** `TraceCollector` 在 Agent 显式阶段发布 `started/routing/iteration/retrieval/support/reflection`，核心 `StreamingResponse` 加序号、心跳和安全终止事件；BFF 保持上游流、不缓冲并再次按字段白名单重建事件；React 解析跨分片帧并更新局部阶段状态。用户停止或浏览器断连后，AbortController 关闭 BFF 流，核心在下一安全边界协作取消，后台清理完成后释放 runtime lease。最终 Message/Citation 持久化，阶段事件不持久化。
+- **连续追问：** 为什么不用 EventSource？断线后是否重放？慢消费者如何背压？取消能否中断正在进行的单次 LLM SDK 调用？
+- **项目证据：** `trace.py`、`main.py::perform_query_stream`、`services/conversations.py::stream_message_events`、`product-api.ts::streamMessage` 和真实断线测试。
 - **取舍与替代：** SSE 比 WebSocket 简单且适合单向事件；WebSocket 适合双向控制；轮询最兼容但延迟与负载较高。
-- **诚实边界：** SSE 只是路线图，当前没有流式接口、事件持久化或断线恢复。
+- **诚实边界：** SSE、停止和资源回收已实现；事件不持久化也不自动重放，单次阻塞 SDK 调用只能在返回后的安全边界感知取消。
 
 #### 31. 如果流量扩大十倍，如何改造？
 
@@ -651,54 +662,54 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 #### 32. React 页面中的状态如何流动？
 
-- **一句话回答：** `App` 持有健康、入库、查询、答案、Trace 和日志状态，用户事件调用 API，异步结果再单向下传给流程组件与 `TracePanel`。
-- **2～3 分钟深入回答：** 输入是受控 state；查询开始时设置 loading 并清理旧结果，成功后写 answer/latency/tokens/trace，失败写 error/log。`TracePanel` 接收 trace 与 logs，通过自己的 tab/accordion 状态控制展示。这样的状态提升让数据源唯一、测试容易；但 state 多时会出现不一致组合和竞态，可用 reducer/状态机把 idle/loading/success/error 约束成有限状态。
-- **连续追问：** 连点两次查询谁覆盖谁？组件卸载后请求怎么办？哪些值应 `useMemo`？
-- **项目证据：** `frontend/src/App.jsx`、`TracePanel.jsx`；`App.test.jsx` 验证真实响应进入 UI。
-- **取舍与替代：** `useState` 适合当前规模；`useReducer`/XState 管复杂流程；React Query 管服务端缓存。
-- **诚实边界：** 当前没有 AbortController、请求序号去陈旧响应或跨页面状态持久化。
+- **一句话回答：** 产品页用 React Router 表达页面，用 TanStack Query 管知识库、文档和对话等服务端状态，用局部 `useState` 管输入框、Dialog、Drawer、选中引用和反馈。
+- **2～3 分钟深入回答：** Query Key 将列表与详情按资源 ID 隔离；创建、上传、提问、重试成功后用 `invalidateQueries` 重新读取服务端事实。文档处于 `queued/processing` 时每两秒轮询，到 `ready/failed` 后停止；提问 Mutation 的 `isPending` 禁用输入与发送。引用列表由 Conversation Messages 派生，Drawer 开关和焦点属于局部 UI 状态。旧 `/console` 才是多个 `useState` 一次写入 answer/latency/tokens/trace 的模型。
+- **连续追问：** Query Key 设计错会怎样？为什么不用全局 Redux？页面卸载后正在进行的请求如何处理？
+- **项目证据：** `frontend/src/App.tsx`、`product-api.ts`、`App.test.jsx`。
+- **取舍与替代：** TanStack Query 适合服务端缓存；Redux/Zustand 更适合复杂共享客户端状态；状态机更适合 SSE 和取消流程。
+- **诚实边界：** 当前已有业务级 AbortController 和流式阶段状态，但没有断线重放、离线缓存或用户级缓存隔离。
 
 #### 33. API 适配层为什么要规范化字段和错误？
 
-- **一句话回答：** 它把后端 snake_case 与 HTTP 细节转换成 UI 稳定的数据模型，避免组件到处解析响应和错误。
-- **2～3 分钟深入回答：** `queryDeepSearcher` 接收 `{result, consume_token, latency_ms, trace}`，返回 `{answer, totalTokens, latencyMs, trace}`；非 2xx 尝试读取 `detail` 作为中文错误。组件只处理领域字段，不依赖每个接口的命名。版本升级时可在适配层兼容，但不能静默吞缺失字段，关键 schema 应验证。
-- **连续追问：** 为什么不让后端直接返回 camelCase？运行时 schema 如何校验？错误 detail 是否可信？
-- **项目证据：** `frontend/src/api.js` 与 `api.test.js`。
-- **取舍与替代：** OpenAPI 生成客户端减少手写偏差；适配层更灵活但需要维护测试。
-- **诚实边界：** 当前是 JavaScript，没有 TypeScript/运行时 schema，对错误 payload 的结构假设仍较弱。
+- **一句话回答：** API 层把 URL、HTTP、错误结构和领域类型集中起来，让页面只使用 KnowledgeBase、Document、Conversation、Message 与 Citation。
+- **2～3 分钟深入回答：** `product-api.ts` 定义 TypeScript 类型，`readResponse` 统一解析 `{error:{code,message,retryable}}`、FastAPI `detail` 和非 JSON 错误；JSON 请求通过 `requestJson` 统一，multipart 单独交给浏览器生成 boundary。旧 `api.js` 继续把 `{result,consume_token,latency_ms}` 规范化为控制台字段。TypeScript 能在编译期约束调用，但服务端响应在运行时仍可能不符合声明。
+- **连续追问：** 为什么 multipart 不能手工设置 JSON Content-Type？如何增加运行时 schema？OpenAPI 生成客户端有什么代价？
+- **项目证据：** `frontend/src/product-api.ts`、`api.js` 与相关测试。
+- **取舍与替代：** Zod 等运行时校验更安全但增加代码和运行成本；OpenAPI 生成减少漂移但需要稳定 schema 与生成流程。
+- **诚实边界：** SSE 终止消息仍只做轻量运行时字段判断，尚未引入 Zod 等完整 schema；仓库通过 `npm run typecheck` 独立执行 `tsc --noEmit`，不能只用 Vite 转译代替类型检查。
 
-#### 34. 标签页如何做到无障碍？当前完成了吗？
+#### 34. 引用抽屉如何处理无障碍？当前完成了吗？
 
-- **一句话回答：** 要同时具备正确角色/关联、选中状态、焦点管理和方向键/Home/End 键盘行为；当前已有部分 ARIA 与点击测试，但不能宣称完整达标。
-- **2～3 分钟深入回答：** WAI-ARIA Tabs 要求 `tablist` 包含 `tab`，每个 tab 用 `aria-controls` 关联 `tabpanel`，选中项 `aria-selected=true` 且进入 tab 顺序；焦点应支持左右方向键循环。当前 TracePanel 使用 tab/tabpanel 角色并可点击切换，测试覆盖点击和清空日志，但需逐项核对 ID 关联、roving tabindex 和键盘操作。
-- **连续追问：** 自动激活还是手动激活？隐藏 panel 用什么属性？屏幕阅读器如何验证？
-- **项目证据：** `TracePanel.jsx`、`TracePanel.test.jsx`；规范：[W3C Tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/)。
-- **取舍与替代：** 使用成熟 headless 组件可减少错误，但增加依赖；自研需完整测试。
-- **诚实边界：** 有 ARIA 属性不等于通过 WCAG，也没有当前屏幕阅读器测试报告。
+- **一句话回答：** 抽屉需要可访问名称、展开与可用状态、键盘闭环、明确关闭和焦点恢复；当前已完成这些基础契约与定向浏览器验证，但不能宣称完整达标。
+- **2～3 分钟深入回答：** 用户点击回答中的引用时，页面保存触发按钮、选中 Citation、打开 Drawer，并把焦点移到带文件名和页码的来源按钮；关闭后把焦点还给原触发点。顶部按钮通过 `aria-expanded`、`aria-controls` 和 disabled 原因表达状态；移动端抽屉使用命名模态语义、遮罩、Tab 闭环、Escape 和背景滚动锁定。知识库视觉表格也补了 table/row/columnheader/cell 语义，动态状态用 live region 播报。真实浏览器还定向检查了小字号对比度和移动点击目标。
+- **连续追问：** 非模态 Drawer 是否需要 focus trap？Escape 谁处理？触发按钮被卸载时怎么办？
+- **项目证据：** `App.tsx` 的 `CitationDrawer`/`ChatPage`、`App.test.jsx`，以及旧 `TracePanel.jsx` 测试。
+- **取舍与替代：** 成熟 headless Dialog/Drawer 能降低焦点错误，但需要匹配非模态交互与现有样式。
+- **诚实边界：** 当前有组件键盘测试、桌面/移动真实浏览器和计算样式抽样，但没有 NVDA/JAWS/VoiceOver 实机矩阵、强制颜色模式、400% 缩放全流程或完整 WCAG 审计，不能把专项通过说成合规认证。
 
 #### 35. 当前前后端测试分别证明了什么？
 
-- **一句话回答：** Python 测试证明 Trace schema、API 兼容、上传校验和代理映射；Vitest 证明关键数据能渲染和交互，但它们不证明真实模型、Milvus和浏览器端到端稳定。
-- **2～3 分钟深入回答：** `tests/test_trace.py` 验证版本、Token、截断与脱敏；`test_query_api.py` 验证 `include_trace` 不破坏旧响应；`frontend/tests/test_server.py` 验证 PDF/Collection/代理；React 测试 mock API 验证答案、Trace、标签交互。还需要真实服务集成测试、浏览器 E2E、并发、性能、安全和 RAG 黄金集。
+- **一句话回答：** Python 测试证明产品 API、数据恢复、引用落库、Trace schema 和旧代理契约；Vitest 证明关键产品交互与旧控制台入口，但它们不证明真实模型、Milvus 和浏览器端到端稳定。
+- **2～3 分钟深入回答：** 产品测试覆盖知识库、文档状态、会话与 Citation；`tests/test_trace.py` 验证版本、截断与脱敏；`App.test.jsx` 覆盖默认工作台、创建并恢复对话、`/console`、重新生成/反馈和引用焦点；`api.test.js`、`TracePanel.test.jsx` 保护旧控制台。还需要实时 Milvus 集成、浏览器 E2E、并发、性能、安全和 RAG 黄金集。
 - **连续追问：** Mock 会掩盖什么？哪些测试最值得加？全量测试失败如何汇报？
 - **项目证据：** 上述测试文件和实际命令输出。
 - **取舍与替代：** 单测快且定位准，E2E 真实但慢；采用少量关键 E2E 加大量单测。
 - **诚实边界：** 只能报告本次运行的真实通过数；已知基线失败不能隐瞒或归因给自己的改动而无证据。
 
-#### 36. 从点击“运行查询”到显示 Trace，完整数据流是什么？
+#### 36. 从产品页提问到显示引用，完整数据流是什么？
 
-- **一句话回答：** React 发 POST `/api/query`，本地代理转 GET `/query/?include_trace=true`，FastAPI 调 `query_with_trace`，RAG 显式记录事件，完整 JSON 再经适配层进入 `TracePanel`。
-- **2～3 分钟深入回答：** `App` 调 `queryDeepSearcher(question,maxIter)`；代理校验问题和轮数、计时并用 async httpx 调 8500；`main.perform_query` 分支到 `query_with_trace`；Collector 随 kwargs 传入 RAGRouter/ChainOfRAG，最终 `build` 返回 trace；代理保留它并加 `latency_ms`；API 适配字段；App 更新 state，TracePanel 按轮渲染。任一层失败都要清理 loading 并显示可理解错误。
-- **连续追问：** 为什么后端查询是 GET 而浏览器代理是 POST？Trace 为空时 UI 如何退化？延迟从哪里开始计？
-- **项目证据：** `App.jsx` → `api.js` → `frontend/server.py` → `main.py` → `online_query.py` → `trace.py`，相关测试覆盖每个契约边界。
-- **取舍与替代：** 当前完整响应实现简单；SSE 可改善首屏反馈但协议、状态与重连复杂度更高。
-- **诚实边界：** `latency_ms` 是代理等待后端的近似端到端时间，不含用户网络之外的统一分段指标；Trace 也不是所有 Agent 都有完整轮次。
+- **一句话回答：** React 向会话 SSE 接口 POST 问题，产品服务先保存用户/待处理助手消息，再逐阶段转发 DeepSearcher 事件，完成时把回答和 supported 文档保存为 Citation 并刷新对话。
+- **2～3 分钟深入回答：** `NewChatPage` 先创建 Conversation，再由 `streamMessage` 提交问题；服务端最多取最近六条成功消息构造上下文，并只传当前知识库的 Collection。BFF 转发安全阶段但截断核心完整 Trace；收到 `completed` 后从 Trace v2 的 `retrieved_documents` 筛选、去重和映射 Document，保存 Citation，再向浏览器返回序列化 Message。前端成功后失效 Conversation/列表缓存；停止时 AbortSignal 关闭流并把助手消息持久化为失败/停止。旧 `/console` 仍走完整 JSON Trace 兼容链路。
+- **连续追问：** 创建会话成功但首次提问失败会怎样？为什么有 Citation 不代表每句话 grounded？为什么不直接把完整 Trace 暴露给普通用户？
+- **项目证据：** `App.tsx` → `product-api.ts` → `frontend/product/routes.py` → `services/conversations.py` → `main.py`/`online_query.py`/`trace.py`。
+- **取舍与替代：** 当前 SSE 提升等待感并支持取消，但协议、消息状态和最终一致性更复杂；WebSocket 双向性更强但在这里只有额外成本。
+- **诚实边界：** `answer_state=grounded` 当前只代表至少存在一条 supported Citation，不证明答案每个声明都有证据；SSE 事件也不支持重连重放。
 
 ## 4. 项目表达与实战材料
 
 ### 4.1 一分钟项目介绍模板
 
-> 我基于 DeepSearcher 做了一个中文 AI 全栈学习控制台。离线侧把 PDF 解析、按 1500/100 字符切分、用千问 `text-embedding-v4` 生成 1024 维向量并写入 Docker Milvus；在线侧由 `RAGRouter` 在 `DeepSearch` 和 `ChainOfRAG` 间选择，再路由 Collection、迭代检索并由 `qwen-plus` 生成回答。为了让流程可理解，我补了结构化 `TraceCollector` 和 React `TracePanel`，展示 Agent、子查询、命中文档、支持性筛选、轮次和 Token，同时清理本地路径、URL 参数和 metadata。项目已经在本地跑通入库、查询和定向测试；目前仍是非流式、全局单例，且缺少正式 RAG 评测、鉴权限流和多租户。我下一步会先补黄金评测集，再做路由校验、SSE 和生产安全。
+> 我基于 DeepSearcher 做了一个本地 AI 知识工作台。离线侧把 PDF 解析、按 1500/100 字符切分、用千问 `text-embedding-v4` 生成 1024 维向量并写入 Docker Milvus；在线侧由 `RAGRouter` 在 `DeepSearch` 和 `ChainOfRAG` 间选择，再路由 Collection、迭代检索并由 `qwen-plus` 生成回答。产品页支持独立知识库、文档处理状态、持久化对话、可核对引用和可停止的 SSE 实时阶段；Trace v2 只暴露程序执行事实，不记录原问题、子查询或模型思维链。核心 API 已有服务令牌、租户/Collection ACL、POST 查询、稳定错误码、请求 ID 和每进程限流，并通过全量自动化、真实 Milvus/模型请求和浏览器闭环验证；仍缺少正式业务黄金集、最终用户登录/RBAC、分布式限流和可靠任务队列，所以不能包装成成熟生产平台。
 
 这段话要说到四件事：**做了什么、链路是什么、你贡献了什么、哪些还没做**。不要把“学习控制台”包装成生产平台。
 
@@ -707,9 +718,9 @@ FastAPI 使用全局 configuration 中已装配的对象
 1. **问题（20 秒）：** 普通聊天看不到资料如何进入向量库，也看不到复杂问题为什么要多轮检索；学习和排错都困难。
 2. **离线入库（35 秒）：** `PDFLoader` 提取文本，Recursive splitter 生成 Chunk 与 `wider_text`，Embedding 输出 1024 维向量，Milvus 按 Collection 保存 text/reference/metadata/embedding。说明 1500/100 是待评测默认值。
 3. **在线 Agent（55 秒）：** `RAGRouter` 选 `DeepSearch` 或 `ChainOfRAG`；CollectionRouter 选语料；复杂 Agent 通过子查询/中间答案补信息，再筛支持文档，最后用千问总结。主动指出非法索引与 LLM judge 风险。
-4. **全栈数据流（35 秒）：** React → 本地 BFF → FastAPI → 千问/Milvus；BFF 负责 Base64 PDF 校验、临时路径、超时和错误映射。
+4. **全栈数据流（35 秒）：** 产品页 React → product API → 状态数据库/DeepSearcher → 千问/Milvus；产品上传使用 multipart、202 和文档状态，问答保存 Message/Citation。旧 `/console` 才使用 Base64 兼容上传和直接 Trace 查询。
 5. **可观测性（20 秒）：** Trace 记录显式事件，不是思维链；最多展示 5 条文档、每条 600 字，并清理 reference，API 用 `include_trace` 保持兼容。
-6. **验证与取舍（15 秒）：** 报告最近一次真实定向测试和演示结果；承认没有正式质量评测、SSE、鉴权、限流、多租户，给出优先级。
+6. **验证与取舍（15 秒）：** 报告最近一次真实定向测试和演示结果；说明已有 SSE、服务令牌、租户隔离与单机限流，同时承认没有正式质量评测、最终用户 RBAC、分布式配额和可靠任务队列。
 
 ### 4.3 十分钟白板讲解提纲
 
@@ -729,8 +740,8 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 ### 4.4 两条不夸大的简历项目描述
 
-- 基于 Python/FastAPI、React 19 与 Milvus 搭建 DeepSearcher 中文学习控制台，跑通 PDF 解析、Chunk、千问 Embedding、向量检索、多策略 RAG 路由和答案展示的端到端链路；通过本地 BFF 完成 PDF 校验、临时文件转发、超时与中文错误映射。
-- 为 `ChainOfRAG` 增加版本化结构 Trace，在不暴露隐藏思维链的前提下展示 Agent、子查询、Collection、命中文档、支持性筛选和 Token；为路径/URL/metadata 脱敏、API 兼容与 React 交互编写定向测试，并明确评测、SSE、鉴权和多租户仍属后续工作。
+- 基于 Python/FastAPI、React 19、TypeScript 与 Milvus 搭建 DeepSearcher 本地知识工作台，支持独立知识库、multipart PDF 入库状态、持久化对话、Markdown 回答和引用来源，并保留 `/console` 学习调试入口。
+- 为 `ChainOfRAG` 增加版本化结构 Trace，在不暴露隐藏思维链的前提下记录 Agent、子查询、Collection、命中文档、支持性筛选和 Token；将 supported 文档转换为产品 Citation，并为脱敏、API 契约、状态恢复和 React 交互编写定向测试。
 
 禁止写“打造高并发生产级平台”“准确率提升 30%”“完整复现 CoRAG”等没有证据的句子。
 
@@ -742,7 +753,7 @@ FastAPI 使用全局 configuration 中已装配的对象
 - [ ] `.env` 未投屏；终端历史不含 API Key、token 或敏感 URL。
 - [ ] `docker compose -f infra/milvus/docker-compose.yml ps` 显示服务正常。
 - [ ] 19530、8500、8600 可访问，`/api/health` 状态符合实际。
-- [ ] Collection 内已有非敏感演示 PDF，或准备好 20 MiB 以下的有效 PDF。
+- [ ] 当前知识库内已有非敏感演示 PDF，或准备好 20 MiB 以下的有效 PDF。
 - [ ] 千问账号有额度；准备一条事实题和一条多跳题。
 - [ ] 定向 Python 测试、前端测试、`mkdocs build` 的最新结果已保存。
 - [ ] 准备“模型服务不可用”时的截图/录屏备用，不现场硬等。
@@ -751,9 +762,9 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 - [ ] 先用 20 秒说目标，再展示离线入库四步。
 - [ ] 显示当前 `qwen-plus`、`text-embedding-v4`、Collection 配置，不展示 Key。
-- [ ] 发起查询，解释路由、子查询、检索、支持文档与最终回答。
+- [ ] 从知识库详情上传 PDF，展示 queued/processing/ready，再发起查询并核对引用来源。
 - [ ] 主动说明 L2 score 的方向，避免称为统一相似度。
-- [ ] 打开 TracePanel，说明它是结构化事件，不是隐藏思维链。
+- [ ] 切到 `/console` 打开 TracePanel，说明产品 Citation 与内部 Trace 的受众和信息量不同。
 - [ ] 展示一个测试作为证据，不只展示“页面看起来能用”。
 
 #### 演示后
@@ -773,10 +784,13 @@ FastAPI 使用全局 configuration 中已装配的对象
 - [ ] `ChainOfRAG.early_stopping` 默认 `False`；`null` 表示该判断未执行，不是“信息不足”。
 - [ ] `DeepSearch` 有异步并发子查询，但同步 `retrieve()` 用 `asyncio.run` 包装。
 - [ ] 项目受 CoRAG 启发，没有实现论文训练和拒绝采样流程。
-- [ ] Trace 是应用事件，不是模型内部思维链；当前主要覆盖 ChainOfRAG 逐轮过程。
+- [ ] Trace 是应用事件，不是模型内部思维链；NaiveRAG、ChainOfRAG、DeepSearch 都已发布受控阶段。
 - [ ] Trace 最多展示前 5 条检索文档、每条最多 600 字；不会返回 embedding/metadata。
-- [ ] 代理上传用 Base64 + 临时目录，不是浏览器直接把本机路径交给 8500。
-- [ ] 当前无鉴权、限流、缓存、多租户、正式 SLO、SSE 和 RAG 黄金评测。
+- [ ] 产品上传使用 multipart、持久文件和 BackgroundTasks；旧 `/console` 才使用 Base64 + 临时目录。
+- [ ] 默认前端入口是 `App.tsx` 产品工作台；`ConsoleApp.jsx` 只在 `/console`。
+- [ ] TanStack Query 管理的是前端服务端状态缓存，不等于系统已经有跨用户业务缓存。
+- [ ] `grounded` 只表示存在至少一条 supported Citation，不证明所有声明都有依据。
+- [ ] 核心已有服务令牌、租户 runtime/Collection ACL、SSE、请求 ID 和每进程查询限流；产品仍无最终用户登录/RBAC、分布式限流、正式 SLO 和业务黄金评测，BackgroundTasks 也不是可靠任务队列。
 - [ ] Milvus 层部分异常只记录日志或返回空列表，这是技术债，不是完善容错。
 - [ ] 测试通过数必须引用面试前的真实输出；不能说“全量通过”除非刚刚验证过。
 
@@ -787,8 +801,8 @@ FastAPI 使用全局 configuration 中已装配的对象
 | P0 评测 | 建立改造基线 | 20～100 题黄金集；固定 Collection/模型；测 Recall@k、faithfulness、正确率、p95、Token | 报告可重复，参数变更可对比 | 标注成本、LLM judge 偏差 |
 | P0 正确性 | 失败可见 | 路由索引/Collection 白名单；Milvus 领域异常；幂等入库；统一错误码 | 故障不再伪装成空结果；错误有 trace ID | 可用性与 fail-fast 平衡 |
 | P1 检索 | 提升长尾召回 | 对照 dense、BM25+RRF、reranker、chunk 网格实验 | 在预算内提升 Recall@k/正确率 | 索引、延迟、Token 上升 |
-| P1 引用 | 回答可核验 | 保存 chunk/source/page，句子级引用对齐，前端可展开证据 | 引用 precision、无来源陈述率 | 解析和 UI 复杂度 |
-| P1 SSE | 降低等待感 | 定义版本化事件；Collector 发布；FastAPI/BFF 流式转发；React 增量状态 | 首事件时间、断线恢复、顺序正确 | 协议与状态复杂度 |
+| P1 引用质量 | 让现有引用真正支持回答 | 建立句子级声明—证据对齐，校验 page/chunk/source，区分部分支持与充分支持 | 引用 precision、无来源陈述率、错误 grounded 率 | 评测标注和 UI 复杂度 |
+| P1 SSE（已完成基础闭环） | 降低等待感 | 版本化事件；Collector 发布；FastAPI/BFF 流式转发；React 增量状态与停止 | 首事件 1.597s；顺序/断线回收/浏览器闭环已验证 | 尚无事件重放；协议与状态复杂度 |
 | P0 安全 | 控制暴露面 | 身份认证、RBAC、租户 Collection ACL、密钥服务、审计、DLP | 越权测试为 0；密钥不进入客户端/日志 | 开发与运维成本 |
 | P1 稳定性 | 抗突发流量 | 分层超时、限流、重试/熔断、并发预算、后台入库队列 | 错误率/p95 达到 SLO | 排队与最终一致 |
 | P2 效率 | 降成本 | Embedding/路由缓存、问题去重、模型分层、Token 预算 | 单问成本下降且质量不退化 | 缓存失效与数据隔离 |
@@ -808,11 +822,11 @@ FastAPI 使用全局 configuration 中已装配的对象
 
 #### 第三轮：前端面试官
 
-追问“为什么不用 multipart”“连续点击请求是否竞态”“有 ARIA role 是否等于无障碍”“mock 测试证明了什么”。审查结论：明确 BFF 是兼容现有路径 API 的实现取舍；补充 AbortController/状态机路线；将标签页描述从“无障碍完成”改为“具备部分语义、仍需键盘与读屏验证”。
+追问“TanStack Query 解决了什么”“轮询何时停止”“引用抽屉焦点如何恢复”“multipart 为什么仍不是可靠入库”“mock 测试证明了什么”。审查结论：区分服务端缓存与局部 UI 状态，补充 Query Key/失效矩阵、AbortController/SSE 状态机路线，并把无障碍限定为已有焦点测试而非完整 WCAG 结论。
 
 #### 第四轮：质疑型面试官
 
-追问“是不是包装上游项目”“Trace 是不是泄漏思维链”“CoRAG 是否只是改名”“测试是否全绿”“生产能力有何证据”。审查结论：把个人贡献限定为本地基线、中文控制台与结构化 Trace；写清 CoRAG 训练未实现、Trace 非流式/非思维链、全量测试存在基线问题；所有性能和准确率数字必须来自当场可展示的实验。
+追问“是不是包装上游项目”“Trace 是不是泄漏思维链”“CoRAG 是否只是改名”“测试是否全绿”“生产能力有何证据”。审查结论：把个人贡献落实到产品工作台、引用闭环、租户 runtime、异常协议和安全 SSE；写清 CoRAG 训练未实现、Trace 非思维链、SSE 无重放；所有测试、性能和准确率数字必须来自当场可展示的实验。
 
 ### 5.2 自我拷问后的优化记录（12 组）
 
@@ -827,9 +841,9 @@ FastAPI 使用全局 configuration 中已装配的对象
 | 5 | “Trace 展示了模型思考过程。” | 安全与概念都错误。 | **是什么：** Trace 是程序显式记录的路由、查询、文档和统计事件。**为什么：** 可调试且不依赖隐藏推理。**怎么做：** Collector 埋点、截断、路径/URL 脱敏、API 版本化。**取舍：** 看不到内部推理但边界更安全稳定。**验证：** `tests/test_trace.py` 证明字段白名单与脱敏。 |
 | 6 | “FastAPI 用 async，所以并发没问题。” | 忽略同步 SDK、线程池和长任务。 | **是什么：** 主后端路由是同步 `def`，BFF 是 async httpx。**为什么：** SDK 大多同步而代理 I/O 可 await。**怎么做：** 阻塞调用进线程池/任务队列，设置并发预算。**取舍：** 线程兼容快但容量有限。**验证：** 并发压测看 p95、线程/队列、429 和错误率；当前未证明高并发。 |
 | 7 | “有异常处理，所以系统很稳定。” | Milvus 异常被吞导致假空结果。 | **是什么：** wrapper 捕获异常并记录日志，搜索返回空列表。**为什么：** 本地演示避免崩溃。**怎么做：** 领域异常、可重试分类、错误码、trace ID。**取舍：** fail-fast 会降低表面可用性但提高正确性。**验证：** 注入连接/写入故障，断言不会返回成功或普通空结果。 |
-| 8 | “代理只是为了跨域。” | 忽略上传路径和安全价值。 | **是什么：** 它是本地 BFF。**为什么：** 浏览器不能给后端有效本地路径，也不应接触 Key/上游地址。**怎么做：** PDF 校验、临时落盘、转发、错误映射。**取舍：** 多一跳和 Base64 膨胀。**验证：** 非 PDF、超限、非法 Collection、8500 离线测试。 |
-| 9 | “项目支持多租户。” | 没有身份、ACL、请求级配置。 | **是什么：** 当前是单用户本地控制台。**为什么：** 全局实例和默认 Collection 简化学习。**怎么做：** 若升级则引入 tenant context、认证、Collection ACL、配额。**取舍：** 隔离提高安全也增加运维。**验证：** 并发双租户越权测试；当前不能声称已支持。 |
-| 10 | “测试都通过了。” | 全量测试有已知基线失败且 mock 不代表 E2E。 | **是什么：** 定向 Trace/API/Agent/前端测试可验证指定契约。**为什么：** 快速定位个人改动。**怎么做：** 面试前重新运行并保存输出，基线失败单独分类。**取舍：** 单测快但不能替代真实模型/Milvus E2E。**验证：** 只报告命令当次的真实通过/失败数。 |
+| 8 | “代理只是为了跨域。” | 忽略上传路径、业务状态和安全价值。 | **是什么：** 它是本地用户工作台/BFF。**为什么：** 浏览器不能给 8500 有效本地路径，也不应接触 Key/上游地址。**怎么做：** 产品接口接收 multipart、校验并持久化 Document/Job，再由后台任务转发；旧控制台保留 Base64 兼容。**取舍：** 多一跳和同进程任务可靠性不足。**验证：** 非 PDF、超限、重复文件、处理失败/重试和 8500 离线测试。 |
+| 9 | “项目支持多租户。” | 核心 runtime 隔离不等于完整产品用户隔离。 | **是什么：** 核心 API 已有受服务令牌保护的 tenant context、配置版本和 Collection ACL；产品工作台仍默认 `local` 租户且没有最终用户身份。**为什么：** 先解决并发串配置和集合越权，再扩展产品账户。**怎么做：** 后续给产品 DB 增加 tenant/user 外键、登录/RBAC 和配额。**取舍：** 隔离提高安全也增加运维。**验证：** 并发双租户不同模型/Collection 和越权测试已通过，但不能声称完整 SaaS 多租户。 |
+| 10 | “测试都通过了。” | 通过数会过期，Mock 也不能替代真实 E2E。 | **是什么：** 本轮全量 Python、TypeScript、Vitest、真实 Milvus/模型和浏览器闭环都有证据。**为什么：** 不同层证明不同风险。**怎么做：** 面试前重新运行并保存输出，失败单独分类。**取舍：** 单测快且定位准，真实 E2E 慢且受外部依赖影响。**验证：** 只报告命令当次的真实通过/失败数和验证记录。 |
 | 11 | “打开 early stopping 就会更快。” | 忽略误判与额外判断调用。 | **是什么：** 每轮多一次信息充足判断，可能提前 break。**为什么：** 避免无效后续检索。**怎么做：** 开/关对照并记录停止轮数。**取舍：** 多一次 Token 且 false positive 会漏证据。**验证：** 看正确率、平均轮数、Token、提前停止错误率；默认关闭时 reflection 为空是预期。 |
 | 12 | “十倍流量就加十个 worker。” | 外部模型限额、单例、Milvus、入库任务都未解决。 | **是什么：** 十倍流量是端到端容量问题。**为什么：** 最慢依赖和配额决定吞吐。**怎么做：** 先压测，再限流/队列/缓存/连接池/水平扩容/租户隔离。**取舍：** 队列和缓存引入一致性复杂度。**验证：** 用目标并发测 p95、错误率、429、队列深度和成本。 |
 

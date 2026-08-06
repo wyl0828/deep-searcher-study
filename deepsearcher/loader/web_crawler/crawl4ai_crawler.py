@@ -87,8 +87,8 @@ class Crawl4AICrawler(BaseCrawler):
         try:
             document = asyncio.run(self._async_crawl(url))
             return [document]
-        except Exception as e:
-            log.error(f"Error during crawling {url}: {e}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("crawl4ai_url", exc))
             return []
 
     async def _async_crawl_many(self, urls: List[str]) -> List[Document]:
@@ -135,6 +135,6 @@ class Crawl4AICrawler(BaseCrawler):
         """
         try:
             return asyncio.run(self._async_crawl_many(urls))
-        except Exception as e:
-            log.error(f"Error during crawling {urls}: {e}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("crawl4ai_urls", exc))
             return []

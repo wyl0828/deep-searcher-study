@@ -85,8 +85,8 @@ class UnstructuredLoader(BaseLoader):
                 file_path = os.path.join(self.directory_with_results, filename)
                 try:
                     elements.extend(elements_from_json(filename=file_path))
-                except IOError:
-                    log.color_print(f"Error: Could not read file {filename}.")
+                except IOError as exc:
+                    log.error(log.safe_exception_message("unstructured_result_read", exc))
 
         documents = []
         for element in elements:

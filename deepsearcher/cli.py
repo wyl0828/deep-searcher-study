@@ -50,6 +50,12 @@ def main():
         default=3,
         help="Max iterations of reflection. Default is 3.",
     )
+    query_parser.add_argument(
+        "--collection_name",
+        type=str,
+        default=None,
+        help="Query one explicit collection or activated collection alias.",
+    )
 
     ## Arguments of loading
     load_parser = subparsers.add_parser(
@@ -81,14 +87,24 @@ def main():
     )
     load_parser.add_argument(
         "--force_new_collection",
-        type=bool,
-        default=False,
-        help="If you want to drop origin collection and create a new collection on every load, set to True",
+        "--force-new-collection",
+        action="store_true",
+        help=(
+            "Build a versioned collection and safely activate it. "
+            "The previous collection is retained for rollback."
+        ),
     )
 
     args = parser.parse_args()
     if args.subcommand == "query":
-        final_answer, refs, consumed_tokens = query(args.query, max_iter=args.max_iter)
+        query_kwargs = {}
+        if args.collection_name:
+            query_kwargs["collection_names"] = [args.collection_name]
+        final_answer, refs, consumed_tokens = query(
+            args.query,
+            max_iter=args.max_iter,
+            **query_kwargs,
+        )
         log.color_print("\n==== FINAL ANSWER====\n")
         log.color_print(final_answer)
         log.color_print("\n### References\n")
@@ -97,6 +113,10 @@ def main():
     elif args.subcommand == "load":
         urls = [url for url in args.load_path if url.startswith("http")]
         local_files = [file for file in args.load_path if not file.startswith("http")]
+        if args.force_new_collection and urls and local_files:
+            parser.error(
+                "safe version activation accepts either URLs or local files in one load command"
+            )
         kwargs = {}
         if args.collection_name:
             kwargs["collection_name"] = args.collection_name
@@ -107,9 +127,11 @@ def main():
         if args.batch_size:
             kwargs["batch_size"] = args.batch_size
         if len(urls) > 0:
-            load_from_website(urls, **kwargs)
+            result = load_from_website(urls, **kwargs)
+            log.color_print(f"Collection load result: {result}")
         if len(local_files) > 0:
-            load_from_local_files(local_files, **kwargs)
+            result = load_from_local_files(local_files, **kwargs)
+            log.color_print(f"Collection load result: {result}")
     else:
         print("Please provide a query or a load argument.")
 

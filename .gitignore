@@ -208,3 +208,7 @@ pyrightconfig.json
 /frontend/.npm-cache/
 /frontend/dist/
 /frontend/logs/
+/.npm-cache/
+/.playwright-cli/
+**/.playwright-cli/
+/tmp/

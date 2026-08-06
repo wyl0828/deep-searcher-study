@@ -21,7 +21,8 @@ DeepSearcher combines cutting-edge LLMs (OpenAI o3, Qwen3, DeepSeek, Grok 4, Cla
 - **Vector Database Management**: Supports Milvus and other vector databases, allowing data partitioning for efficient retrieval.
 - **Flexible Embedding Options**: Compatible with multiple embedding models for optimal selection.
 - **Multiple LLM Support**: Supports DeepSeek, OpenAI, and other large models for intelligent Q&A and content generation.
-- **Document Loader**: Supports local file loading, with web crawling capabilities under development.
+- **Document Loader**: Supports page-aware PDF layout parsing, OCR fallback, table extraction,
+  section-aware chunks, and source-located citations; web crawling capabilities are under development.
 
 ---
 
@@ -595,16 +596,117 @@ nest_asyncio.apply()
 ## 📊 Evaluation 
 See the [Evaluation](./evaluation) directory for more details.
 
+除三类 Agent 的固定质量基线外，`python -m evaluation.retrieval_compare` 可在同一份 Milvus
+混合索引上重复比较 Dense、BM25 与 Hybrid/RRF，并保存逐题 JSON/CSV、分标签质量、检索延迟、
+排序稳定率、RRF 参数和索引资源结构。当前 30 题真实结果没有证明 Hybrid 优于 Dense，因此
+`deepsearcher/config.yaml` 明确保持 `hybrid: false`；任何策略切换都必须先重建索引并重新过门禁。
+
 ---
-## 🧭 中文学习控制台
+## 🧭 用户学习工作台
 
-仓库中的 `frontend/` 提供一个中文双泳道学习界面，用来观察 PDF 入库与 RAG 问答的可确认阶段。页面通过同源本地代理调用现有 FastAPI，不会向浏览器暴露 API Key，也不会伪造后端未返回的子查询、召回片段或内部推理 Trace。
+仓库中的 `frontend/` 提供面向最终用户的中文学习工作台，用来管理知识库、上传资料、发起带引用的问答并查看学习记录。页面通过同源本地代理调用现有 FastAPI，不会向浏览器暴露 API Key，也不会伪造后端未返回的子查询、召回片段或内部推理 Trace。
 
-先启动 Milvus 与 DeepSearcher FastAPI：
+知识库文档列表支持安全删除：系统会在确认后同步清理 Milvus 分块、本地 PDF 和产品数据库记录；历史回答中的引用文字仍会保留。正在处理的文档需等待完成后再删除。
+
+PDF 上传采用 multipart 分块读取，服务端在读取过程中执行 20 MiB 硬限制并计算 SHA-256，
+不会把整份文件或 Base64 副本放进请求内存。文件先进入随机命名的受控暂存区，通过独立进程完成
+PDF 结构与页数检查后再原子落盘；最终文件名不使用用户输入或数据库 ID。默认每份 PDF 最多
+500 页、每个知识库最多 200 份/512 MiB、整套本地工作台最多 2 GiB，均可通过 `env.example`
+中的 `DEEPSEARCHER_*` 变量调整。
+
+文档入库由独立 `frontend.product.worker` 处理，不再依赖 FastAPI `BackgroundTasks`。任务 ID、
+租约、重试次数、下次执行时间和死信状态保存在 SQLite；Worker 异常退出后，过期租约会自动回到
+队列。连接失败等可安全重复的故障按指数退避重试，响应超时等完成状态不确定的故障进入死信，
+避免两个入库操作同时改写同一文档。重试前会按 SHA-256 清理同一文档的旧分块，保证最终幂等。
+启动时还会清理过期暂存文件和超过保护期且没有数据库记录的孤儿 PDF。
+
+知识库详情页也支持整体删除，并同步清理该知识库的 Milvus 集合、上传目录、文档、对话和引用；删除当前知识库后会自动切换到最近更新的其他知识库。对话页可单独删除当前对话及其消息、引用，不影响知识库、文档或向量数据。
+
+问答链路会区分“检索成功但没有命中”和“向量检索服务故障”。Milvus 离线时，工作台会显示可恢复的系统故障并提供重试；Collection 不存在或向量维度不匹配时，会引导用户检查知识库索引，不会把这些失败伪装成“知识库没有相关资料”。
+
+产品问答使用 POST + SSE 实时返回受控阶段：开始、路由、检索轮次、候选片段数、证据核验、
+充分性检查和完成/错误。页面会自动滚到进度卡片并允许停止生成；这些是程序显式记录的执行阶段，
+不是模型思维链。阶段事件不落库，浏览器只收到字段白名单后的统计，最终仅保存回答和可核对引用。
+
+检索结果不会再用含义不明的统一“分数”描述所有向量库返回值。Trace v3 显式携带
+`metric_type`，并将数值区分为距离、相似度或排序分；页面会同时说明“越小越近”或“越大越近”。
+L2 等距离值、COSINE/IP 等相似度和 RRF 等排序分保持原生语义，不做跨指标换算或比较。
+
+每个新索引都会保存不含密钥的版本清单，绑定 Embedding provider、模型、版本、维度、归一化方式、距离度量、分块配置和数据版本。问答会在生成查询向量前核对清单；即使两个模型维度相同，只要模型或版本不同也会拒绝混用。升级前创建的知识库会在列表标记“需重建”，详情页可用全部原始 PDF 构建候选索引，验证成功后再切换，旧物理版本保留用于回退。
+
+核心 API 使用应用工厂和 FastAPI lifespan 管理模型、Loader 与向量客户端。导入 `main` 不会连接外部服务。`GET /health/live` 只判断进程存活；`GET /health/ready`（以及兼容入口 `GET /health`）会执行最小 Milvus RPC，依赖不可用时返回 `503/not_ready` 和组件级安全错误码。`POST /health/diagnostics` 需要服务令牌，会真实调用一次 LLM 与 Embedding；鉴权等模型故障返回 `200/degraded`，结果默认缓存 300 秒。学习控制台可用“深度检查”手动触发，普通加载不会产生模型调用费用。
+
+同步查询使用 `POST /query` 和 JSON Body，原问题不会进入 URL；流式查询使用
+`POST /query/stream`。错误统一返回 `error.code`、安全 `error.message`、`error.request_id`
+和 `error.retryable`，响应头同时包含 `X-Request-ID`。查询入口默认按调用方每进程限制为
+60 次/60 秒，可用 `DEEPSEARCHER_QUERY_RATE_LIMIT` 和
+`DEEPSEARCHER_QUERY_RATE_WINDOW_SECONDS` 调整。CORS 默认关闭，只有
+`DEEPSEARCHER_CORS_ORIGINS` 中列出的精确 HTTP(S) origin 会被允许，`*` 会被忽略。
+健康探测超时和模型探测缓存可分别通过
+`DEEPSEARCHER_HEALTH_PROBE_TIMEOUT_SECONDS`、
+`DEEPSEARCHER_HEALTH_PROVIDER_CACHE_SECONDS` 调整。
+
+Agent、Collection 和支持文档选择均经过严格边界校验。模型生成的 Collection 必须存在于实时白名单并满足调用方授权范围；子查询会过滤空值、错误类型和重复项；文档索引拒绝负数、浮点数、布尔值和越界值。过滤与回退原因会写入安全 Trace，不会记录模型思维内容。
+
+### 按问题启用联网搜索
+
+用户工作台和学习控制台都提供“联网搜索”开关，默认关闭。只有用户为当前问题主动启用后，
+DeepSearch 才会把受控子查询发送给 Web Search Provider；普通知识库问答不会出网。当前 Provider
+为 [Tavily Search API](https://docs.tavily.com/documentation/api-reference/endpoint/search)，启用前在
+`.env` 或 API 进程环境变量中配置：
+
+```dotenv
+TAVILY_API_KEY=your_tavily_api_key
+```
+
+重启服务后即可使用。没有配置密钥、上游超时、限流或临时失败时，查询会记录安全状态并继续使用
+知识库，不会让整个回答失败。系统只接收搜索摘要，不请求 Provider 生成答案、原始网页、图片或
+站点图标，也不会继续抓取搜索结果页面。保存与展示网页引用前会删除 URL 查询参数和 fragment，
+拒绝 IP、内网主机、凭据 URL、非 HTTP(S) 链接与非标准端口。
+
+可在 `deepsearcher/config.yaml` 的 `web_search.config` 中设置 `include_domains` 作为可信来源
+白名单，或设置 `exclude_domains` 排除来源。未设置白名单的网页引用会明确标记为“未在可信来源
+白名单中”。通过 API 调用时，只有显式传入 `"use_web_search": true` 才会启用本次联网检索。
+
+### 一键启动（Windows）
+
+首次使用请先安装 Docker Desktop、Node.js 20+ 和 `uv`。在项目根目录双击 `start.bat`，或在 PowerShell 中执行：
 
 ```powershell
-docker compose -f infra/milvus/docker-compose.yml up -d
-uv run --frozen uvicorn main:app --host 127.0.0.1 --port 8500
+.\start.ps1
+```
+
+脚本会自动启动 Docker Desktop（如有需要）、Milvus、DeepSearcher API、持久文档处理 Worker 和用户工作台，并构建前端。
+默认优先使用 API 8650、工作台 8600；如果 Docker/Hyper-V 把端口占用或划入 Windows 保留区间，
+脚本会自动回退到可用端口。启动成功后会打开实际工作台地址，`status.ps1` 的输出是权威地址。
+本次端口选择记录在 `logs/runtime/ports.json`，停止脚本会读取同一记录。
+一键启动会为核心 API 和工作台注入同一枚不落盘的随机服务令牌，并为管理接口生成独立令牌；
+如果已经设置 `DEEPSEARCHER_SERVICE_TOKEN` / `DEEPSEARCHER_ADMIN_TOKEN`，则使用显式配置。
+
+常用运维命令：
+
+```powershell
+.\status.ps1              # 查看所有服务状态
+.\stop.ps1                # 停止工作台、API 和 Milvus
+.\stop.ps1 -KeepMilvus    # 只停止工作台与 API
+.\start.ps1 -SkipBuild    # 前端未修改时快速启动
+.\start.ps1 -NoBrowser    # 启动后不自动打开浏览器
+```
+
+也可以直接双击根目录下的 `status.bat` 和 `stop.bat`。运行日志保存在 `logs/runtime/`；Milvus 数据目录不会因停止脚本而删除。
+
+### 手动启动
+
+先启动 Milvus 与 DeepSearcher FastAPI。下面手动示例选用 8750/8700，避开部分 Windows + Docker
+环境常见的动态保留端口段：
+
+```powershell
+$BackendPort = 8750
+$WorkspacePort = 8700
+$env:DEEPSEARCHER_SERVICE_TOKEN = "replace-with-a-random-service-token"
+$env:DEEPSEARCHER_ADMIN_TOKEN = "replace-with-a-different-random-admin-token"
+docker compose -f infra/milvus/docker-compose.yml -f infra/milvus/docker-compose.local.yml up -d
+uv run --frozen uvicorn main:app --host 127.0.0.1 --port $BackendPort
 ```
 
 首次安装并构建前端：
@@ -616,13 +718,86 @@ npm run build
 cd ..
 ```
 
-启动学习控制台：
+启动持久文档处理 Worker：
 
 ```powershell
-uv run --frozen uvicorn frontend.server:app --host 127.0.0.1 --port 8600
+$BackendPort = 8750
+$WorkspacePort = 8700
+$env:DEEPSEARCHER_SERVICE_TOKEN = "replace-with-the-same-random-service-token"
+$env:DEEPSEARCHER_API_URL = "http://127.0.0.1:$BackendPort"
+uv run --frozen python -m frontend.product.worker
 ```
 
-浏览器打开 `http://127.0.0.1:8600`。可通过环境变量 `DEEPSEARCHER_API_URL` 修改被代理的 FastAPI 地址。
+Worker 需要在独立 PowerShell 窗口运行，并继承与 API 相同的
+`DEEPSEARCHER_SERVICE_TOKEN`。再在另一个窗口启动用户工作台：
+
+```powershell
+$BackendPort = 8750
+$WorkspacePort = 8700
+$env:DEEPSEARCHER_SERVICE_TOKEN = "replace-with-the-same-random-service-token"
+$env:DEEPSEARCHER_API_URL = "http://127.0.0.1:$BackendPort"
+uv run --frozen uvicorn frontend.server:app --host 127.0.0.1 --port $WorkspacePort
+```
+
+浏览器打开 `http://127.0.0.1:8700`。可通过环境变量 `DEEPSEARCHER_API_URL` 修改被代理的 FastAPI 地址。
+核心 API、Worker 和工作台三个窗口中的 `DEEPSEARCHER_SERVICE_TOKEN` 必须填写完全相同的值。
+
+工作台默认只接受 `localhost`、`127.0.0.1` 和 `::1` Host，并拒绝带有跨站 Origin 或
+`Sec-Fetch-Site: cross-site` 的 POST/PUT/PATCH/DELETE 请求。若由可信反向代理提供 HTTPS，需同时
+配置 `DEEPSEARCHER_WORKSPACE_ALLOWED_HOSTS`（逗号分隔主机名）和单一的
+`DEEPSEARCHER_WORKSPACE_PUBLIC_ORIGIN`（例如 `https://workspace.example.com`）。这只负责本地请求
+边界；最终用户认证和 RBAC 落地前仍不能直接开放为多用户服务。
+
+手动调用同步查询：
+
+```powershell
+$headers = @{
+  "X-DeepSearcher-Service-Token" = $env:DEEPSEARCHER_SERVICE_TOKEN
+  "X-Request-ID" = "manual-query-1"
+}
+$body = @{
+  original_query = "Milvus 适合什么场景？"
+  max_iter = 3
+  include_trace = $false
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$BackendPort/query" `
+  -Headers $headers -ContentType "application/json" -Body $body
+```
+
+### 并发配置与租户隔离
+
+FastAPI 使用“共享 SQLite 控制面 + worker 本地 runtime 缓存”。每次请求都会获得不可变的
+runtime 租约；新版本发布后，新请求读取新版本，已开始的旧请求继续使用原实例，直到最后一个
+租约释放才关闭客户端。默认控制库位于 `data/runtime/deepsearcher-runtime.db`，可用
+`DEEPSEARCHER_RUNTIME_DB` 覆盖；同一部署的所有 Uvicorn worker 必须指向同一个文件。
+
+用户工作台默认使用 `local` 租户。启用多租户时，应为 API 和工作台进程设置相同的
+`DEEPSEARCHER_SERVICE_TOKEN`，并由工作台通过 `DEEPSEARCHER_PRODUCT_TENANT` 选择租户。
+管理端发布和回滚可额外设置 `DEEPSEARCHER_ADMIN_TOKEN`。租户请求头只有在服务令牌验证通过后
+才可选择非默认租户，Collection 白名单由服务端绑定，不能由浏览器自行扩大。
+
+创建租户版本：
+
+```powershell
+$headers = @{ "X-DeepSearcher-Admin-Token" = $env:DEEPSEARCHER_ADMIN_TOKEN }
+$body = @{
+  feature = "llm"
+  provider = "OpenAI"
+  config = @{ model = "qwen-plus" }
+  allowed_collections = @("kb_tenant_a")
+  model_policy = "tenant-a-qwen"
+} | ConvertTo-Json
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://127.0.0.1:8650/runtime/tenants/tenant-a/versions" `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+敏感配置不能直接写入版本控制库，必须引用 API 进程已有的环境变量，例如
+`"api_key": {"$env": "TENANT_A_OPENAI_API_KEY"}`。回滚使用
+`POST /runtime/tenants/{tenant_id}/rollback`，请求体中的 `expected_version` 用于防止并发覆盖。
 
 ---
 ## 📌 Future Plans

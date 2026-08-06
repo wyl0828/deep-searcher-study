@@ -1,6 +1,8 @@
+from contextvars import ContextVar
 from typing import List, Optional, Tuple
 
-from deepsearcher.agent import RAGAgent
+from deepsearcher.agent.base import RAGAgent
+from deepsearcher.agent.selection import parse_one_based_index
 from deepsearcher.llm.base import BaseLLM
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
@@ -14,7 +16,8 @@ Given a query, select only one agent that best matches the agent handling the qu
 ## Agent Indexes and Descriptions
 {description_str}
 
-Only return one agent index number that best matches the agent handling the query:
+Return exactly one integer from the listed agent indexes. Do not return explanations,
+multiple numbers, markdown, or any other text:
 """
 
 
@@ -31,6 +34,7 @@ class RAGRouter(RAGAgent):
         llm: BaseLLM,
         rag_agents: List[RAGAgent],
         agent_descriptions: Optional[List[str]] = None,
+        fallback_agent_index: int = 0,
     ):
         """
         Initialize the RAGRouter.
@@ -43,6 +47,8 @@ class RAGRouter(RAGAgent):
         self.llm = llm
         self.rag_agents = rag_agents
         self.agent_descriptions = agent_descriptions
+        if not self.rag_agents:
+            raise ValueError("RAGRouter requires at least one agent.")
         if not self.agent_descriptions:
             try:
                 self.agent_descriptions = [
@@ -52,6 +58,26 @@ class RAGRouter(RAGAgent):
                 raise AttributeError(
                     "Please provide agent descriptions or set __description__ attribute for each agent class."
                 )
+        if len(self.agent_descriptions) != len(self.rag_agents):
+            raise ValueError("Agent descriptions must match the number of agents.")
+        if not 0 <= fallback_agent_index < len(self.rag_agents):
+            raise ValueError("fallback_agent_index is outside the available agents.")
+        self.fallback_agent_index = fallback_agent_index
+        self._last_route_decision = ContextVar(
+            f"rag_router_last_route_decision_{id(self)}",
+            default=None,
+        )
+
+    @property
+    def last_route_decision(self) -> Optional[dict]:
+        """Last routing decision scoped to the current request context."""
+        decision = self._last_route_decision.get()
+        return dict(decision) if isinstance(decision, dict) else None
+
+    def _record_route_decision(self, decision: dict) -> dict:
+        snapshot = dict(decision)
+        self._last_route_decision.set(snapshot)
+        return dict(snapshot)
 
     def _route(self, query: str) -> Tuple[RAGAgent, int]:
         description_str = "\n".join(
@@ -59,41 +85,64 @@ class RAGRouter(RAGAgent):
         )
         prompt = RAG_ROUTER_PROMPT.format(query=query, description_str=description_str)
         chat_response = self.llm.chat(messages=[{"role": "user", "content": prompt}])
-        try:
-            selected_agent_index = int(self.llm.remove_think(chat_response.content)) - 1
-        except ValueError:
-            # In some reasoning LLM, the output is not a number, but a explaination string with a number in the end.
-            log.warning(
-                "Parse int failed in RAGRouter, but will try to find the last digit as fallback."
-            )
-            selected_agent_index = (
-                int(self.find_last_digit(self.llm.remove_think(chat_response.content))) - 1
-            )
+        decision = parse_one_based_index(
+            self.llm.remove_think(chat_response.content),
+            upper_bound=len(self.rag_agents),
+            fallback_index=self.fallback_agent_index,
+        )
+        self._record_route_decision(decision.as_trace())
+        selected_agent_index = decision.values[0]
+        if decision.fallback_used:
+            log.warning(f"RAGRouter used the configured fallback agent: {decision.reason}.")
 
         selected_agent = self.rag_agents[selected_agent_index]
-        log.color_print(
-            f"<think> Select agent [{selected_agent.__class__.__name__}] to answer the query [{query}] </think>\n"
-        )
+        log.color_print(f"<route> Selected agent [{selected_agent.__class__.__name__}] </route>\n")
         return self.rag_agents[selected_agent_index], chat_response.total_tokens
 
+    def _select_agent(self, query: str, *, use_web_search: bool = False) -> Tuple[RAGAgent, int]:
+        if use_web_search:
+            for index, agent in enumerate(self.rag_agents):
+                if getattr(agent, "supports_web_search", False):
+                    self._record_route_decision({
+                        "source": "request_capability",
+                        "requested": ["web_search"],
+                        "selected": [index],
+                        "rejected": [],
+                        "fallback_used": False,
+                        "reason": "web_search_requested",
+                    })
+                    log.color_print(
+                        f"<route> Selected Web-capable agent [{agent.__class__.__name__}] </route>\n"
+                    )
+                    return agent, 0
+        return self._route(query)
+
     def retrieve(self, query: str, **kwargs) -> Tuple[List[RetrievalResult], int, dict]:
-        agent, n_token_router = self._route(query)
+        agent, n_token_router = self._select_agent(
+            query,
+            use_web_search=bool(kwargs.get("use_web_search", False)),
+        )
         trace_collector = kwargs.get("trace_collector")
         if trace_collector is not None:
-            trace_collector.select_agent(agent.__class__.__name__, n_token_router)
+            trace_collector.select_agent(
+                agent.__class__.__name__,
+                n_token_router,
+                decision=self.last_route_decision,
+            )
         retrieved_results, n_token_retrieval, metadata = agent.retrieve(query, **kwargs)
         return retrieved_results, n_token_router + n_token_retrieval, metadata
 
     def query(self, query: str, **kwargs) -> Tuple[str, List[RetrievalResult], int]:
-        agent, n_token_router = self._route(query)
+        agent, n_token_router = self._select_agent(
+            query,
+            use_web_search=bool(kwargs.get("use_web_search", False)),
+        )
         trace_collector = kwargs.get("trace_collector")
         if trace_collector is not None:
-            trace_collector.select_agent(agent.__class__.__name__, n_token_router)
+            trace_collector.select_agent(
+                agent.__class__.__name__,
+                n_token_router,
+                decision=self.last_route_decision,
+            )
         answer, retrieved_results, n_token_retrieval = agent.query(query, **kwargs)
         return answer, retrieved_results, n_token_router + n_token_retrieval
-
-    def find_last_digit(self, string):
-        for char in reversed(string):
-            if char.isdigit():
-                return char
-        raise ValueError("No digit found in the string")

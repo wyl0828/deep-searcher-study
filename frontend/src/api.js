@@ -9,7 +9,7 @@ async function readResponse(response) {
   }
 
   if (!response.ok) {
-    throw new Error(payload.detail || "本地服务请求失败，请稍后重试");
+    throw new Error(payload.error?.message || payload.detail || "本地服务请求失败，请稍后重试");
   }
   return payload;
 }
@@ -22,20 +22,10 @@ async function requestJson(url, options = {}) {
   return readResponse(response);
 }
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("无法读取所选 PDF 文件"));
-    reader.onload = () => {
-      const value = String(reader.result || "");
-      resolve(value.includes(",") ? value.split(",", 2)[1] : value);
-    };
-    reader.readAsDataURL(file);
+export async function getHealth({ deep = false } = {}) {
+  return requestJson(deep ? "/api/health/diagnostics" : "/api/health", {
+    method: deep ? "POST" : "GET",
   });
-}
-
-export async function getHealth() {
-  return requestJson("/api/health");
 }
 
 export async function ingestPdf(file, collectionName) {
@@ -49,18 +39,22 @@ export async function ingestPdf(file, collectionName) {
     throw new Error("PDF 文件不能超过 20 MiB");
   }
 
-  const contentBase64 = await fileToBase64(file);
-  return requestJson("/api/ingest", {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("collection_name", collectionName);
+  const response = await fetch("/api/ingest", {
     method: "POST",
-    body: JSON.stringify({
-      filename: file.name,
-      content_base64: contentBase64,
-      collection_name: collectionName,
-    }),
+    body: formData,
   });
+  return readResponse(response);
 }
 
-export async function queryDeepSearcher(question, maxIter) {
+export async function queryDeepSearcher(
+  question,
+  maxIter,
+  collectionName,
+  useWebSearch = false,
+) {
   const normalizedQuestion = question.trim();
   if (!normalizedQuestion) {
     throw new Error("请输入问题");
@@ -68,7 +62,12 @@ export async function queryDeepSearcher(question, maxIter) {
 
   const payload = await requestJson("/api/query", {
     method: "POST",
-    body: JSON.stringify({ question: normalizedQuestion, max_iter: maxIter }),
+    body: JSON.stringify({
+      question: normalizedQuestion,
+      max_iter: maxIter,
+      collection_name: collectionName,
+      use_web_search: useWebSearch,
+    }),
   });
   return {
     answer: payload.result,

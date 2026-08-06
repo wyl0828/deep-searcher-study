@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-30T12:51:27.523175+00:00",
+  "collection": "kb_037e65f9612842fb809fd596de82e351",
+  "counts": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "max_concurrency": 4,
+  "top_k": 5,
+  "timeout_seconds": 30.0,
+  "config_sha256": "cea7ef72db8e489608cd4de0fe69167978d11c9ed660e71ce02d7f67b543477f",
+  "providers": {
+    "embedding": "OpenAIEmbedding",
+    "vector_db": "Milvus"
+  },
+  "measurements": [
+    {
+      "query_count": 1,
+      "bounded_concurrency": 1,
+      "serial": {
+        "elapsed_ms": 6709.201,
+        "event_loop_max_gap_ms": 31.0,
+        "result_count": 5
+      },
+      "concurrent": {
+        "elapsed_ms": 8165.821,
+        "event_loop_max_gap_ms": 31.0,
+        "result_count": 5
+      },
+      "speedup": 0.822
+    },
+    {
+      "query_count": 2,
+      "bounded_concurrency": 2,
+      "serial": {
+        "elapsed_ms": 8405.75,
+        "event_loop_max_gap_ms": 32.0,
+        "result_count": 10
+      },
+      "concurrent": {
+        "elapsed_ms": 8616.126,
+        "event_loop_max_gap_ms": 32.0,
+        "result_count": 10
+      },
+      "speedup": 0.976
+    },
+    {
+      "query_count": 4,
+      "bounded_concurrency": 4,
+      "serial": {
+        "elapsed_ms": 31018.072,
+        "event_loop_max_gap_ms": 32.0,
+        "result_count": 20
+      },
+      "concurrent": {
+        "elapsed_ms": 7683.765,
+        "event_loop_max_gap_ms": 32.0,
+        "result_count": 20
+      },
+      "speedup": 4.037
+    },
+    {
+      "query_count": 8,
+      "bounded_concurrency": 4,
+      "serial": {
+        "elapsed_ms": 12329.756,
+        "event_loop_max_gap_ms": 32.0,
+        "result_count": 40
+      },
+      "concurrent": {
+        "elapsed_ms": 2186.649,
+        "event_loop_max_gap_ms": 31.0,
+        "result_count": 40
+      },
+      "speedup": 5.639
+    }
+  ],
+  "cancellation_note": "Timeout or cancellation stops awaiting and discards late results. Python cannot forcibly terminate a synchronous call after its worker thread starts; its concurrency slot remains occupied until the worker actually finishes."
+}

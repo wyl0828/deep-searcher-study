@@ -1,0 +1,116 @@
+﻿agent,sample_id,question,answerable,retrieved_count,retrieval_hit,retrieval_recall,retrieval_precision,reciprocal_rank,empty_result,duplicate_count,duplicate_rate,no_answer_false_positive,answer_criteria_coverage,grounded_criteria_coverage,evidence_source_correct,refusal_correct,latency_ms,tokens,llm_calls,error,answer,reference_answer
+naive,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,5,True,1.0,0.4,1.0,False,0,0.0,,1.0,1.0,True,,12566.631,2003,1,,"Milvus 是一个高性能、高可扩展的开源向量数据库（Vector Database），由 LF AI & Data 基金会托管，采用 Apache 2.0 许可协议。它专为高效处理**非结构化数据（unstructured data）的向量化表示——即嵌入向量（embeddings）**而设计，核心应用场景包括文本、图像、音频等经深度学习模型生成的高维数值向量。
+
+具体而言：
+- **主要处理的数据类型**：Milvus 并不直接存储原始非结构化数据（如 JPG 图片或 MP3 音频），而是存储其对应的**稠密/稀疏向量 embeddings**（通常为 float32 或 binary 类型），维度从几十到数千不等。同时，它原生支持**结构化属性字段**（如 int64、varchar、bool、array、JSON、set 等），实现向量与元数据的统一建模与联合查询。
+- **核心能力聚焦于向量相似性检索**，提供多种高级搜索功能：
+  - 近似最近邻搜索（ANN）——主干能力，支持 IVF、HNSW、DiskANN 等高度优化的索引算法；
+  - 过滤搜索（Filtering Search）：在 ANN 基础上叠加标量条件（如 `age > 25 AND tag IN [""A"", ""B""]`）；
+  - 范围搜索（Range Search）、混合搜索（多向量字段）、关键词搜索（BM25）、重排序（Reranking）及主键/表达式查询（Fetch/Query）。
+- **架构优势支撑大规模向量处理**：  
+  - 全状态分离（stateless）、云原生、Kubernetes 友好；  
+  - 组件解耦（Query Node / Data Node / Index Node 可独立水平/垂直伸缩）；  
+  - 底层采用 C++ 实现高性能搜索引擎，深度融合硬件优化（AVX512/SIMD/GPU/NVMe）；  
+  - 列式存储设计，提升 I/O 效率与向量化计算性能；  
+  - 已验证支撑**数十亿级向量规模**（如 2023 年稳定服务超 300 家企业，含 NVIDIA、IBM、Airbnb、eBay 等）。
+
+综上，Milvus 是面向 AI 原生应用的向量基础设施，本质是**以向量为中心、融合标量属性、专为 embedding 检索与分析优化的新型数据库**，解决非结构化数据语义搜索、推荐、去重、多模态理解等典型 AI 场景下的低延迟、高精度、高并发检索需求。",Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+naive,milvus-020,ANN、标量过滤、范围搜索和混合搜索的用途有何区别？,True,5,True,1.0,0.2,1.0,False,0,0.0,,1.0,0.75,True,,18659.338,2620,1,,"根据提供的文档内容，ANN、标量过滤、范围搜索和混合搜索在 Milvus 中是四种**语义与功能明确区分、适用场景互补的向量检索模式**，其核心区别总结如下（按用途、机制、典型应用场景逐项对比）：
+
+| 维度 | ANN 搜索（近似最近邻） | 标量过滤（Filtering Search） | 范围搜索（Range Search） | 混合搜索（Hybrid Search） |
+|------|------------------------|----------------------------|--------------------------|---------------------------|
+| **核心目的** | 在全量向量空间中**快速查找语义最相似的 Top-K 向量**（不保证精确，但高效率） | **在满足指定标量条件（如 `age > 25 AND city == ""Beijing""`）的子集中，再执行 ANN 搜索** | 查找**与查询向量距离 ≤ 指定半径 r 的所有向量**（返回数量不确定，非 Top-K） | **跨多个独立向量字段（如 `title_vec`, `desc_vec`, `image_vec`）并行执行 ANN，融合结果** |
+| **技术本质** | 基于索引（IVF/HNSW/DiskANN等）的**近似最近邻检索**，牺牲少量精度换取毫秒级响应 | **标量谓词下推（Predicate Pushdown）+ ANN 检索**：先用倒排索引/B+树等快速筛选标量符合条件的数据分区/段，再在子集上做向量检索 | **基于距离阈值的精确边界检索**：要求索引支持半径裁剪（如 HNSW 的动态剪枝、IVF 的中心点半径过滤），返回所有满足 `dist(q, x) ≤ r` 的向量 | **多向量场联合检索**：每个向量字段独立建索引并执行 ANN，通过加权/重排序（如 RRF）融合多路结果，实现多模态/多角度语义匹配 |
+| **关键约束** | 无标量条件限制；结果为固定数量（K）；依赖向量相似度（L2/IP/Cosine） | 必须定义标量字段过滤表达式（支持布尔逻辑、比较、in-list等）；性能高度依赖标量索引（如对 `partition key` 或 `clustering key` 的优化） | 需显式指定半径 `r`；结果数量动态（可能为0、1或成百上千）；对索引算法的半径支持能力敏感 | 要求集合中存在**多个已定义的向量字段**；各字段需独立索引；融合策略影响最终排序质量 |
+| **典型应用场景** | • 推荐系统：相似商品/内容召回<br>• 图像/文本语义搜图/搜文<br>• 用户画像相似人群拓展 | • 带条件的精准推荐：“北京地区、价格≤500元的相似酒店”<br>• 权限控制检索：“仅返回 status=active 的用户向量”<br>• 多维业务筛选：`category=""electronics"" AND rating>=4.5` 下找相似商品 | • 地理围栏检索：查找“距离当前位置5km内的POI”<br>• 异常检测：找出与正常模式向量距离超阈值的异常样本<br>• 相似度置信度控制：只返回相似度足够高的结果（如 Cosine ≥ 0.8） | • 多模态搜索：“标题语义 + 商品描述语义 + 主图视觉特征”联合匹配<br>• 分层语义理解：分别用 `user_intent_vec` 和 `context_vec` 检索后融合<br>• A/B测试多模型结果集成 |
+
+✅ **补充说明**：  
+- **标量过滤 ≠ 简单后过滤**：Milvus 通过**分区键（Partition Key）** 和 **聚类键（Clustering Key）** 实现高效标量预筛选，避免全量向量扫描，显著提升带条件检索性能。  
+- **范围搜索与 ANN 的协同**：范围搜索可视为 ANN 的特例（K 动态化），但算法实现更复杂，需索引原生支持半径查询（如 HNSW 的 `search_range` 参数）。  
+- **混合搜索的独特价值**：解决单一向量表征不足问题，例如电商中标题向量（关键词强）与图像向量（视觉强）互补，比单字段 ANN 更鲁棒。  
+
+综上，四者并非替代关系，而是构成 Milvus **分层检索能力矩阵**：  
+**ANN 是基础语义检索** → **标量过滤施加业务约束** → **范围搜索提供距离可控性** → **混合搜索实现多源语义融合**，共同支撑从简单相似搜索到复杂生产级AI应用的完整需求。",ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。
+naive,milvus-026,Milvus 云服务每月的精确价格是多少？,False,5,,,,,False,0,0.0,True,,,,False,6838.492,1772,1,,"The retrieved document chunks **do not contain any pricing information**—neither for Milvus Cloud (the managed cloud service) nor for any subscription tiers, usage-based fees, or monthly cost details.
+
+All provided chunks describe:
+- Milvus’ architecture (cloud-native, stateless, decoupled components),  
+- Technical capabilities (vector search algorithms, hardware-aware optimizations, data types, SDKs),  
+- Deployment options (Milvus Lite, self-managed, and *mention* of a cloud service—but no specifics),  
+- Ecosystem integrations (Spark, VTS, migrations),  
+- Scalability and enterprise adoption — but **no pricing, plans, or billing models**.
+
+🔍 **Conclusion**:  
+There is **no information in the given chunks about Milvus Cloud’s monthly price**, precise or otherwise. The official Milvus Cloud pricing is not disclosed in these materials and must be obtained from the [Zilliz Cloud pricing page](https://zilliz.com/pricing) or direct sales contact, as it typically depends on factors like:  
+- Vector count / storage volume  
+- QPS (queries per second) and concurrency  
+- Compute resources (CPU/GPU, memory)  
+- Region, retention period, and support level  
+
+✅ **Recommendation**: To obtain an exact monthly quote, users should visit [Zilliz Cloud Pricing](https://zilliz.com/pricing) or request a custom quote via their sales team.",该资料没有给出精确价格。
+deep_search,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,5,True,1.0,0.4,1.0,False,0,0.0,,1.0,1.0,True,,39962.783,9355,22,,"**Summary Report: What is Milvus and What Data Does It Handle?**
+
+**1. What is Milvus?**  
+Milvus is an **open-source, cloud-native vector database**, incubated under the LF AI & Data Foundation and licensed under Apache 2.0. Designed for high performance and massive scalability, it runs efficiently across heterogeneous environments—from local development (e.g., Jupyter notebooks via *Milvus Lite*) to large-scale Kubernetes clusters managing **tens of billions of vectors**. Its architecture is built by HPC and systems engineering experts from leading organizations (e.g., NVIDIA, Intel, Meta, Alibaba, Microsoft), emphasizing hardware-aware optimization and production-grade reliability.
+
+**2. Primary Data Type Handled:**  
+Milvus is purpose-built for **vector embeddings derived from unstructured data**, including:
+- Text (e.g., sentence or document embeddings from LLMs)
+- Images (e.g., feature vectors from CNNs or vision transformers)
+- Audio (e.g., spectrogram or embedding-based representations)  
+These embeddings are high-dimensional numerical vectors that encode semantic meaning. Milvus stores, indexes, and retrieves them at scale—enabling fast similarity search where traditional relational or keyword-based databases fall short.
+
+Beyond vectors, Milvus natively supports **hybrid (multi-modal) and structured metadata**, including:
+- Scalar types (int, float, string, bool)
+- Advanced types: sparse vectors, binary vectors, JSON, arrays, and sets  
+This allows users to model rich, real-world data (e.g., “an image vector + its timestamp + tags + resolution metadata”) in a single, unified collection—eliminating the need for multiple disparate databases.
+
+**3. Core Technical Differentiators:**  
+- **Hardware-Aware Performance**: Optimized for AVX-512, SIMD, GPUs, and NVMe SSDs; search engine written in C++ for low-latency, high-throughput operations.  
+- **Column-Oriented Storage**: Enables selective field access and efficient vectorization—critical for fast filtering + ANN hybrid queries.  
+- **Scalable, Decoupled Architecture**: Stateless design with independent, horizontally scalable components (Query Node, Data Node, Index Node), enabling elastic scaling *up* and *out*.  
+- **Rich Search Capabilities**: Supports ANN (approximate nearest neighbor), range search, filtered search, hybrid search across multiple vector fields, keyword (BM25) search, reranking, and exact ID-based fetch/query.  
+
+**4. Typical Use Cases Enabled:**  
+- Semantic search in RAG (Retrieval-Augmented Generation) systems  
+- Visual similarity search (e.g., reverse image search, product recommendation)  
+- Fraud detection (embedding transaction patterns)  
+- Multimodal recommendation engines (text + image + user behavior vectors)  
+- Large-scale AI observability (embedding model outputs/logs for drift/quality analysis)  
+
+In essence, **Milvus is the foundational data infrastructure for AI-native applications that rely on similarity-driven operations over high-dimensional embeddings—and it uniquely bridges the gap between unstructured data semantics and scalable, production-ready analytics.**",Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+deep_search,milvus-020,ANN、标量过滤、范围搜索和混合搜索的用途有何区别？,True,1,True,1.0,0.2,1.0,False,0,0.0,,1.0,0.75,True,,46188.531,9149,22,,"根据提供的文档片段（Milvus官方能力说明），ANN、标量过滤、范围搜索和混合搜索在向量数据库（如Milvus）中具有明确区分、互补且层级递进的用途，具体区别总结如下：
+
+1. **ANN（近似最近邻）搜索**：  
+   - **核心用途**：高效检索与查询向量**语义最相似**的 Top-K 向量（即高维空间中距离最近的K个点），是向量检索的**基础能力**。  
+   - **特点**：面向**无结构化语义匹配**（如图像特征、文本嵌入），牺牲少量精度换取毫秒级大规模（亿级）向量召回能力；不涉及属性约束或距离阈值控制。  
+   - *示例场景*：在商品向量库中“找与这张鞋图最相似的10款鞋”。
+
+2. **标量过滤（Filtering Search）**：  
+   - **核心用途**：在 ANN 检索前或后，对结果施加**结构化属性条件约束**（如 `price < 100 AND category = 'sneaker' AND publish_date > '2024-01-01'`），实现“**语义相似 + 属性合规**”的精准筛选。  
+   - **特点**：依赖向量数据库支持的标量字段（如INT/STRING/BOOL/TIMESTAMP）和表达式引擎；本质是**对ANN结果集的逻辑裁剪**，提升业务相关性与合规性。  
+   - *示例场景*：在“相似鞋款”中仅保留价格低于¥200、库存大于0、且上架时间在30天内的结果。
+
+3. **范围搜索（Range Search）**：  
+   - **核心用途**：以查询向量为中心，**按精确距离阈值（radius）召回所有落在该球形/超球形邻域内的向量**（数量不固定，可能为0、1或成百上千），强调**距离可控性与完整性**。  
+   - **特点**：提供**确定性距离边界**（而非Top-K排名），适用于需保证“相似度不低于某阈值”的场景；对性能敏感（半径过大易退化为全表扫描）。  
+   - *示例场景*：查找“与用户历史点击向量余弦相似度 ≥ 0.85 的所有商品”，确保不遗漏任何达标项。
+
+4. **混合搜索（Hybrid Search）**：  
+   - **核心用途**：**跨多个向量字段并行执行ANN检索，并融合多路结果**（如加权打分、重排序），解决单一向量表征不足问题。  
+   - **特点**：非简单组合，而是**多模态/多视角向量协同**（如：图文双塔模型生成的`image_emb` + `text_emb`），通过统一查询接口联合优化召回质量；常与标量过滤、重排序（Reranking）级联使用。  
+   - *示例场景*：电商搜索中，同时基于商品主图向量、标题BERT向量、用户评论摘要向量进行联合ANN检索，再按销量、评分等标量字段过滤与重排。
+
+✅ **关键区别归纳**：  
+| 维度         | ANN              | 标量过滤               | 范围搜索             | 混合搜索                 |  
+|--------------|------------------|------------------------|----------------------|--------------------------|  
+| **目标**     | Top-K 最相似项   | 符合属性条件的相似项   | 距离≤阈值的所有项    | 多向量源联合最优召回     |  
+| **约束类型** | 无（纯向量空间） | 结构化属性（SQL-like） | 数学距离（L2/Cosine）| 多向量字段+融合策略      |  
+| **结果特性** | 固定数量（K）    | 数量可变（受过滤影响） | 数量可变（受半径影响）| 多源融合后重排序结果     |  
+| **技术定位** | 检索基座         | 业务逻辑层过滤器       | 精确距离控制工具     | 多模态/高阶语义增强机制  |  
+
+> 注：文档明确指出，Milvus将四者设计为正交能力——ANN是底座，标量过滤与范围搜索是其上的两种**约束增强模式**，而混合搜索则是**横向扩展ANN能力维度**的高级范式，三者可组合（如“带标量过滤的混合范围搜索”），共同构成生产级向量检索的完整能力栈。",ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。
+deep_search,milvus-026,Milvus 云服务每月的精确价格是多少？,False,0,,,,,True,0,0.0,False,,,,True,23093.728,8307,21,,No relevant information found for query 'Milvus 云服务每月的精确价格是多少？'.,该资料没有给出精确价格。
+chain_of_rag,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,1,True,1.0,0.2,1.0,False,0,0.0,,0.6666666666666666,1.0,True,,5155.034,3563,4,,Milvus 是一个高性能、高可扩展的向量数据库，主要用于处理文本、图像、音频等非结构化数据。,Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+chain_of_rag,milvus-020,ANN、标量过滤、范围搜索和混合搜索的用途有何区别？,True,1,True,1.0,0.2,1.0,False,0,0.0,,0.75,0.75,True,,9097.831,4034,4,,ANN Search用于查找与查询向量最相似的top K个向量；标量过滤（Filtering Search）用于在满足指定标量条件的数据子集中执行ANN搜索；范围搜索（Range Search）用于查找距离查询向量在给定半径内的所有向量；混合搜索（Hybrid Search）用于基于多个向量字段联合进行ANN搜索。,ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。
+chain_of_rag,milvus-026,Milvus 云服务每月的精确价格是多少？,False,0,,,,,True,0,0.0,False,,,,True,4804.247,1795,3,,No relevant information found,该资料没有给出精确价格。

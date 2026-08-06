@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # from deepsearcher.configuration import vector_db, embedding_model, llm
 from deepsearcher import configuration
@@ -6,7 +6,14 @@ from deepsearcher.trace import TraceCollector
 from deepsearcher.vector_db.base import RetrievalResult
 
 
-def query(original_query: str, max_iter: int = 3) -> Tuple[str, List[RetrievalResult], int]:
+def query(
+    original_query: str,
+    max_iter: int = 3,
+    collection_names: Optional[List[str]] = None,
+    use_web_search: bool = False,
+    *,
+    searcher=None,
+) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
 
@@ -23,19 +30,33 @@ def query(original_query: str, max_iter: int = 3) -> Tuple[str, List[RetrievalRe
             - A list of retrieval results that were used to generate the answer
             - The number of tokens consumed during the process
     """
-    default_searcher = configuration.default_searcher
-    return default_searcher.query(original_query, max_iter=max_iter)
+    default_searcher = searcher or configuration.default_searcher
+    kwargs = {"max_iter": max_iter}
+    if collection_names is not None:
+        kwargs["collection_names"] = list(collection_names)
+    if use_web_search:
+        kwargs["use_web_search"] = True
+    return default_searcher.query(original_query, **kwargs)
 
 
-def query_with_trace(original_query: str, max_iter: int = 3):
+def query_with_trace(
+    original_query: str,
+    max_iter: int = 3,
+    collection_names: Optional[List[str]] = None,
+    use_web_search: bool = False,
+    *,
+    searcher=None,
+    trace_collector=None,
+):
     """Query the knowledge base and return an additional structured execution trace."""
-    collector = TraceCollector(original_query)
-    default_searcher = configuration.default_searcher
-    answer, results, consume_tokens = default_searcher.query(
-        original_query,
-        max_iter=max_iter,
-        trace_collector=collector,
-    )
+    collector = trace_collector or TraceCollector(original_query)
+    default_searcher = searcher or configuration.default_searcher
+    kwargs = {"max_iter": max_iter, "trace_collector": collector}
+    if collection_names is not None:
+        kwargs["collection_names"] = list(collection_names)
+    if use_web_search:
+        kwargs["use_web_search"] = True
+    answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
     return (
         answer,
         results,
@@ -45,7 +66,10 @@ def query_with_trace(original_query: str, max_iter: int = 3):
 
 
 def retrieve(
-    original_query: str, max_iter: int = 3
+    original_query: str,
+    max_iter: int = 3,
+    collection_names: Optional[List[str]] = None,
+    use_web_search: bool = False,
 ) -> Tuple[List[RetrievalResult], List[str], int]:
     """
     Retrieve relevant information from the knowledge base without generating an answer.
@@ -64,8 +88,13 @@ def retrieve(
             - The number of tokens consumed during the process
     """
     default_searcher = configuration.default_searcher
+    kwargs = {"max_iter": max_iter}
+    if collection_names is not None:
+        kwargs["collection_names"] = list(collection_names)
+    if use_web_search:
+        kwargs["use_web_search"] = True
     retrieved_results, consume_tokens, metadata = default_searcher.retrieve(
-        original_query, max_iter=max_iter
+        original_query, **kwargs
     )
     return retrieved_results, [], consume_tokens
 
@@ -86,7 +115,10 @@ def naive_retrieve(query: str, collection: str = None, top_k=10) -> List[Retriev
         A list of retrieval results.
     """
     naive_rag = configuration.naive_rag
-    all_retrieved_results, consume_tokens, _ = naive_rag.retrieve(query)
+    kwargs = {"top_k": top_k}
+    if collection is not None:
+        kwargs["collection_names"] = [collection]
+    all_retrieved_results, consume_tokens, _ = naive_rag.retrieve(query, **kwargs)
     return all_retrieved_results
 
 
@@ -110,5 +142,8 @@ def naive_rag_query(
             - A list of retrieval results that were used to generate the answer
     """
     naive_rag = configuration.naive_rag
-    answer, retrieved_results, consume_tokens = naive_rag.query(query)
+    kwargs = {"top_k": top_k}
+    if collection is not None:
+        kwargs["collection_names"] = [collection]
+    answer, retrieved_results, consume_tokens = naive_rag.query(query, **kwargs)
     return answer, retrieved_results

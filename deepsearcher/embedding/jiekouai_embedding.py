@@ -28,7 +28,8 @@ class JiekouAIEmbedding(BaseEmbedding):
         Initialize the Jiekou.AI embedding model.
 
         Args:
-            model (str): The model identifier to use for embeddings. Default is "baai/bge-m3".
+            model (str): The model identifier to use for embeddings.
+                Default is "qwen/qwen3-embedding-8b".
             batch_size (int): Maximum number of texts to process in a single batch. Default is 32.
             **kwargs: Additional keyword arguments.
                 - api_key (str, optional): The Jiekou.AI API key. If not provided,

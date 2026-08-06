@@ -72,9 +72,10 @@ class WatsonXEmbedding(BaseEmbedding):
                 # BERT tokenizer is a good default for most models
                 self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
                 logger.info("Using HuggingFace tokenizer for precise token counting")
-            except Exception as e:
+            except Exception as exc:
                 logger.warning(
-                    f"Failed to load tokenizer, falling back to character-based estimation: {e}"
+                    "watsonx_tokenizer_load_failed exception_type=%s",
+                    type(exc).__name__,
                 )
                 self.use_tokenizer = False
 
@@ -247,8 +248,8 @@ class WatsonXEmbedding(BaseEmbedding):
             # The embed_query method expects a single string and returns a list of floats directly
             response = self.client.embed_query(text=truncated_text)
             return response
-        except Exception as e:
-            raise RuntimeError(f"Error embedding query with WatsonX: {str(e)}")
+        except Exception as exc:
+            raise RuntimeError("Error embedding query with WatsonX.") from exc
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
@@ -282,8 +283,8 @@ class WatsonXEmbedding(BaseEmbedding):
             # The embed_documents method expects a list of strings and returns a list of embedding vectors directly
             response = self.client.embed_documents(texts=truncated_texts)
             return response
-        except Exception as e:
-            raise RuntimeError(f"Error embedding documents with WatsonX: {str(e)}")
+        except Exception as exc:
+            raise RuntimeError("Error embedding documents with WatsonX.") from exc
 
     def _embed_documents_individually(self, texts: List[str]) -> List[List[float]]:
         """
@@ -308,9 +309,13 @@ class WatsonXEmbedding(BaseEmbedding):
                 # Try to embed single text using embed_query API - it returns the embedding directly
                 embedding = self.client.embed_query(text=truncated_text)
                 embeddings.append(embedding)
-            except Exception as e:
+            except Exception as exc:
                 failed_count += 1
-                logger.error(f"Failed to embed document {i}: {str(e)}")
+                logger.error(
+                    "watsonx_document_embedding_failed index=%s exception_type=%s",
+                    i,
+                    type(exc).__name__,
+                )
                 # Use zero vector as fallback
                 zero_embedding = [0.0] * self.dimension
                 embeddings.append(zero_embedding)

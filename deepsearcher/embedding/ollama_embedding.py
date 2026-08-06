@@ -1,6 +1,7 @@
 from typing import List, Union
 
 from deepsearcher.embedding.base import BaseEmbedding
+from deepsearcher.utils import log
 
 OLLAMA_MODEL_DIM_MAP = {
     "bge-m3": 1024,
@@ -53,10 +54,8 @@ class OllamaEmbedding(BaseEmbedding):
                 try:
                     dummy_response = self.client.embed(model=self.model, input="test")
                     dimension = len(dummy_response["embeddings"][0])
-                except Exception as e:
-                    print(
-                        f"Warning: Could not determine model dimension, using default 1024. Error: {e}"
-                    )
+                except Exception as exc:
+                    log.warning(log.safe_exception_message("ollama_dimension_probe", exc))
                     dimension = 1024
 
         self.dim = dimension

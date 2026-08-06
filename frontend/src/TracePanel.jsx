@@ -3,6 +3,7 @@ import {
   ChevronDownIcon,
   CircleStackIcon,
   DocumentTextIcon,
+  GlobeAltIcon,
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -14,8 +15,23 @@ function reflectionText(value) {
   return "未执行反思";
 }
 
-function scoreText(score) {
-  return typeof score === "number" ? score.toFixed(4) : "—";
+function retrievalValue(document) {
+  const metric = document.metric_type && document.metric_type !== "UNKNOWN"
+    ? ` ${document.metric_type}`
+    : "";
+  if (typeof document.distance === "number") {
+    return `距离${metric} · 越小越近 ${document.distance.toFixed(4)}`;
+  }
+  if (typeof document.similarity === "number") {
+    return `相似度${metric} · 越大越近 ${document.similarity.toFixed(4)}`;
+  }
+  if (typeof document.rank_score === "number") {
+    return `排序分${metric} · 越大越近 ${document.rank_score.toFixed(4)}`;
+  }
+  if (typeof document.score === "number") {
+    return `旧版相关值 ${document.score.toFixed(4)}`;
+  }
+  return "检索值 —";
 }
 
 function TraceEmpty({ state }) {
@@ -150,6 +166,25 @@ export function TracePanel({ trace, logs = [], onClearLogs, state = "idle" }) {
                                 </p>
                               </div>
                             </div>
+                            {iteration.web_search ? (
+                              <div className="trace-detail-row">
+                                <GlobeAltIcon aria-hidden="true" />
+                                <div>
+                                  <span>联网搜索</span>
+                                  <p>
+                                    {iteration.web_search.status === "completed"
+                                      ? `已获得 ${iteration.web_search.result_count} 个网页片段`
+                                      : iteration.web_search.status === "partial"
+                                        ? `部分完成，获得 ${iteration.web_search.result_count} 个网页片段`
+                                        : iteration.web_search.status === "empty"
+                                          ? "已完成，未找到可用网页片段"
+                                          : iteration.web_search.status === "disabled"
+                                            ? "未配置 Provider，已继续使用知识库"
+                                            : "Provider 暂时不可用，已继续使用知识库"}
+                                  </p>
+                                </div>
+                              </div>
+                            ) : null}
 
                             <div className="trace-documents">
                               <div className="trace-documents-heading">
@@ -162,9 +197,13 @@ export function TracePanel({ trace, logs = [], onClearLogs, state = "idle" }) {
                                 iteration.retrieved_documents.map((document, documentIndex) => (
                                   <details className="trace-document" key={`${iteration.index}-${documentIndex}`} open={documentIndex === 0}>
                                     <summary>
-                                      <DocumentTextIcon aria-hidden="true" />
+                                      {document.source_type === "web" ? (
+                                        <GlobeAltIcon aria-hidden="true" />
+                                      ) : (
+                                        <DocumentTextIcon aria-hidden="true" />
+                                      )}
                                       <span>{document.reference || `文档片段 ${documentIndex + 1}`}</span>
-                                      <small>相似度 {scoreText(document.score)}</small>
+                                      <small>{retrievalValue(document)}</small>
                                       {document.supported ? (
                                         <em><CheckCircleIcon aria-hidden="true" />已采用</em>
                                       ) : null}

@@ -38,7 +38,8 @@ load_from_local_files(
     paths_or_directory=os.path.join(current_dir, "data/WhatisMilvus.pdf"),
     collection_name="milvus_docs",
     collection_description="全部 Milvus 文档",
-    # 如需每次重建集合，可设置 force_new_collection=True
+    # force_new_collection=True 不会覆盖原集合；
+    # Oracle 当前会保留候选版本，并返回需要人工激活的结果。
 )
 
 from deepsearcher.online_query import query

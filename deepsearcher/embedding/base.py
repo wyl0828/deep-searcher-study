@@ -2,6 +2,7 @@ from typing import List
 
 from tqdm import tqdm
 
+from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.loader.splitter import Chunk
 
 
@@ -74,3 +75,8 @@ class BaseEmbedding:
             The number of dimensions in the embedding vectors.
         """
         pass
+
+    @property
+    def profile(self) -> EmbeddingProfile:
+        """Return the secret-free identity of this embedding space."""
+        return EmbeddingProfile.from_embedding(self)

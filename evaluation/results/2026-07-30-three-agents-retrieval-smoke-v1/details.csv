@@ -1,0 +1,10 @@
+﻿agent,sample_id,question,answerable,retrieved_count,retrieval_hit,retrieval_recall,retrieval_precision,reciprocal_rank,empty_result,duplicate_count,duplicate_rate,no_answer_false_positive,answer_criteria_coverage,grounded_criteria_coverage,evidence_source_correct,refusal_correct,latency_ms,tokens,llm_calls,error,answer,reference_answer
+naive,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,1951.021,0,0,,,Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+naive,milvus-002,Milvus 的部署范围和产品形态有哪些？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,0.75,True,,799.814,0,0,,,它可从笔记本扩展到大规模分布式系统，并提供开源软件和云服务两种形态。
+naive,milvus-003,Milvus 隶属哪个基金会项目，使用什么许可证？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,799.441,0,0,,,Milvus 是 Linux Foundation AI & Data 基金会项目，采用 Apache 2.0 许可证。
+deep_search,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,22762.032,6648,21,,,Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+deep_search,milvus-002,Milvus 的部署范围和产品形态有哪些？,True,2,True,1.0,0.4,1.0,False,0,0.0,,,0.75,True,,26306.526,7763,21,,,它可从笔记本扩展到大规模分布式系统，并提供开源软件和云服务两种形态。
+deep_search,milvus-003,Milvus 隶属哪个基金会项目，使用什么许可证？,True,1,True,1.0,0.2,1.0,False,0,0.0,,,1.0,True,,25202.374,6858,21,,,Milvus 是 Linux Foundation AI & Data 基金会项目，采用 Apache 2.0 许可证。
+chain_of_rag,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,1,True,1.0,0.2,1.0,False,0,0.0,,,1.0,True,,5086.333,3049,3,,,Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+chain_of_rag,milvus-002,Milvus 的部署范围和产品形态有哪些？,True,2,True,1.0,0.4,1.0,False,0,0.0,,,0.75,True,,3947.44,3069,3,,,它可从笔记本扩展到大规模分布式系统，并提供开源软件和云服务两种形态。
+chain_of_rag,milvus-003,Milvus 隶属哪个基金会项目，使用什么许可证？,True,0,False,0.0,0.0,0.0,True,0,0.0,,,0.0,False,,2890.016,1676,2,,,Milvus 是 Linux Foundation AI & Data 基金会项目，采用 Apache 2.0 许可证。

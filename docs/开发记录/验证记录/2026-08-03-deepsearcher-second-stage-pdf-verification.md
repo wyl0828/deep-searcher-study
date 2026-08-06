@@ -1,0 +1,36 @@
+# DeepSearcher 第二阶段学习资料 PDF 验证
+
+日期：2026-08-03
+
+## 1. 生成结果
+
+- `output/pdf/DeepSearcher第二阶段学习讲义-手机阅读版.pdf`：29 页，约 407 KiB。
+- `output/pdf/DeepSearcher第二阶段面试问答复习手册-手机版.pdf`：19 页，约 339 KiB。
+
+两份 PDF 均采用 `108 × 192 mm` 手机竖屏版式，包含封面、目录、PDF 书签、页眉、页码、中文字体
+嵌入、代码块与表格样式。生成日期和文档元数据已写入 PDF。
+
+## 2. 内容同步
+
+生成前同步修正了源 Markdown 中的历史口径：
+
+- 最终优化测试基线更新为 Python `732 passed, 10 skipped`、前端 `30 passed`、Vite 587 模块。
+- 明确产品问答通过 SSE 增量返回安全 Trace v2 阶段事件，旧 `/console` 仍一次性返回 JSON Trace。
+- 项目表达更新为“本次产品化优化已阶段性完成”，并保留最终用户 RBAC、分布式限流、可靠任务
+  队列、业务黄金集和完整无障碍验证等诚实边界。
+
+## 3. 渲染验证
+
+- 使用 Poppler 以 96 DPI 将两份 PDF 全部渲染为 48 张 PNG；页数与 PDF 一致。
+- 检查两份全页缩略图总览，并以原始分辨率抽查封面、目录、代码、表格、Trace、测试基线、项目
+  表达和末页。
+- 所有页面尺寸一致，未发现空白页、乱码、黑块、文字重叠、页边裁切或内容越界。
+- 目录为长标题预留页码区域，第二阶段讲义第 4 章标题可正常换行，页码保持右对齐。
+
+临时渲染证据位于 `tmp/pdfs/second-stage-lecture-v2/` 和
+`tmp/pdfs/second-stage-interview-v2/`；最终交付仅使用 `output/pdf/` 下的两份 PDF。
+
+## 4. 可复现命令
+
+两份文件均由 `scripts/generate_mobile_learning_pdf.py` 从对应 Markdown 源文件生成。脚本支持通过
+`--source`、`--output` 和封面元数据参数复用；修改讲义后应重新生成并重复全页渲染检查。

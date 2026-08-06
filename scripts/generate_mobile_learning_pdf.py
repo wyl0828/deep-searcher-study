@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import portrait
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -27,7 +27,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 from reportlab.platypus.tableofcontents import TableOfContents
-
 
 PAGE_SIZE = portrait((108 * mm, 192 * mm))
 PAGE_WIDTH, PAGE_HEIGHT = PAGE_SIZE
@@ -456,7 +455,7 @@ def parse_markdown(markdown_text: str, styles: dict[str, ParagraphStyle]):
         numbered_match = re.match(r"^(\d+)\.\s+(.+)$", stripped)
         if bullet_match:
             story.append(
-                Paragraph(inline_markup(bullet_match.group(1)), styles["bullet"], bulletText="•")
+                Paragraph(inline_markup(bullet_match.group(1)), styles["bullet"], bulletText="-")
             )
             index += 1
             continue
@@ -563,10 +562,11 @@ def build_pdf(
         ParagraphStyle(
             "TOCLevel1",
             fontName="MobileCN",
-            fontSize=10.8,
-            leading=17,
+            fontSize=10.2,
+            leading=16,
             leftIndent=0,
             firstLineIndent=0,
+            rightIndent=10 * mm,
             textColor=INK,
             spaceBefore=2,
         )

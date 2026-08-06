@@ -1,4 +1,5 @@
 import logging
+import re
 
 from termcolor import colored
 
@@ -65,6 +66,16 @@ progress_logger.addHandler(progress_handler)
 progress_logger.setLevel(logging.INFO)
 
 dev_mode = False
+
+
+def safe_exception_message(operation: str, exception: BaseException) -> str:
+    """Describe a failure without serializing exception text, args, paths, or credentials."""
+    operation_name = re.sub(r"[^A-Za-z0-9_.:-]+", "_", str(operation or ""))
+    operation_name = operation_name.strip("_")[:64] or "operation"
+    exception_type = type(exception).__name__
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", exception_type) is None:
+        exception_type = "Exception"
+    return f"{operation_name}_failed exception_type={exception_type}"
 
 
 def set_dev_mode(mode: bool):

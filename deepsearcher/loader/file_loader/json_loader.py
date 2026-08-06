@@ -4,6 +4,7 @@ from typing import List
 from langchain_core.documents import Document
 
 from deepsearcher.loader.file_loader.base import BaseLoader
+from deepsearcher.utils import log
 
 
 class JsonFileLoader(BaseLoader):
@@ -75,12 +76,12 @@ class JsonFileLoader(BaseLoader):
         """
         data_list = []
         with open(file_path, "r", encoding="utf-8") as file:
-            for line in file:
+            for line_number, line in enumerate(file, start=1):
                 try:
                     json_data = json.loads(line)
                     data_list.append(json_data)
                 except json.JSONDecodeError:
-                    print(f"Failed to decode line: {line}")
+                    log.warning(f"jsonl_decode_failed line_number={line_number}")
         return data_list
 
     @property

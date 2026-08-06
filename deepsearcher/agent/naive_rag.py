@@ -2,6 +2,7 @@ from typing import List, Tuple
 
 from deepsearcher.agent.base import RAGAgent
 from deepsearcher.agent.collection_router import CollectionRouter
+from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.llm.base import BaseLLM
 from deepsearcher.utils import log
@@ -45,6 +46,7 @@ class NaiveRAG(RAGAgent):
         """
         self.llm = llm
         self.embedding_model = embedding_model
+        self.embedding_profile = EmbeddingProfile.from_embedding(embedding_model)
         self.vector_db = vector_db
         self.top_k = top_k
         self.route_collection = route_collection
@@ -72,25 +74,61 @@ class NaiveRAG(RAGAgent):
                 - Additional information about the retrieval process
         """
         consume_tokens = 0
-        if self.route_collection:
+        trace_collector = kwargs.get("trace_collector")
+        if trace_collector is not None:
+            trace_collector.start_iteration(1)
+        explicit_collections = kwargs.get("collection_names")
+        allowed_collections = kwargs.get("allowed_collections")
+        if explicit_collections is not None:
+            selected_collections = self.collection_router.resolve_explicit(
+                explicit_collections,
+                dim=self.embedding_model.dimension,
+                allowed_collections=allowed_collections,
+            )
+            n_token_route = 0
+        elif self.route_collection:
             selected_collections, n_token_route = self.collection_router.invoke(
-                query=query, dim=self.embedding_model.dimension
+                query=query,
+                dim=self.embedding_model.dimension,
+                allowed_collections=allowed_collections,
             )
         else:
-            selected_collections = self.collection_router.all_collections
+            selected_collections = self.collection_router.resolve_all(
+                dim=self.embedding_model.dimension,
+                allowed_collections=allowed_collections,
+            )
             n_token_route = 0
+        if trace_collector is not None:
+            trace_collector.record_collections(
+                selected_collections,
+                n_token_route,
+                decision=self.collection_router.last_decision,
+            )
+            trace_collector.record_selection_event(
+                "collection_routing",
+                self.collection_router.last_decision,
+            )
         consume_tokens += n_token_route
+        self.vector_db.assert_collections_compatible(
+            selected_collections,
+            self.embedding_profile,
+        )
         all_retrieved_results = []
+        top_k = int(kwargs.get("top_k", self.top_k))
         for collection in selected_collections:
             retrieval_res = self.vector_db.search_data(
                 collection=collection,
                 vector=self.embedding_model.embed_query(query),
-                top_k=max(self.top_k // len(selected_collections), 1),
+                top_k=max(top_k // len(selected_collections), 1),
                 query_text=query,
             )
             all_retrieved_results.extend(retrieval_res)
         all_retrieved_results = deduplicate_results(all_retrieved_results)
-        return all_retrieved_results, consume_tokens, {}
+        if trace_collector is not None:
+            trace_collector.record_documents_retrieved(all_retrieved_results)
+            trace_collector.record_documents_supported(all_retrieved_results)
+            trace_collector.record_reflection(bool(all_retrieved_results))
+        return all_retrieved_results, consume_tokens, {"collections": selected_collections}
 
     def query(self, query: str, **kwargs) -> Tuple[str, List[RetrievalResult], int]:
         """
@@ -109,7 +147,7 @@ class NaiveRAG(RAGAgent):
                 - A list of retrieved document results
                 - The total token usage
         """
-        all_retrieved_results, n_token_retrieval, _ = self.retrieve(query)
+        all_retrieved_results, n_token_retrieval, _ = self.retrieve(query, **kwargs)
         chunk_texts = []
         for chunk in all_retrieved_results:
             if self.text_window_splitter and "wider_text" in chunk.metadata:
@@ -123,6 +161,10 @@ class NaiveRAG(RAGAgent):
         summary_prompt = SUMMARY_PROMPT.format(query=query, mini_chunk_str=mini_chunk_str)
         char_response = self.llm.chat([{"role": "user", "content": summary_prompt}])
         final_answer = char_response.content
-        log.color_print("\n==== FINAL ANSWER====\n")
-        log.color_print(final_answer)
+        trace_collector = kwargs.get("trace_collector")
+        if trace_collector is not None:
+            trace_collector.record_final_answer(char_response.total_tokens)
+        log.color_print(
+            f"<complete> Final answer generated; tokens={char_response.total_tokens} </complete>\n"
+        )
         return final_answer, all_retrieved_results, n_token_retrieval + char_response.total_tokens

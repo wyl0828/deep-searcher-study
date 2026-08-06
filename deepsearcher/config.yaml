@@ -55,6 +55,9 @@ provide_settings:
 
   embedding:
     provider: "OpenAIEmbedding"
+    identity:
+      version: "text-embedding-v4"
+      normalization: "provider_default"
     config:
       model: "text-embedding-v4"
 #      model: "models/gemini-embedding-2"  # Gemini - disabled, switched to Alibaba Cloud Bailian
@@ -146,6 +149,16 @@ provide_settings:
     #    provider: "DoclingCrawler"
     #    config: {}
 
+  # Optional at request time. Without TAVILY_API_KEY this component stays disabled
+  # and knowledge-base retrieval continues normally.
+  web_search:
+    provider: "TavilySearch"
+    config:
+      timeout_seconds: 10
+      search_depth: "basic"
+      # include_domains: ["example.com"]  # Optional trusted-source allowlist.
+      # exclude_domains: ["spam.example"]
+
   vector_db:
     provider: "Milvus"
     config:
@@ -153,6 +166,10 @@ provide_settings:
       uri: "http://127.0.0.1:19530"
       token: "root:Milvus"
       db: "default"
+      # O-06 固定评测未证明 Hybrid/RRF 优于 Dense，生产默认继续使用 Dense。
+      # 改为 true 前必须重建对应知识库，不能直接查询旧的 Dense-only Collection。
+      hybrid: false
+      rrf_k: 60
 
   # vector_db:      
   #   provider: "OracleDB"
@@ -174,6 +191,12 @@ provide_settings:
 
 query_settings:
   max_iter: 3
+  deep_search:
+    web_search_queries_per_iteration: 2
+    web_search_results_per_query: 5
+  chain_of_rag:
+    early_stopping: true
+    min_evidence_for_stop: 2
 
 load_settings:
   chunk_size: 1500

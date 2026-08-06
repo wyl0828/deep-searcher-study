@@ -108,11 +108,12 @@ function FlowLane({ steps, state, question }) {
 
 function ServiceItem({ icon: Icon, name, state }) {
   const copy = {
-    online: "正常",
-    configured: "已配置",
-    offline: "离线",
+    ready: "就绪",
+    degraded: "降级",
+    not_ready: "未就绪",
+    unknown: "未探测",
     checking: "检查中",
-  }[state];
+  }[state] || "未知";
   return (
     <div className="service-item">
       <Icon aria-hidden="true" />
@@ -134,7 +135,7 @@ function MetricRow({ label, value }) {
   );
 }
 
-export function App() {
+export function ConsoleApp() {
   const [health, setHealth] = useState(EMPTY_HEALTH);
   const [healthError, setHealthError] = useState("");
   const [file, setFile] = useState(null);
@@ -143,6 +144,7 @@ export function App() {
   const [ingestMessage, setIngestMessage] = useState("选择 PDF 后开始入库");
   const [question, setQuestion] = useState("");
   const [maxIter, setMaxIter] = useState(3);
+  const [useWebSearch, setUseWebSearch] = useState(false);
   const [queryState, setQueryState] = useState("idle");
   const [answer, setAnswer] = useState("");
   const [latencyMs, setLatencyMs] = useState(null);
@@ -156,9 +158,9 @@ export function App() {
     setLogs((current) => [...current, { id: crypto.randomUUID(), time: now(), message, tone }]);
   }, []);
 
-  const refreshHealth = useCallback(async () => {
+  const refreshHealth = useCallback(async (deep = false) => {
     try {
-      const payload = await getHealth();
+      const payload = await getHealth({ deep });
       setHealth(payload);
       setCollection((current) =>
         current === "deepsearcher" ? payload.config?.collection || current : current,
@@ -169,14 +171,14 @@ export function App() {
       setHealth((current) => ({
         ...current,
         services: Object.fromEntries(
-          Object.keys(current.services).map((key) => [key, { state: "offline" }]),
+          Object.keys(current.services).map((key) => [key, { state: "not_ready" }]),
         ),
       }));
     }
   }, []);
 
   useEffect(() => {
-    refreshHealth();
+    refreshHealth(false);
   }, [refreshHealth]);
 
   const services = useMemo(
@@ -185,6 +187,7 @@ export function App() {
       { key: "milvus", name: "Milvus 向量库", icon: CircleStackIcon },
       { key: "llm", name: "LLM 大模型", icon: ChatBubbleLeftRightIcon },
       { key: "embedding", name: "Embedding 模型", icon: CpuChipIcon },
+      { key: "ingest_worker", name: "文档处理 Worker", icon: CloudArrowUpIcon },
     ],
     [],
   );
@@ -216,7 +219,7 @@ export function App() {
     setTrace(null);
     addLog(`开始查询：${question.trim() || "问题为空"}`);
     try {
-      const result = await queryDeepSearcher(question, maxIter);
+      const result = await queryDeepSearcher(question, maxIter, collection, useWebSearch);
       setAnswer(result.answer);
       setLatencyMs(result.latencyMs);
       setTotalTokens(result.totalTokens);
@@ -359,6 +362,14 @@ export function App() {
                   onChange={(event) => setMaxIter(Number(event.target.value))}
                 />
               </div>
+              <label className="web-search-toggle" title="查询词会发送给已配置的 Web Search Provider">
+                <input
+                  type="checkbox"
+                  checked={useWebSearch}
+                  onChange={(event) => setUseWebSearch(event.target.checked)}
+                />
+                联网搜索
+              </label>
               <button className="primary-button query-button" disabled={queryState === "loading"} type="submit">
                 <PlayIcon aria-hidden="true" />
                 {queryState === "loading" ? "查询中" : "运行查询"}
@@ -399,7 +410,8 @@ export function App() {
           <section>
             <div className="rail-heading">
               <h2>服务状态</h2>
-              <button type="button" onClick={refreshHealth}>刷新</button>
+              <button type="button" onClick={() => refreshHealth(false)}>刷新</button>
+              <button type="button" onClick={() => refreshHealth(true)}>深度检查</button>
             </div>
             <div className="service-list">
               {services.map((service) => (
@@ -407,7 +419,7 @@ export function App() {
                   key={service.key}
                   icon={service.icon}
                   name={service.name}
-                  state={health.services?.[service.key]?.state || "offline"}
+                  state={health.services?.[service.key]?.state || "unknown"}
                 />
               ))}
             </div>
@@ -421,6 +433,7 @@ export function App() {
               <MetricRow label="嵌入模型（Embedding）" value={health.config?.embedding_model || "—"} />
               <MetricRow label="大模型（LLM）" value={health.config?.llm_model || "—"} />
               <MetricRow label="max_iter" value={maxIter} />
+              <MetricRow label="联网搜索" value={useWebSearch ? "本次启用" : "关闭"} />
             </div>
           </section>
 

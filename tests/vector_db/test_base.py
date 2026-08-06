@@ -1,14 +1,15 @@
 import unittest
-import numpy as np
 from typing import List
 
+import numpy as np
+
 from deepsearcher.vector_db.base import (
+    BaseVectorDB,
+    CollectionInfo,
     RetrievalResult,
     deduplicate_results,
-    CollectionInfo,
-    BaseVectorDB,
+    score_kind_for_metric,
 )
-from deepsearcher.loader.splitter import Chunk
 
 
 class TestRetrievalResult(unittest.TestCase):
@@ -37,6 +38,8 @@ class TestRetrievalResult(unittest.TestCase):
         self.assertEqual(result.reference, self.reference)
         self.assertEqual(result.metadata, self.metadata)
         self.assertEqual(result.score, self.score)
+        self.assertEqual(result.score_kind, "rank_score")
+        self.assertEqual(result.metric_type, "UNKNOWN")
 
     def test_init_default_score(self):
         """Test initialization of RetrievalResult with default score."""
@@ -46,7 +49,8 @@ class TestRetrievalResult(unittest.TestCase):
             reference=self.reference,
             metadata=self.metadata,
         )
-        self.assertEqual(result.score, 0.0)
+        self.assertIsNone(result.score)
+        self.assertIsNone(result.score_kind)
 
     def test_repr(self):
         """Test string representation of RetrievalResult."""
@@ -57,8 +61,57 @@ class TestRetrievalResult(unittest.TestCase):
             metadata=self.metadata,
             score=self.score,
         )
-        expected = f"RetrievalResult(score={self.score}, embedding={self.embedding}, text={self.text}, reference={self.reference}), metadata={self.metadata}"
+        expected = (
+            "RetrievalResult(metric_type=UNKNOWN, score_kind=rank_score, value=0.95, "
+            f"embedding={self.embedding}, text={self.text}, reference={self.reference}), "
+            f"metadata={self.metadata}"
+        )
         self.assertEqual(repr(result), expected)
+
+    def test_metric_value_preserves_distance_direction(self):
+        result = RetrievalResult.from_metric_value(
+            embedding=self.embedding,
+            text=self.text,
+            reference=self.reference,
+            metadata=self.metadata,
+            metric_type="l2",
+            value=0.25,
+        )
+
+        self.assertEqual(result.metric_type, "L2")
+        self.assertEqual(result.distance, 0.25)
+        self.assertEqual(result.score_kind, "distance")
+        self.assertFalse(result.higher_is_better)
+
+    def test_metric_value_preserves_similarity_direction(self):
+        result = RetrievalResult.from_metric_value(
+            embedding=self.embedding,
+            text=self.text,
+            reference=self.reference,
+            metadata=self.metadata,
+            metric_type="cosine",
+            value=0.95,
+        )
+
+        self.assertEqual(result.similarity, 0.95)
+        self.assertEqual(result.score_kind, "similarity")
+        self.assertTrue(result.higher_is_better)
+
+    def test_conflicting_semantic_values_are_rejected(self):
+        with self.assertRaises(ValueError):
+            RetrievalResult(
+                self.embedding,
+                self.text,
+                self.reference,
+                self.metadata,
+                distance=0.1,
+                similarity=0.9,
+            )
+
+    def test_metric_mapping_does_not_invent_similarity_conversion(self):
+        self.assertEqual(score_kind_for_metric("L2"), "distance")
+        self.assertEqual(score_kind_for_metric("COSINE"), "similarity")
+        self.assertEqual(score_kind_for_metric("RRF"), "rank_score")
 
 
 class TestDeduplicateResults(unittest.TestCase):
@@ -110,7 +163,7 @@ class TestCollectionInfo(unittest.TestCase):
         name = "test_collection"
         description = "Test collection description"
         collection_info = CollectionInfo(name, description)
-        
+
         self.assertEqual(collection_info.collection_name, name)
         self.assertEqual(collection_info.description, description)
 
@@ -118,7 +171,9 @@ class TestCollectionInfo(unittest.TestCase):
 class MockVectorDB(BaseVectorDB):
     """Mock implementation of BaseVectorDB for testing."""
 
-    def init_collection(self, dim, collection, description, force_new_collection=False, *args, **kwargs):
+    def init_collection(
+        self, dim, collection, description, force_new_collection=False, *args, **kwargs
+    ):
         pass
 
     def insert_data(self, collection, chunks, *args, **kwargs):
@@ -154,4 +209,4 @@ class TestBaseVectorDB(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

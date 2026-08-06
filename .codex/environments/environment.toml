@@ -6,16 +6,11 @@ name = "deep-searcher-study"
 script = ""
 
 [[actions]]
-name = "启动后端"
+name = "启动项目"
 icon = "tool"
-command = "uv run --frozen --env-file .env uvicorn main:app --host 127.0.0.1 --port 8500"
+command = ".\\start.ps1"
 
 [[actions]]
-name = "启动前端"
+name = "停止项目"
 icon = "tool"
-command = ".\\start_frontend.bat"
-
-[[actions]]
-name = "停止后端"
-icon = "tool"
-command = "Get-NetTCPConnection -LocalPort 8500 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess }"
+command = ".\\stop.ps1"

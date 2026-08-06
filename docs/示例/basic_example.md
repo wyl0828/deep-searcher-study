@@ -42,7 +42,8 @@ load_from_local_files(
     paths_or_directory=os.path.join(current_dir, "data/WhatisMilvus.pdf"),
     collection_name="milvus_docs",
     collection_description="全部 Milvus 文档",
-    # 如需每次删除原集合并重新创建，可设置 force_new_collection=True
+    # 如需安全重建，可设置 force_new_collection=True：
+    # 系统会先构建候选版本，完成后切换别名，并保留旧版本用于回滚。
 )
 
 question = "请比较 Milvus 与其他向量数据库，并撰写报告。"

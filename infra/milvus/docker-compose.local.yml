@@ -1,0 +1,6 @@
+# Local product startup override.
+# Milvus uses MinIO internally, but the user workspace does not need to expose
+# MinIO's console and API ports on the host.
+services:
+  minio:
+    ports: !reset []

@@ -57,9 +57,9 @@ class DoclingCrawler(BaseCrawler):
 
             return documents
 
-        except Exception as e:
-            log.color_print(f"Error processing URL {url}: {str(e)}")
-            raise IOError(f"Failed to process URL {url}: {str(e)}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("docling_url_conversion", exc))
+            raise IOError("Docling URL conversion failed.") from exc
 
     @property
     def supported_file_types(self) -> List[str]:

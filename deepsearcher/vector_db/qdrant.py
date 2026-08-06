@@ -3,19 +3,35 @@ from typing import List, Optional, Union
 
 import numpy as np
 
+from deepsearcher.collection_manifest import CollectionManifest, EmbeddingProfile
 from deepsearcher.loader.splitter import Chunk
 from deepsearcher.utils import log
 from deepsearcher.vector_db.base import BaseVectorDB, CollectionInfo, RetrievalResult
+from deepsearcher.vector_db.exceptions import (
+    CollectionManifestInvalid,
+    CollectionManifestWriteFailed,
+    UnsafeCollectionReplacement,
+    VectorDBError,
+    VectorInitializationFailed,
+    VectorInsertFailed,
+    VectorListFailed,
+    VectorSearchFailed,
+)
 
 DEFAULT_COLLECTION_NAME = "deepsearcher"
 
 TEXT_PAYLOAD_KEY = "text"
 REFERENCE_PAYLOAD_KEY = "reference"
 METADATA_PAYLOAD_KEY = "metadata"
+MANIFEST_PAYLOAD_KEY = "_deepsearcher_collection_manifest"
+MANIFEST_POINT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 class Qdrant(BaseVectorDB):
     """Vector DB implementation powered by [Qdrant](https://qdrant.tech/)"""
+
+    default_metric_type = "COSINE"
+    supports_collection_manifests = True
 
     def __init__(
         self,
@@ -97,6 +113,7 @@ class Qdrant(BaseVectorDB):
             ) from original_error
 
         super().__init__(default_collection)
+        self._collection_metric_types: dict[str, str] = {}
         self.client = QdrantClient(
             location=location,
             url=url,
@@ -110,6 +127,85 @@ class Qdrant(BaseVectorDB):
             host=host,
             path=path,
         )
+
+    def _collection_metric_type(self, collection: str) -> str:
+        cached = self._collection_metric_types.get(collection)
+        if cached:
+            return cached
+        try:
+            collection_info = self.client.get_collection(collection_name=collection)
+            vectors = collection_info.config.params.vectors
+            if isinstance(vectors, dict):
+                vector_params = next(iter(vectors.values()), None)
+            else:
+                vector_params = vectors
+            distance = getattr(vector_params, "distance", None)
+            value = getattr(distance, "value", distance)
+            metric_type = str(value or self.default_metric_type).strip().upper()
+            if metric_type not in {"COSINE", "DOT", "EUCLID", "MANHATTAN"}:
+                metric_type = self.default_metric_type
+        except Exception:
+            metric_type = self.default_metric_type
+        self._collection_metric_types[collection] = metric_type
+        return metric_type
+
+    def collection_exists(self, collection: str) -> bool:
+        return bool(self.client.collection_exists(collection_name=collection))
+
+    def get_collection_manifest(
+        self,
+        collection: str,
+    ) -> CollectionManifest | None:
+        if not self.collection_exists(collection):
+            return None
+        points = self.client.retrieve(
+            collection_name=collection,
+            ids=[MANIFEST_POINT_ID],
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not isinstance(points, list) or not points:
+            return None
+        payload = getattr(points[0], "payload", None)
+        raw_manifest = payload.get(MANIFEST_PAYLOAD_KEY) if isinstance(payload, dict) else None
+        if raw_manifest is None:
+            return None
+        try:
+            if isinstance(raw_manifest, str):
+                return CollectionManifest.from_json(raw_manifest)
+            if isinstance(raw_manifest, dict):
+                return CollectionManifest.from_dict(raw_manifest)
+            raise ValueError("unsupported manifest payload")
+        except (TypeError, ValueError) as exc:
+            raise CollectionManifestInvalid(
+                operation="read_manifest",
+                collection=collection,
+            ) from exc
+
+    def set_collection_manifest(
+        self,
+        collection: str,
+        manifest: CollectionManifest,
+    ) -> None:
+        from qdrant_client import models
+
+        try:
+            self.client.upsert(
+                collection_name=collection,
+                points=[
+                    models.PointStruct(
+                        id=MANIFEST_POINT_ID,
+                        vector=[0.0] * manifest.embedding.dimension,
+                        payload={MANIFEST_PAYLOAD_KEY: manifest.to_dict()},
+                    )
+                ],
+                wait=True,
+            )
+        except Exception as exc:
+            raise CollectionManifestWriteFailed(
+                operation="write_manifest",
+                collection=collection,
+            ) from exc
 
     def init_collection(
         self,
@@ -145,8 +241,10 @@ class Qdrant(BaseVectorDB):
             collection_exists = self.client.collection_exists(collection_name=collection)
 
             if force_new_collection and collection_exists:
-                self.client.delete_collection(collection_name=collection)
-                collection_exists = False
+                raise UnsafeCollectionReplacement(
+                    operation="initialize",
+                    collection=collection,
+                )
 
             if not collection_exists:
                 self.client.create_collection(
@@ -157,8 +255,24 @@ class Qdrant(BaseVectorDB):
                 )
 
                 log.color_print(f"Created collection [{collection}] successfully")
-        except Exception as e:
-            log.critical(f"Failed to init Qdrant collection, error info: {e}")
+                metric_value = getattr(distance_metric, "value", distance_metric)
+                self._collection_metric_types[collection] = str(metric_value).strip().upper()
+                return {
+                    "created": True,
+                    "collection": collection,
+                }
+            return {
+                "created": False,
+                "collection": collection,
+            }
+        except UnsafeCollectionReplacement:
+            raise
+        except Exception as exc:
+            log.error(log.safe_exception_message("qdrant_init", exc))
+            raise VectorInitializationFailed(
+                operation="initialize",
+                collection=collection,
+            ) from exc
 
     def insert_data(
         self,
@@ -200,8 +314,12 @@ class Qdrant(BaseVectorDB):
                 self.client.upsert(
                     collection_name=collection or self.default_collection, points=points
                 )
-        except Exception as e:
-            log.critical(f"Failed to insert data, error info: {e}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("qdrant_insert", exc))
+            raise VectorInsertFailed(
+                operation="insert",
+                collection=collection or self.default_collection,
+            ) from exc
 
     def search_data(
         self,
@@ -225,27 +343,49 @@ class Qdrant(BaseVectorDB):
             List[RetrievalResult]: List of retrieval results containing similar vectors.
         """
         try:
+            embedding_profile = kwargs.pop("embedding_profile", None)
+            if isinstance(embedding_profile, EmbeddingProfile):
+                self.assert_collection_compatible(
+                    collection or self.default_collection,
+                    embedding_profile,
+                )
+            from qdrant_client import models
+
             results = self.client.query_points(
                 collection_name=collection or self.default_collection,
                 query=vector,
+                query_filter=models.Filter(
+                    must_not=[
+                        models.HasIdCondition(
+                            has_id=[MANIFEST_POINT_ID],
+                        )
+                    ]
+                ),
                 limit=top_k,
                 with_payload=True,
                 with_vectors=True,
             ).points
 
+            metric_type = self._collection_metric_type(collection or self.default_collection)
             return [
-                RetrievalResult(
+                RetrievalResult.from_metric_value(
                     embedding=result.vector,
                     text=result.payload.get(TEXT_PAYLOAD_KEY, ""),
                     reference=result.payload.get(REFERENCE_PAYLOAD_KEY, ""),
-                    score=result.score,
                     metadata=result.payload.get(METADATA_PAYLOAD_KEY, {}),
+                    metric_type=metric_type,
+                    value=result.score,
                 )
                 for result in results
             ]
-        except Exception as e:
-            log.critical(f"Failed to search data, error info: {e}")
-            return []
+        except VectorDBError:
+            raise
+        except Exception as exc:
+            log.error(log.safe_exception_message("qdrant_search", exc))
+            raise VectorSearchFailed(
+                operation="search",
+                collection=collection or self.default_collection,
+            ) from exc
 
     def list_collections(self, *args, **kwargs) -> List[CollectionInfo]:
         """
@@ -263,15 +403,24 @@ class Qdrant(BaseVectorDB):
         try:
             collections = self.client.get_collections().collections
             for collection in collections:
+                manifest = self.get_collection_manifest(collection.name)
                 collection_infos.append(
                     CollectionInfo(
                         collection_name=collection.name,
-                        # Qdrant doesn't have a native description field
-                        description=collection.name,
+                        description=(
+                            manifest.user_description if manifest is not None else collection.name
+                        ),
+                        manifest=manifest,
                     )
                 )
-        except Exception as e:
-            log.critical(f"Failed to list collections, error info: {e}")
+        except VectorDBError:
+            raise
+        except Exception as exc:
+            log.error(log.safe_exception_message("qdrant_list_collections", exc))
+            raise VectorListFailed(
+                operation="list",
+                collection=None,
+            ) from exc
 
         return collection_infos
 
@@ -286,5 +435,5 @@ class Qdrant(BaseVectorDB):
         """
         try:
             self.client.delete_collection(collection_name=collection or self.default_collection)
-        except Exception as e:
-            log.warning(f"Failed to drop collection, error info: {e}")
+        except Exception as exc:
+            log.warning(log.safe_exception_message("qdrant_clear", exc))

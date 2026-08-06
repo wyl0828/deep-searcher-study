@@ -167,6 +167,18 @@ class TestLogFunctions(unittest.TestCase):
         log.color_print("Test message")
         self.mock_progress_logger.info.assert_called_once_with("Test message")
 
+    def test_safe_exception_message_never_serializes_exception_details(self):
+        secret = "sk-private-secret C:\\Users\\alice\\private.pdf"
+
+        message = log.safe_exception_message("provider request", RuntimeError(secret))
+
+        self.assertEqual(
+            message,
+            "provider_request_failed exception_type=RuntimeError",
+        )
+        self.assertNotIn("sk-private-secret", message)
+        self.assertNotIn("alice", message)
+
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

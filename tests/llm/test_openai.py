@@ -1,13 +1,13 @@
-import unittest
-from unittest.mock import patch, MagicMock
-import os
 import logging
-
-# Disable logging for tests
-logging.disable(logging.CRITICAL)
+import os
+import unittest
+from unittest.mock import MagicMock, patch
 
 from deepsearcher.llm import OpenAI
 from deepsearcher.llm.base import ChatResponse
+
+# Disable logging for tests
+logging.disable(logging.CRITICAL)
 
 
 class TestOpenAI(unittest.TestCase):
@@ -20,28 +20,28 @@ class TestOpenAI(unittest.TestCase):
         self.mock_client = MagicMock()
         self.mock_chat = MagicMock()
         self.mock_completions = MagicMock()
-        
+
         # Set up the mock module structure
         self.mock_openai.OpenAI = MagicMock(return_value=self.mock_client)
         self.mock_client.chat = self.mock_chat
         self.mock_chat.completions = self.mock_completions
-        
+
         # Set up mock response
         self.mock_response = MagicMock()
         self.mock_choice = MagicMock()
         self.mock_message = MagicMock()
         self.mock_usage = MagicMock()
-        
+
         self.mock_message.content = "Test response"
         self.mock_choice.message = self.mock_message
         self.mock_usage.total_tokens = 100
-        
+
         self.mock_response.choices = [self.mock_choice]
         self.mock_response.usage = self.mock_usage
         self.mock_completions.create.return_value = self.mock_response
 
         # Create the module patcher
-        self.module_patcher = patch.dict('sys.modules', {'openai': self.mock_openai})
+        self.module_patcher = patch.dict("sys.modules", {"openai": self.mock_openai})
         self.module_patcher.start()
 
     def tearDown(self):
@@ -51,14 +51,11 @@ class TestOpenAI(unittest.TestCase):
     def test_init_default(self):
         """Test initialization with default parameters."""
         # Clear environment variables temporarily
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             llm = OpenAI()
             # Check that OpenAI client was initialized correctly
-            self.mock_openai.OpenAI.assert_called_once_with(
-                api_key=None,
-                base_url=None
-            )
-            
+            self.mock_openai.OpenAI.assert_called_once_with(api_key=None, base_url=None)
+
             # Check default model
             self.assertEqual(llm.model, "o1-mini")
 
@@ -66,24 +63,16 @@ class TestOpenAI(unittest.TestCase):
         """Test initialization with API key from environment variable."""
         api_key = "test_api_key_from_env"
         base_url = "https://api.openai.com/v1"
-        with patch.dict(os.environ, {
-            "OPENAI_API_KEY": api_key,
-            "OPENAI_BASE_URL": base_url
-        }):
-            llm = OpenAI()
-            self.mock_openai.OpenAI.assert_called_with(
-                api_key=api_key,
-                base_url=base_url
-            )
+        with patch.dict(os.environ, {"OPENAI_API_KEY": api_key, "OPENAI_BASE_URL": base_url}):
+            OpenAI()
+            self.mock_openai.OpenAI.assert_called_with(api_key=api_key, base_url=base_url)
 
     def test_init_with_api_key_parameter(self):
         """Test initialization with API key as parameter."""
         api_key = "test_api_key_param"
-        llm = OpenAI(api_key=api_key)
-        self.mock_openai.OpenAI.assert_called_with(
-            api_key=api_key,
-            base_url=None
-        )
+        with patch.dict("os.environ", {}, clear=True):
+            OpenAI(api_key=api_key)
+        self.mock_openai.OpenAI.assert_called_with(api_key=api_key, base_url=None)
 
     def test_init_with_custom_model(self):
         """Test initialization with custom model."""
@@ -94,20 +83,17 @@ class TestOpenAI(unittest.TestCase):
     def test_init_with_custom_base_url(self):
         """Test initialization with custom base URL."""
         # Clear environment variables temporarily
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             base_url = "https://custom.openai.api"
-            llm = OpenAI(base_url=base_url)
-            self.mock_openai.OpenAI.assert_called_with(
-                api_key=None,
-                base_url=base_url
-            )
+            OpenAI(base_url=base_url)
+            self.mock_openai.OpenAI.assert_called_with(api_key=None, base_url=base_url)
 
     def test_chat_single_message(self):
         """Test chat with a single message."""
         # Create OpenAI instance with mocked environment
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             llm = OpenAI()
-            
+
         messages = [{"role": "user", "content": "Hello"}]
         response = llm.chat(messages)
 
@@ -125,14 +111,14 @@ class TestOpenAI(unittest.TestCase):
     def test_chat_multiple_messages(self):
         """Test chat with multiple messages."""
         # Create OpenAI instance with mocked environment
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             llm = OpenAI()
-            
+
         messages = [
             {"role": "system", "content": "You are a helpful assistant"},
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there!"},
-            {"role": "user", "content": "How are you?"}
+            {"role": "user", "content": "How are you?"},
         ]
         response = llm.chat(messages)
 
@@ -150,9 +136,9 @@ class TestOpenAI(unittest.TestCase):
     def test_chat_with_error(self):
         """Test chat when an error occurs."""
         # Create OpenAI instance with mocked environment
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             llm = OpenAI()
-            
+
         # Mock an error response
         self.mock_completions.create.side_effect = Exception("OpenAI API Error")
 
@@ -164,4 +150,4 @@ class TestOpenAI(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

@@ -1,20 +1,62 @@
+from __future__ import annotations
+
 import os
-from typing import Literal
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Callable, Literal
 
 import yaml
 
-from deepsearcher.agent import ChainOfRAG, DeepSearch, NaiveRAG
-from deepsearcher.agent.rag_router import RAGRouter
-from deepsearcher.embedding.base import BaseEmbedding
-from deepsearcher.llm.base import BaseLLM
-from deepsearcher.loader.file_loader.base import BaseLoader
-from deepsearcher.loader.web_crawler.base import BaseCrawler
-from deepsearcher.vector_db.base import BaseVectorDB
+from deepsearcher.collection_manifest import bind_embedding_identity
+
+if TYPE_CHECKING:
+    from deepsearcher.agent import NaiveRAG
+    from deepsearcher.agent.rag_router import RAGRouter
+    from deepsearcher.embedding.base import BaseEmbedding
+    from deepsearcher.llm.base import BaseLLM
+    from deepsearcher.loader.file_loader.base import BaseLoader
+    from deepsearcher.loader.web_crawler.base import BaseCrawler
+    from deepsearcher.vector_db.base import BaseVectorDB
+    from deepsearcher.web_search.base import BaseWebSearch
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG_YAML_PATH = os.path.join(current_dir, "config.yaml")
 
-FeatureType = Literal["llm", "embedding", "file_loader", "web_crawler", "vector_db"]
+FeatureType = Literal[
+    "llm",
+    "embedding",
+    "file_loader",
+    "web_crawler",
+    "web_search",
+    "vector_db",
+]
+
+
+class RuntimeInitializationError(RuntimeError):
+    """Safe startup error that identifies the component that failed."""
+
+    code = "RUNTIME_INITIALIZATION_FAILED"
+    safe_message = "DeepSearcher runtime initialization failed."
+    retryable = True
+
+    def __init__(self, component: str):
+        super().__init__(self.safe_message)
+        self.component = component
+
+
+@dataclass(frozen=True)
+class RuntimeComponents:
+    """Application-owned runtime resources created from one config snapshot."""
+
+    config: "Configuration"
+    module_factory: "ModuleFactory"
+    llm: BaseLLM
+    embedding_model: BaseEmbedding
+    file_loader: BaseLoader
+    vector_db: BaseVectorDB
+    web_crawler: BaseCrawler
+    web_search: BaseWebSearch
+    default_searcher: RAGRouter
+    naive_rag: NaiveRAG
 
 
 class Configuration:
@@ -49,7 +91,7 @@ class Configuration:
         Returns:
             The loaded configuration data as a dictionary.
         """
-        with open(config_path, "r") as file:
+        with open(config_path, "r", encoding="utf-8") as file:
             return yaml.safe_load(file)
 
     def set_provider_config(self, feature: FeatureType, provider: str, provider_configs: dict):
@@ -141,7 +183,14 @@ class ModuleFactory:
         Returns:
             An instance of a BaseEmbedding implementation.
         """
-        return self._create_module_instance("embedding", "deepsearcher.embedding")
+        instance = self._create_module_instance("embedding", "deepsearcher.embedding")
+        settings = self.config.provide_settings["embedding"]
+        return bind_embedding_identity(
+            instance,
+            provider=settings["provider"],
+            config=settings.get("config") or {},
+            identity=settings.get("identity") or {},
+        )
 
     def create_file_loader(self) -> BaseLoader:
         """
@@ -161,6 +210,15 @@ class ModuleFactory:
         """
         return self._create_module_instance("web_crawler", "deepsearcher.loader.web_crawler")
 
+    def create_web_search(self) -> BaseWebSearch:
+        """Create the optional web-search provider, disabled for legacy configs."""
+        provide_settings = getattr(self.config, "provide_settings", {})
+        if "web_search" not in provide_settings:
+            from deepsearcher.web_search import DisabledWebSearch
+
+            return DisabledWebSearch()
+        return self._create_module_instance("web_search", "deepsearcher.web_search")
+
     def create_vector_db(self) -> BaseVectorDB:
         """
         Create an instance of a vector database.
@@ -179,11 +237,102 @@ embedding_model: BaseEmbedding = None
 file_loader: BaseLoader = None
 vector_db: BaseVectorDB = None
 web_crawler: BaseCrawler = None
+web_search: BaseWebSearch = None
 default_searcher: RAGRouter = None
 naive_rag: NaiveRAG = None
 
 
-def init_config(config: Configuration):
+def _create_runtime_component(component: str, factory: Callable):
+    try:
+        return factory()
+    except Exception as exc:
+        raise RuntimeInitializationError(component) from exc
+
+
+def _load_agent_classes():
+    from deepsearcher.agent import ChainOfRAG, DeepSearch, NaiveRAG
+    from deepsearcher.agent.rag_router import RAGRouter
+
+    return DeepSearch, ChainOfRAG, RAGRouter, NaiveRAG
+
+
+def build_runtime(config: Configuration) -> RuntimeComponents:
+    """Build isolated runtime resources without mutating module globals."""
+    factory = ModuleFactory(config)
+    llm_instance = _create_runtime_component("llm", factory.create_llm)
+    embedding_instance = _create_runtime_component("embedding", factory.create_embedding)
+    file_loader_instance = _create_runtime_component("file_loader", factory.create_file_loader)
+    web_crawler_instance = _create_runtime_component("web_crawler", factory.create_web_crawler)
+    web_search_instance = _create_runtime_component("web_search", factory.create_web_search)
+    vector_db_instance = _create_runtime_component("vector_db", factory.create_vector_db)
+    deep_search_class, chain_of_rag_class, router_class, naive_rag_class = _load_agent_classes()
+
+    def create_searchers():
+        chain_settings = config.query_settings.get("chain_of_rag", {})
+        deep_search_settings = config.query_settings.get("deep_search", {})
+        default = router_class(
+            llm=llm_instance,
+            rag_agents=[
+                deep_search_class(
+                    llm=llm_instance,
+                    embedding_model=embedding_instance,
+                    vector_db=vector_db_instance,
+                    max_iter=config.query_settings["max_iter"],
+                    route_collection=True,
+                    text_window_splitter=True,
+                    web_search=web_search_instance,
+                    web_search_queries_per_iteration=max(
+                        int(deep_search_settings.get("web_search_queries_per_iteration", 2)),
+                        1,
+                    ),
+                    web_search_results_per_query=max(
+                        int(deep_search_settings.get("web_search_results_per_query", 5)),
+                        1,
+                    ),
+                ),
+                chain_of_rag_class(
+                    llm=llm_instance,
+                    embedding_model=embedding_instance,
+                    vector_db=vector_db_instance,
+                    max_iter=config.query_settings["max_iter"],
+                    early_stopping=bool(chain_settings.get("early_stopping", True)),
+                    min_evidence_for_stop=max(
+                        int(chain_settings.get("min_evidence_for_stop", 2)),
+                        1,
+                    ),
+                    route_collection=True,
+                    text_window_splitter=True,
+                ),
+            ],
+        )
+        naive = naive_rag_class(
+            llm=llm_instance,
+            embedding_model=embedding_instance,
+            vector_db=vector_db_instance,
+            top_k=10,
+            route_collection=True,
+            text_window_splitter=True,
+        )
+        return default, naive
+
+    default_searcher_instance, naive_rag_instance = _create_runtime_component(
+        "searcher", create_searchers
+    )
+    return RuntimeComponents(
+        config=config,
+        module_factory=factory,
+        llm=llm_instance,
+        embedding_model=embedding_instance,
+        file_loader=file_loader_instance,
+        vector_db=vector_db_instance,
+        web_crawler=web_crawler_instance,
+        web_search=web_search_instance,
+        default_searcher=default_searcher_instance,
+        naive_rag=naive_rag_instance,
+    )
+
+
+def init_config(config: Configuration) -> RuntimeComponents:
     """
     Initialize the global configuration and create instances of all required modules.
 
@@ -200,41 +349,17 @@ def init_config(config: Configuration):
         file_loader, \
         vector_db, \
         web_crawler, \
+        web_search, \
         default_searcher, \
         naive_rag
-    module_factory = ModuleFactory(config)
-    llm = module_factory.create_llm()
-    embedding_model = module_factory.create_embedding()
-    file_loader = module_factory.create_file_loader()
-    web_crawler = module_factory.create_web_crawler()
-    vector_db = module_factory.create_vector_db()
-
-    default_searcher = RAGRouter(
-        llm=llm,
-        rag_agents=[
-            DeepSearch(
-                llm=llm,
-                embedding_model=embedding_model,
-                vector_db=vector_db,
-                max_iter=config.query_settings["max_iter"],
-                route_collection=True,
-                text_window_splitter=True,
-            ),
-            ChainOfRAG(
-                llm=llm,
-                embedding_model=embedding_model,
-                vector_db=vector_db,
-                max_iter=config.query_settings["max_iter"],
-                route_collection=True,
-                text_window_splitter=True,
-            ),
-        ],
-    )
-    naive_rag = NaiveRAG(
-        llm=llm,
-        embedding_model=embedding_model,
-        vector_db=vector_db,
-        top_k=10,
-        route_collection=True,
-        text_window_splitter=True,
-    )
+    runtime = build_runtime(config)
+    module_factory = runtime.module_factory
+    llm = runtime.llm
+    embedding_model = runtime.embedding_model
+    file_loader = runtime.file_loader
+    web_crawler = runtime.web_crawler
+    web_search = runtime.web_search
+    vector_db = runtime.vector_db
+    default_searcher = runtime.default_searcher
+    naive_rag = runtime.naive_rag
+    return runtime

@@ -1,0 +1,31 @@
+﻿agent,sample_id,question,answerable,retrieved_count,retrieval_hit,retrieval_recall,retrieval_precision,reciprocal_rank,empty_result,duplicate_count,duplicate_rate,no_answer_false_positive,answer_criteria_coverage,grounded_criteria_coverage,evidence_source_correct,refusal_correct,latency_ms,tokens,llm_calls,error,answer,reference_answer
+naive,milvus-001,Milvus 是什么，主要用来处理哪类数据？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,1817.666,0,0,,,Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。
+naive,milvus-002,Milvus 的部署范围和产品形态有哪些？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,0.75,True,,1205.04,0,0,,,它可从笔记本扩展到大规模分布式系统，并提供开源软件和云服务两种形态。
+naive,milvus-003,Milvus 隶属哪个基金会项目，使用什么许可证？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,987.217,0,0,,,Milvus 是 Linux Foundation AI & Data 基金会项目，采用 Apache 2.0 许可证。
+naive,milvus-004,资料提到了哪些机构参与 Milvus 贡献？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,0.7142857142857143,True,,1003.762,0,0,,,贡献者来自 NVIDIA、Microsoft、Google、Amazon、Meta、IBM、Salesforce、Alibaba 等机构及高性能计算社区。
+naive,milvus-005,向量数据库可管理哪些非结构化内容的嵌入？请举例。,True,5,True,1.0,0.4,1.0,False,0,0.0,,,0.75,True,,815.055,0,0,,,可管理文本、图像、音频、视频等非结构化内容生成的向量嵌入。
+naive,milvus-006,Milvus 在数据建模方面支持哪些常见字段类型？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,995.544,0,0,,,除向量外，还支持标量字段以及 JSON、数组等复杂字段。
+naive,milvus-007,Milvus 有哪三种部署模式？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,1.0,True,,988.057,0,0,,,三种模式是 Milvus Lite、Milvus Standalone 和 Milvus Distributed。
+naive,milvus-008,适合在笔记本或原型环境中使用的是哪种 Milvus 形态？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,1.0,True,,1597.174,0,0,,,Milvus Lite 适合笔记本、原型和轻量本地场景。
+naive,milvus-009,单机生产部署通常选择哪种 Milvus 模式？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,1.0,True,,815.04,0,0,,,单机生产场景通常选择 Milvus Standalone。
+naive,milvus-010,需要横向扩展的大规模场景应选择哪种部署？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,1000.614,0,0,,,应选择 Milvus Distributed 分布式部署。
+naive,milvus-011,资料中的基准测试称 Milvus 性能领先多少倍？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,0.0,True,,781.244,0,0,,,资料称其在基准测试中可领先 2 到 5 倍。
+naive,milvus-012,Milvus 利用了哪些硬件能力来提升向量检索性能？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,1.0,True,,1147.732,0,0,,,包括 AVX512、SIMD、GPU 和 NVMe 等硬件能力。
+naive,milvus-013,Milvus 支持哪些代表性向量索引，索引优化可带来多大提升？,True,5,True,1.0,0.6,1.0,False,0,0.0,,,1.0,True,,854.768,0,0,,,支持 IVF、HNSW、DiskANN 等索引，优化可带来约 30% 到 70% 的性能提升。
+naive,milvus-014,Milvus 核心引擎主要用什么语言编写，占比如何？,True,5,True,1.0,0.4,0.3333333333333333,False,0,0.0,,,1.0,True,,799.181,0,0,,,核心引擎主要由 C++ 编写，相关代码占比超过 80%。
+naive,milvus-015,列式存储给 Milvus 带来什么好处？,True,5,True,1.0,0.4,0.5,False,0,0.0,,,0.75,True,,999.523,0,0,,,列式组织有助于压缩、按需读取和向量化执行，从而提升分析与检索效率。
+naive,milvus-016,资料如何描述 Milvus 在 2022、2023 年的数据规模和企业采用情况？,True,5,True,1.0,0.4,0.25,False,0,0.0,,,1.0,True,,799.058,0,0,,,2022 年达到十亿级规模，2023 年达到数百亿级，并被 300 多家企业采用。
+naive,milvus-017,Milvus 为什么能够独立扩展不同工作负载？,True,5,True,1.0,0.4,0.5,False,0,0.0,,,1.0,True,,1000.249,0,0,,,因为其节点无状态且计算与存储解耦，不同类型节点可以独立伸缩。
+naive,milvus-018,Milvus 的 Search、Data 和 Index 节点分别负责什么？,True,5,True,1.0,0.2,1.0,False,0,0.0,,,1.0,True,,1002.114,0,0,,,Search 节点处理查询，Data 节点负责数据写入与持久化，Index 节点负责构建索引。
+naive,milvus-019,Milvus 提供了哪些检索或查询能力？,True,5,True,1.0,0.2,1.0,False,0,0.0,,,1.0,True,,797.582,0,0,,,包括 ANN、过滤、范围检索、混合检索、BM25、重排、fetch 和 query 等能力。
+naive,milvus-020,ANN、标量过滤、范围搜索和混合搜索的用途有何区别？,True,5,True,1.0,0.2,1.0,False,0,0.0,,,0.75,True,,1020.479,0,0,,,ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。
+naive,milvus-021,除了向量近邻搜索，Milvus 还提到了哪些文本或结果处理能力？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,977.306,0,0,,,还提到 BM25 全文检索、rerank 重排，以及 fetch 和 query。
+naive,milvus-022,开发者可以通过哪些 API 或 SDK 使用 Milvus？,True,5,True,1.0,0.2,1.0,False,0,0.0,,,1.0,True,,800.436,0,0,,,可通过 REST，以及 Python/PyMilvus、Go、Java、Node.js、C# 等 SDK 使用。
+naive,milvus-023,Milvus 支持哪些高级数据类型和距离度量相关能力？,True,5,True,1.0,0.2,0.5,False,0,0.0,,,1.0,True,,998.483,0,0,,,支持稀疏向量、二进制向量、JSON、数组以及多种距离度量。
+naive,milvus-024,资料列出的数据治理和隔离能力有哪些？,True,5,True,1.0,0.4,1.0,False,0,0.0,,,1.0,True,,811.488,0,0,,,包括分区、一致性级别、批量导入、多租户和安全控制。
+naive,milvus-025,Milvus 生态中有哪些开发、运维或集成工具？,True,5,True,1.0,0.6,0.5,False,0,0.0,,,1.0,True,,588.728,0,0,,,包括 LangChain、Attu、Birdwatcher、Prometheus/Grafana、备份、CDC、Spark Connector 和 VTS 等。
+naive,milvus-026,Milvus 云服务每月的精确价格是多少？,False,5,,,,,False,0,0.0,True,,,,,812.602,0,0,,,该资料没有给出精确价格。
+naive,milvus-027,Milvus 创始人和当前 CEO 分别是谁？,False,5,,,,,False,0,0.0,True,,,,,999.433,0,0,,,该资料没有说明创始人或当前 CEO。
+naive,milvus-028,Milvus 官方支持的操作系统完整清单是什么？,False,5,,,,,False,0,0.0,True,,,,,785.66,0,0,,,该资料没有提供官方支持操作系统的完整清单。
+naive,milvus-029,Milvus 第一个正式版本的精确发布日期是哪一天？,False,5,,,,,False,0,0.0,True,,,,,999.551,0,0,,,该资料没有给出第一个正式版本的精确发布日期。
+naive,milvus-030,Milvus 对 SQL JOIN 和跨表 ACID 事务提供了什么保证？,False,5,,,,,False,0,0.0,True,,,,,600.592,0,0,,,该资料没有说明 SQL JOIN 或跨表 ACID 事务保证。

@@ -102,7 +102,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         embeddings = self.client.encode(input)
         from deepsearcher.utils import log
 
-        log.dev_logger.info(f"embeddings: {embeddings}")
+        log.debug("sentence_transformer_embedding_completed")
         return embeddings.tolist()
 
     @cached_property

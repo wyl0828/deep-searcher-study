@@ -120,8 +120,8 @@ class WatsonX(BaseLLM):
 
             return ChatResponse(content=content, total_tokens=total_tokens)
 
-        except Exception as e:
-            raise RuntimeError(f"Error generating response with WatsonX: {str(e)}")
+        except Exception as exc:
+            raise RuntimeError("Error generating response with WatsonX.") from exc
 
     def _messages_to_prompt(self, messages: List[Dict]) -> str:
         """

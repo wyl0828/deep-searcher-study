@@ -1,0 +1,570 @@
+{
+  "report_schema_version": 1,
+  "metric_version": "1.0.0",
+  "created_at": "2026-07-30T12:05:51.866176+00:00",
+  "dataset": {
+    "id": "milvus-introduction-zh",
+    "version": "1.0.0",
+    "sha256": "20eeb2d8464e7d56dc8a74fd19aa0b3d266853a64e741dccbe4d162aa7a17b9d",
+    "source": {
+      "document": "WhatisMilvus.pdf",
+      "path": "examples/data/WhatisMilvus.pdf",
+      "sha256": "00cac5d6ca84077ed81380becc06cde379be11db37fcef59ec4b041a4f39acc1",
+      "pages": 4
+    },
+    "sample_count": 3
+  },
+  "run": {
+    "mode": "answer",
+    "collection": "kb_037e65f9612842fb809fd596de82e351",
+    "top_k": 5,
+    "max_iter": 1,
+    "agents": [
+      "naive",
+      "deep_search",
+      "chain_of_rag"
+    ],
+    "source_aliases": {
+      "WhatisMilvus.pdf": [
+        "doc_d8555f3a34b741d788fe88793d489fce.pdf"
+      ]
+    },
+    "config_path": "D:\\code\\deep-searcher-study\\deepsearcher\\config.yaml",
+    "config_sha256": "cea7ef72db8e489608cd4de0fe69167978d11c9ed660e71ce02d7f67b543477f"
+  },
+  "environment": {
+    "python": "3.10.20",
+    "providers": {
+      "llm": {
+        "provider": "OpenAI",
+        "model": "qwen-plus"
+      },
+      "embedding": {
+        "provider": "OpenAIEmbedding",
+        "model": "text-embedding-v4"
+      },
+      "vector_db": {
+        "provider": "Milvus"
+      }
+    },
+    "git": {
+      "commit": "9c9aef85a6af06298183a728277387325a74be69",
+      "dirty": true
+    }
+  },
+  "metrics": {
+    "naive": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.3,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 1,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.875,
+      "evidence_source_accuracy": 1,
+      "refusal_accuracy": 0,
+      "latency_ms": {
+        "average": 12688.154,
+        "p50": 12566.631,
+        "p95": 18659.338
+      },
+      "tokens": {
+        "total": 6395,
+        "average": 2131.67
+      },
+      "llm_calls": {
+        "total": 3,
+        "average": 1
+      }
+    },
+    "deep_search": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.3,
+      "mrr": 1.0,
+      "empty_result_rate": 0.3333,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.875,
+      "evidence_source_accuracy": 1,
+      "refusal_accuracy": 1,
+      "latency_ms": {
+        "average": 36415.014,
+        "p50": 39962.783,
+        "p95": 46188.531
+      },
+      "tokens": {
+        "total": 26811,
+        "average": 8937
+      },
+      "llm_calls": {
+        "total": 65,
+        "average": 21.67
+      }
+    },
+    "chain_of_rag": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.2,
+      "mrr": 1.0,
+      "empty_result_rate": 0.3333,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0,
+      "answer_criteria_coverage": 0.7083,
+      "grounded_criteria_coverage": 0.875,
+      "evidence_source_accuracy": 1,
+      "refusal_accuracy": 1,
+      "latency_ms": {
+        "average": 6352.371,
+        "p50": 5155.034,
+        "p95": 9097.831
+      },
+      "tokens": {
+        "total": 9392,
+        "average": 3130.67
+      },
+      "llm_calls": {
+        "total": 11,
+        "average": 3.67
+      }
+    }
+  },
+  "details": [
+    {
+      "sample_id": "milvus-001",
+      "question": "Milvus 是什么，主要用来处理哪类数据？",
+      "answerable": true,
+      "tags": [
+        "事实",
+        "定义"
+      ],
+      "retrieved_count": 5,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.4,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "latency_ms": 12566.631,
+      "tokens": 2003,
+      "llm_calls": 1,
+      "error": null,
+      "answer": "Milvus 是一个高性能、高可扩展的开源向量数据库（Vector Database），由 LF AI & Data 基金会托管，采用 Apache 2.0 许可协议。它专为高效处理**非结构化数据（unstructured data）的向量化表示——即嵌入向量（embeddings）**而设计，核心应用场景包括文本、图像、音频等经深度学习模型生成的高维数值向量。\n\n具体而言：\n- **主要处理的数据类型**：Milvus 并不直接存储原始非结构化数据（如 JPG 图片或 MP3 音频），而是存储其对应的**稠密/稀疏向量 embeddings**（通常为 float32 或 binary 类型），维度从几十到数千不等。同时，它原生支持**结构化属性字段**（如 int64、varchar、bool、array、JSON、set 等），实现向量与元数据的统一建模与联合查询。\n- **核心能力聚焦于向量相似性检索**，提供多种高级搜索功能：\n  - 近似最近邻搜索（ANN）——主干能力，支持 IVF、HNSW、DiskANN 等高度优化的索引算法；\n  - 过滤搜索（Filtering Search）：在 ANN 基础上叠加标量条件（如 `age > 25 AND tag IN [\"A\", \"B\"]`）；\n  - 范围搜索（Range Search）、混合搜索（多向量字段）、关键词搜索（BM25）、重排序（Reranking）及主键/表达式查询（Fetch/Query）。\n- **架构优势支撑大规模向量处理**：  \n  - 全状态分离（stateless）、云原生、Kubernetes 友好；  \n  - 组件解耦（Query Node / Data Node / Index Node 可独立水平/垂直伸缩）；  \n  - 底层采用 C++ 实现高性能搜索引擎，深度融合硬件优化（AVX512/SIMD/GPU/NVMe）；  \n  - 列式存储设计，提升 I/O 效率与向量化计算性能；  \n  - 已验证支撑**数十亿级向量规模**（如 2023 年稳定服务超 300 家企业，含 NVIDIA、IBM、Airbnb、eBay 等）。\n\n综上，Milvus 是面向 AI 原生应用的向量基础设施，本质是**以向量为中心、融合标量属性、专为 embedding 检索与分析优化的新型数据库**，解决非结构化数据语义搜索、推荐、去重、多模态理解等典型 AI 场景下的低延迟、高精度、高并发检索需求。",
+      "reference_answer": "Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft.\nUnstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Advanced Search Algorithms: Milvus supports a wide range of in-memory and on-disk indexing/search\nalgorithms, including IVF, HNSW, DiskANN, and more, all of which have been deeply optimized. Compared\nto popular implementations like FAISS and HNSWLib, Milvus delivers 30%-70% better performance."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 4,
+          "chunk": 9,
+          "text": "data sources, including Zilliz clusters, Elasticsearch, Postgres (PgVector), and another Milvus instance.\nFor details, refer to Migrations."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 4,
+          "text": "addition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency.\nTypes of Searches Supported by Milvus\nMilvus supports various types of search functions to meet the demands of different use cases:\nANN Search: Finds the top K vectors closest to your query vector.\nFiltering Search: Performs ANN search under specified filtering conditions.\nRange Search: Finds vectors within a specified radius from your query vector.\nHybrid Search: Conducts ANN search based on multiple vector fields.\nKeyword Search: Keyword search based on BM25.\nReranking: Adjusts the order of search results based on additional criteria or a secondary algorithm,\nrefining the initial ANN search results.\nFetch: Retrieves data by their primary keys.\nQuery: Retrieves data using specific expressions.\nComprehensive Feature Set\nIn addition to the key search features mentioned above, Milvus also provides a set of features implemented\naround ANN searches so that you can fully utilize its capabilities."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 3,
+          "text": "Search Engine in C++: Over 80% of a vector database's performance is determined by its search engine.\nMilvus uses C++ for this critical component due to the language's high performance, low-level optimization,\nand efficient resource management. Most importantly, Milvus integrates numerous hardware-aware code\noptimizations, ranging from assembly-level vectorization to multi-thread parallelization and scheduling, to\nfully leverage hardware capabilities.\nColumn-Oriented: Milvus is a column-oriented vector database system. The primary advantages come\nfrom the data access patterns. When performing queries, a column-oriented database reads only the\nspecific fields involved in the query, rather than entire rows, which greatly reduces the amount of data\naccessed. Additionally, operations on column-based data can be easily vectorized, allowing for operations to\nbe applied in the entire columns at once, further enhancing performance.\nWhat Makes Milvus so Scalable\nIn 2022, Milvus supported billion-scale vectors, and in 2023, it scaled up to tens of billions with consistent\nstability, powering large-scale scenarios for over 300 major enterprises, including Salesforce, PayPal,\nShopee, Airbnb, eBay, NVIDIA, IBM, AT&T, LINE, ROBLOX, Inflection, etc.\nMilvus's cloud-native and highly decoupled system architecture ensures that the system can continuously\nexpand as data grows:\nMilvus itself is fully stateless so it can be easily scaled with the help of Kubernetes or public clouds. In"
+        }
+      ],
+      "agent": "naive"
+    },
+    {
+      "sample_id": "milvus-020",
+      "question": "ANN、标量过滤、范围搜索和混合搜索的用途有何区别？",
+      "answerable": true,
+      "tags": [
+        "解释",
+        "多跳",
+        "检索"
+      ],
+      "retrieved_count": 5,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.2,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.75,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "latency_ms": 18659.338,
+      "tokens": 2620,
+      "llm_calls": 1,
+      "error": null,
+      "answer": "根据提供的文档内容，ANN、标量过滤、范围搜索和混合搜索在 Milvus 中是四种**语义与功能明确区分、适用场景互补的向量检索模式**，其核心区别总结如下（按用途、机制、典型应用场景逐项对比）：\n\n| 维度 | ANN 搜索（近似最近邻） | 标量过滤（Filtering Search） | 范围搜索（Range Search） | 混合搜索（Hybrid Search） |\n|------|------------------------|----------------------------|--------------------------|---------------------------|\n| **核心目的** | 在全量向量空间中**快速查找语义最相似的 Top-K 向量**（不保证精确，但高效率） | **在满足指定标量条件（如 `age > 25 AND city == \"Beijing\"`）的子集中，再执行 ANN 搜索** | 查找**与查询向量距离 ≤ 指定半径 r 的所有向量**（返回数量不确定，非 Top-K） | **跨多个独立向量字段（如 `title_vec`, `desc_vec`, `image_vec`）并行执行 ANN，融合结果** |\n| **技术本质** | 基于索引（IVF/HNSW/DiskANN等）的**近似最近邻检索**，牺牲少量精度换取毫秒级响应 | **标量谓词下推（Predicate Pushdown）+ ANN 检索**：先用倒排索引/B+树等快速筛选标量符合条件的数据分区/段，再在子集上做向量检索 | **基于距离阈值的精确边界检索**：要求索引支持半径裁剪（如 HNSW 的动态剪枝、IVF 的中心点半径过滤），返回所有满足 `dist(q, x) ≤ r` 的向量 | **多向量场联合检索**：每个向量字段独立建索引并执行 ANN，通过加权/重排序（如 RRF）融合多路结果，实现多模态/多角度语义匹配 |\n| **关键约束** | 无标量条件限制；结果为固定数量（K）；依赖向量相似度（L2/IP/Cosine） | 必须定义标量字段过滤表达式（支持布尔逻辑、比较、in-list等）；性能高度依赖标量索引（如对 `partition key` 或 `clustering key` 的优化） | 需显式指定半径 `r`；结果数量动态（可能为0、1或成百上千）；对索引算法的半径支持能力敏感 | 要求集合中存在**多个已定义的向量字段**；各字段需独立索引；融合策略影响最终排序质量 |\n| **典型应用场景** | • 推荐系统：相似商品/内容召回<br>• 图像/文本语义搜图/搜文<br>• 用户画像相似人群拓展 | • 带条件的精准推荐：“北京地区、价格≤500元的相似酒店”<br>• 权限控制检索：“仅返回 status=active 的用户向量”<br>• 多维业务筛选：`category=\"electronics\" AND rating>=4.5` 下找相似商品 | • 地理围栏检索：查找“距离当前位置5km内的POI”<br>• 异常检测：找出与正常模式向量距离超阈值的异常样本<br>• 相似度置信度控制：只返回相似度足够高的结果（如 Cosine ≥ 0.8） | • 多模态搜索：“标题语义 + 商品描述语义 + 主图视觉特征”联合匹配<br>• 分层语义理解：分别用 `user_intent_vec` 和 `context_vec` 检索后融合<br>• A/B测试多模型结果集成 |\n\n✅ **补充说明**：  \n- **标量过滤 ≠ 简单后过滤**：Milvus 通过**分区键（Partition Key）** 和 **聚类键（Clustering Key）** 实现高效标量预筛选，避免全量向量扫描，显著提升带条件检索性能。  \n- **范围搜索与 ANN 的协同**：范围搜索可视为 ANN 的特例（K 动态化），但算法实现更复杂，需索引原生支持半径查询（如 HNSW 的 `search_range` 参数）。  \n- **混合搜索的独特价值**：解决单一向量表征不足问题，例如电商中标题向量（关键词强）与图像向量（视觉强）互补，比单字段 ANN 更鲁棒。  \n\n综上，四者并非替代关系，而是构成 Milvus **分层检索能力矩阵**：  \n**ANN 是基础语义检索** → **标量过滤施加业务约束** → **范围搜索提供距离可控性** → **混合搜索实现多源语义融合**，共同支撑从简单相似搜索到复杂生产级AI应用的完整需求。",
+      "reference_answer": "ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 4,
+          "text": "addition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency.\nTypes of Searches Supported by Milvus\nMilvus supports various types of search functions to meet the demands of different use cases:\nANN Search: Finds the top K vectors closest to your query vector.\nFiltering Search: Performs ANN search under specified filtering conditions.\nRange Search: Finds vectors within a specified radius from your query vector.\nHybrid Search: Conducts ANN search based on multiple vector fields.\nKeyword Search: Keyword search based on BM25.\nReranking: Adjusts the order of search results based on additional criteria or a secondary algorithm,\nrefining the initial ANN search results.\nFetch: Retrieves data by their primary keys.\nQuery: Retrieves data using specific expressions.\nComprehensive Feature Set\nIn addition to the key search features mentioned above, Milvus also provides a set of features implemented\naround ANN searches so that you can fully utilize its capabilities."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Advanced Search Algorithms: Milvus supports a wide range of in-memory and on-disk indexing/search\nalgorithms, including IVF, HNSW, DiskANN, and more, all of which have been deeply optimized. Compared\nto popular implementations like FAISS and HNSWLib, Milvus delivers 30%-70% better performance."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 3,
+          "chunk": 5,
+          "text": "API and SDK\nRESTful API (official)\nPyMilvus (Python SDK) (official)\nGo SDK (official)\nJava SDK (official)\nNode.js (JavaScript) SDK (official)\nC# (contributed by Microsoft)\nAdvanced Data Types\nIn addition to primitive data types, Milvus supports various advanced data types and their respective\napplicable distance metrics.\nSparse Vectors\nBinary Vectors\nJSON Support\nArray Support\nDistance Metrics\nAcceleration\nSearch Algorithms\nMilvus supports a set of tunable indexing and search algorithms. For details, see In-memory Index, On-\ndisk Index, and GPU Index.\nPartitions and Partition Keys\nPartitions are sub-divisions of a Milvus collection. You can choose a scalar field as the partition key for\nbetter search performance. For details, see Manage Partitions and Use Partition Key.\nTunable Consistency Model\nConsistency ensures every Milvus node or replica has the same view of data when writing or reading\ndata at a given time. You can easily tune the consistency level when conducting ANN searches in\nMilvus. For details, see Consistency.\nHigh-throughput Data Import\nTo import a large volume of data into Milvus instead of inserting them one after another, consider\nusing our high-throughput data import tools. For details, refer to Prepare Source Data and Import\nData.\nMulti-tenancy Support\nMilvus has implemented a lot of features oriented to multi-tenancy scenarios, including Partition Key,\nClustering Key, and more. For details, see Multi-tenancy Strategies.\nSecurity and Authorization"
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 3,
+          "chunk": 6,
+          "text": "Clustering Key, and more. For details, see Multi-tenancy Strategies.\nSecurity and Authorization\nTunable Consistency Model\nConsistency ensures every Milvus node or replica has the same view of data when writing or reading\ndata at a given time. You can easily tune the consistency level when conducting ANN searches in\nMilvus. For details, see Consistency.\nData Isolation and Resource Control\nFor multi-tenancy scenarios, data isolation is the basic security requirement. Milvus implements"
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 4,
+          "chunk": 7,
+          "text": "several features to resolve your security concerns. For details, see Manage Resource Groups and\nClustering Compaction.\nAI Integrations\nEmbedding Model Integrations\nEmbedding Models convert unstructured data to their numeric representation in high-dimensional\ndata space so that you can store them in Milvus. Currently, PyMilvus, the Python SDK, integrates\nseveral embedding models so that you can quickly prepare your data into vector embeddings. For\ndetails, see Embedding Overview.\nReranking Model Integrations\nIn the realm of information retrieval and generative AI, a reranker is an essential tool that optimizes\nthe order of results from initial searches. PyMilvus also integrates several reranking models to optimize\nthe order of results returned from initial searches. For details, refer to Rerankers Overview.\nLangChain and other AI Tool Integrations\nIn the GenAI era, tools, such as LangChain, gain much attentions from application developers. As a core\ncomponent, Milvus usually serves as the vector stores in such tools. To learn how to integrate Milvus in\nyour favorite AI tools, refer to our Integrations and Tutorials.\nTools and Ecosystem\nAttu\nAttu is an all-in-one intuitive GUI that helps you manage Milvus and the data it stores. For details, refer\nto the Attu repository.\nBirdwatcher\nBirdwatcher is a debugging tool for Milvus. Using it to connect to etcd, you can check the state of your\nMilvus system or configure it on the fly. For details, refer to BirdWatcher."
+        }
+      ],
+      "agent": "naive"
+    },
+    {
+      "sample_id": "milvus-026",
+      "question": "Milvus 云服务每月的精确价格是多少？",
+      "answerable": false,
+      "tags": [
+        "无答案",
+        "价格"
+      ],
+      "retrieved_count": 5,
+      "retrieval_hit": null,
+      "retrieval_recall": null,
+      "retrieval_precision": null,
+      "reciprocal_rank": null,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": true,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_correct": null,
+      "refusal_correct": false,
+      "latency_ms": 6838.492,
+      "tokens": 1772,
+      "llm_calls": 1,
+      "error": null,
+      "answer": "The retrieved document chunks **do not contain any pricing information**—neither for Milvus Cloud (the managed cloud service) nor for any subscription tiers, usage-based fees, or monthly cost details.\n\nAll provided chunks describe:\n- Milvus’ architecture (cloud-native, stateless, decoupled components),  \n- Technical capabilities (vector search algorithms, hardware-aware optimizations, data types, SDKs),  \n- Deployment options (Milvus Lite, self-managed, and *mention* of a cloud service—but no specifics),  \n- Ecosystem integrations (Spark, VTS, migrations),  \n- Scalability and enterprise adoption — but **no pricing, plans, or billing models**.\n\n🔍 **Conclusion**:  \nThere is **no information in the given chunks about Milvus Cloud’s monthly price**, precise or otherwise. The official Milvus Cloud pricing is not disclosed in these materials and must be obtained from the [Zilliz Cloud pricing page](https://zilliz.com/pricing) or direct sales contact, as it typically depends on factors like:  \n- Vector count / storage volume  \n- QPS (queries per second) and concurrency  \n- Compute resources (CPU/GPU, memory)  \n- Region, retention period, and support level  \n\n✅ **Recommendation**: To obtain an exact monthly quote, users should visit [Zilliz Cloud Pricing](https://zilliz.com/pricing) or request a custom quote via their sales team.",
+      "reference_answer": "该资料没有给出精确价格。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft.\nUnstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 4,
+          "chunk": 9,
+          "text": "data sources, including Zilliz clusters, Elasticsearch, Postgres (PgVector), and another Milvus instance.\nFor details, refer to Migrations."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Advanced Search Algorithms: Milvus supports a wide range of in-memory and on-disk indexing/search\nalgorithms, including IVF, HNSW, DiskANN, and more, all of which have been deeply optimized. Compared\nto popular implementations like FAISS and HNSWLib, Milvus delivers 30%-70% better performance."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 3,
+          "text": "Search Engine in C++: Over 80% of a vector database's performance is determined by its search engine.\nMilvus uses C++ for this critical component due to the language's high performance, low-level optimization,\nand efficient resource management. Most importantly, Milvus integrates numerous hardware-aware code\noptimizations, ranging from assembly-level vectorization to multi-thread parallelization and scheduling, to\nfully leverage hardware capabilities.\nColumn-Oriented: Milvus is a column-oriented vector database system. The primary advantages come\nfrom the data access patterns. When performing queries, a column-oriented database reads only the\nspecific fields involved in the query, rather than entire rows, which greatly reduces the amount of data\naccessed. Additionally, operations on column-based data can be easily vectorized, allowing for operations to\nbe applied in the entire columns at once, further enhancing performance.\nWhat Makes Milvus so Scalable\nIn 2022, Milvus supported billion-scale vectors, and in 2023, it scaled up to tens of billions with consistent\nstability, powering large-scale scenarios for over 300 major enterprises, including Salesforce, PayPal,\nShopee, Airbnb, eBay, NVIDIA, IBM, AT&T, LINE, ROBLOX, Inflection, etc.\nMilvus's cloud-native and highly decoupled system architecture ensures that the system can continuously\nexpand as data grows:\nMilvus itself is fully stateless so it can be easily scaled with the help of Kubernetes or public clouds. In"
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 3,
+          "chunk": 5,
+          "text": "API and SDK\nRESTful API (official)\nPyMilvus (Python SDK) (official)\nGo SDK (official)\nJava SDK (official)\nNode.js (JavaScript) SDK (official)\nC# (contributed by Microsoft)\nAdvanced Data Types\nIn addition to primitive data types, Milvus supports various advanced data types and their respective\napplicable distance metrics.\nSparse Vectors\nBinary Vectors\nJSON Support\nArray Support\nDistance Metrics\nAcceleration\nSearch Algorithms\nMilvus supports a set of tunable indexing and search algorithms. For details, see In-memory Index, On-\ndisk Index, and GPU Index.\nPartitions and Partition Keys\nPartitions are sub-divisions of a Milvus collection. You can choose a scalar field as the partition key for\nbetter search performance. For details, see Manage Partitions and Use Partition Key.\nTunable Consistency Model\nConsistency ensures every Milvus node or replica has the same view of data when writing or reading\ndata at a given time. You can easily tune the consistency level when conducting ANN searches in\nMilvus. For details, see Consistency.\nHigh-throughput Data Import\nTo import a large volume of data into Milvus instead of inserting them one after another, consider\nusing our high-throughput data import tools. For details, refer to Prepare Source Data and Import\nData.\nMulti-tenancy Support\nMilvus has implemented a lot of features oriented to multi-tenancy scenarios, including Partition Key,\nClustering Key, and more. For details, see Multi-tenancy Strategies.\nSecurity and Authorization"
+        }
+      ],
+      "agent": "naive"
+    },
+    {
+      "sample_id": "milvus-001",
+      "question": "Milvus 是什么，主要用来处理哪类数据？",
+      "answerable": true,
+      "tags": [
+        "事实",
+        "定义"
+      ],
+      "retrieved_count": 5,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.4,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "latency_ms": 39962.783,
+      "tokens": 9355,
+      "llm_calls": 22,
+      "error": null,
+      "answer": "**Summary Report: What is Milvus and What Data Does It Handle?**\n\n**1. What is Milvus?**  \nMilvus is an **open-source, cloud-native vector database**, incubated under the LF AI & Data Foundation and licensed under Apache 2.0. Designed for high performance and massive scalability, it runs efficiently across heterogeneous environments—from local development (e.g., Jupyter notebooks via *Milvus Lite*) to large-scale Kubernetes clusters managing **tens of billions of vectors**. Its architecture is built by HPC and systems engineering experts from leading organizations (e.g., NVIDIA, Intel, Meta, Alibaba, Microsoft), emphasizing hardware-aware optimization and production-grade reliability.\n\n**2. Primary Data Type Handled:**  \nMilvus is purpose-built for **vector embeddings derived from unstructured data**, including:\n- Text (e.g., sentence or document embeddings from LLMs)\n- Images (e.g., feature vectors from CNNs or vision transformers)\n- Audio (e.g., spectrogram or embedding-based representations)  \nThese embeddings are high-dimensional numerical vectors that encode semantic meaning. Milvus stores, indexes, and retrieves them at scale—enabling fast similarity search where traditional relational or keyword-based databases fall short.\n\nBeyond vectors, Milvus natively supports **hybrid (multi-modal) and structured metadata**, including:\n- Scalar types (int, float, string, bool)\n- Advanced types: sparse vectors, binary vectors, JSON, arrays, and sets  \nThis allows users to model rich, real-world data (e.g., “an image vector + its timestamp + tags + resolution metadata”) in a single, unified collection—eliminating the need for multiple disparate databases.\n\n**3. Core Technical Differentiators:**  \n- **Hardware-Aware Performance**: Optimized for AVX-512, SIMD, GPUs, and NVMe SSDs; search engine written in C++ for low-latency, high-throughput operations.  \n- **Column-Oriented Storage**: Enables selective field access and efficient vectorization—critical for fast filtering + ANN hybrid queries.  \n- **Scalable, Decoupled Architecture**: Stateless design with independent, horizontally scalable components (Query Node, Data Node, Index Node), enabling elastic scaling *up* and *out*.  \n- **Rich Search Capabilities**: Supports ANN (approximate nearest neighbor), range search, filtered search, hybrid search across multiple vector fields, keyword (BM25) search, reranking, and exact ID-based fetch/query.  \n\n**4. Typical Use Cases Enabled:**  \n- Semantic search in RAG (Retrieval-Augmented Generation) systems  \n- Visual similarity search (e.g., reverse image search, product recommendation)  \n- Fraud detection (embedding transaction patterns)  \n- Multimodal recommendation engines (text + image + user behavior vectors)  \n- Large-scale AI observability (embedding model outputs/logs for drift/quality analysis)  \n\nIn essence, **Milvus is the foundational data infrastructure for AI-native applications that rely on similarity-driven operations over high-dimensional embeddings—and it uniquely bridges the gap between unstructured data semantics and scalable, production-ready analytics.**",
+      "reference_answer": "Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft.\nUnstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Advanced Search Algorithms: Milvus supports a wide range of in-memory and on-disk indexing/search\nalgorithms, including IVF, HNSW, DiskANN, and more, all of which have been deeply optimized. Compared\nto popular implementations like FAISS and HNSWLib, Milvus delivers 30%-70% better performance."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 3,
+          "text": "Search Engine in C++: Over 80% of a vector database's performance is determined by its search engine.\nMilvus uses C++ for this critical component due to the language's high performance, low-level optimization,\nand efficient resource management. Most importantly, Milvus integrates numerous hardware-aware code\noptimizations, ranging from assembly-level vectorization to multi-thread parallelization and scheduling, to\nfully leverage hardware capabilities.\nColumn-Oriented: Milvus is a column-oriented vector database system. The primary advantages come\nfrom the data access patterns. When performing queries, a column-oriented database reads only the\nspecific fields involved in the query, rather than entire rows, which greatly reduces the amount of data\naccessed. Additionally, operations on column-based data can be easily vectorized, allowing for operations to\nbe applied in the entire columns at once, further enhancing performance.\nWhat Makes Milvus so Scalable\nIn 2022, Milvus supported billion-scale vectors, and in 2023, it scaled up to tens of billions with consistent\nstability, powering large-scale scenarios for over 300 major enterprises, including Salesforce, PayPal,\nShopee, Airbnb, eBay, NVIDIA, IBM, AT&T, LINE, ROBLOX, Inflection, etc.\nMilvus's cloud-native and highly decoupled system architecture ensures that the system can continuously\nexpand as data grows:\nMilvus itself is fully stateless so it can be easily scaled with the help of Kubernetes or public clouds. In"
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 4,
+          "text": "addition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency.\nTypes of Searches Supported by Milvus\nMilvus supports various types of search functions to meet the demands of different use cases:\nANN Search: Finds the top K vectors closest to your query vector.\nFiltering Search: Performs ANN search under specified filtering conditions.\nRange Search: Finds vectors within a specified radius from your query vector.\nHybrid Search: Conducts ANN search based on multiple vector fields.\nKeyword Search: Keyword search based on BM25.\nReranking: Adjusts the order of search results based on additional criteria or a secondary algorithm,\nrefining the initial ANN search results.\nFetch: Retrieves data by their primary keys.\nQuery: Retrieves data using specific expressions.\nComprehensive Feature Set\nIn addition to the key search features mentioned above, Milvus also provides a set of features implemented\naround ANN searches so that you can fully utilize its capabilities."
+        },
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 3,
+          "chunk": 5,
+          "text": "API and SDK\nRESTful API (official)\nPyMilvus (Python SDK) (official)\nGo SDK (official)\nJava SDK (official)\nNode.js (JavaScript) SDK (official)\nC# (contributed by Microsoft)\nAdvanced Data Types\nIn addition to primitive data types, Milvus supports various advanced data types and their respective\napplicable distance metrics.\nSparse Vectors\nBinary Vectors\nJSON Support\nArray Support\nDistance Metrics\nAcceleration\nSearch Algorithms\nMilvus supports a set of tunable indexing and search algorithms. For details, see In-memory Index, On-\ndisk Index, and GPU Index.\nPartitions and Partition Keys\nPartitions are sub-divisions of a Milvus collection. You can choose a scalar field as the partition key for\nbetter search performance. For details, see Manage Partitions and Use Partition Key.\nTunable Consistency Model\nConsistency ensures every Milvus node or replica has the same view of data when writing or reading\ndata at a given time. You can easily tune the consistency level when conducting ANN searches in\nMilvus. For details, see Consistency.\nHigh-throughput Data Import\nTo import a large volume of data into Milvus instead of inserting them one after another, consider\nusing our high-throughput data import tools. For details, refer to Prepare Source Data and Import\nData.\nMulti-tenancy Support\nMilvus has implemented a lot of features oriented to multi-tenancy scenarios, including Partition Key,\nClustering Key, and more. For details, see Multi-tenancy Strategies.\nSecurity and Authorization"
+        }
+      ],
+      "agent": "deep_search"
+    },
+    {
+      "sample_id": "milvus-020",
+      "question": "ANN、标量过滤、范围搜索和混合搜索的用途有何区别？",
+      "answerable": true,
+      "tags": [
+        "解释",
+        "多跳",
+        "检索"
+      ],
+      "retrieved_count": 1,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.2,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.75,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "latency_ms": 46188.531,
+      "tokens": 9149,
+      "llm_calls": 22,
+      "error": null,
+      "answer": "根据提供的文档片段（Milvus官方能力说明），ANN、标量过滤、范围搜索和混合搜索在向量数据库（如Milvus）中具有明确区分、互补且层级递进的用途，具体区别总结如下：\n\n1. **ANN（近似最近邻）搜索**：  \n   - **核心用途**：高效检索与查询向量**语义最相似**的 Top-K 向量（即高维空间中距离最近的K个点），是向量检索的**基础能力**。  \n   - **特点**：面向**无结构化语义匹配**（如图像特征、文本嵌入），牺牲少量精度换取毫秒级大规模（亿级）向量召回能力；不涉及属性约束或距离阈值控制。  \n   - *示例场景*：在商品向量库中“找与这张鞋图最相似的10款鞋”。\n\n2. **标量过滤（Filtering Search）**：  \n   - **核心用途**：在 ANN 检索前或后，对结果施加**结构化属性条件约束**（如 `price < 100 AND category = 'sneaker' AND publish_date > '2024-01-01'`），实现“**语义相似 + 属性合规**”的精准筛选。  \n   - **特点**：依赖向量数据库支持的标量字段（如INT/STRING/BOOL/TIMESTAMP）和表达式引擎；本质是**对ANN结果集的逻辑裁剪**，提升业务相关性与合规性。  \n   - *示例场景*：在“相似鞋款”中仅保留价格低于¥200、库存大于0、且上架时间在30天内的结果。\n\n3. **范围搜索（Range Search）**：  \n   - **核心用途**：以查询向量为中心，**按精确距离阈值（radius）召回所有落在该球形/超球形邻域内的向量**（数量不固定，可能为0、1或成百上千），强调**距离可控性与完整性**。  \n   - **特点**：提供**确定性距离边界**（而非Top-K排名），适用于需保证“相似度不低于某阈值”的场景；对性能敏感（半径过大易退化为全表扫描）。  \n   - *示例场景*：查找“与用户历史点击向量余弦相似度 ≥ 0.85 的所有商品”，确保不遗漏任何达标项。\n\n4. **混合搜索（Hybrid Search）**：  \n   - **核心用途**：**跨多个向量字段并行执行ANN检索，并融合多路结果**（如加权打分、重排序），解决单一向量表征不足问题。  \n   - **特点**：非简单组合，而是**多模态/多视角向量协同**（如：图文双塔模型生成的`image_emb` + `text_emb`），通过统一查询接口联合优化召回质量；常与标量过滤、重排序（Reranking）级联使用。  \n   - *示例场景*：电商搜索中，同时基于商品主图向量、标题BERT向量、用户评论摘要向量进行联合ANN检索，再按销量、评分等标量字段过滤与重排。\n\n✅ **关键区别归纳**：  \n| 维度         | ANN              | 标量过滤               | 范围搜索             | 混合搜索                 |  \n|--------------|------------------|------------------------|----------------------|--------------------------|  \n| **目标**     | Top-K 最相似项   | 符合属性条件的相似项   | 距离≤阈值的所有项    | 多向量源联合最优召回     |  \n| **约束类型** | 无（纯向量空间） | 结构化属性（SQL-like） | 数学距离（L2/Cosine）| 多向量字段+融合策略      |  \n| **结果特性** | 固定数量（K）    | 数量可变（受过滤影响） | 数量可变（受半径影响）| 多源融合后重排序结果     |  \n| **技术定位** | 检索基座         | 业务逻辑层过滤器       | 精确距离控制工具     | 多模态/高阶语义增强机制  |  \n\n> 注：文档明确指出，Milvus将四者设计为正交能力——ANN是底座，标量过滤与范围搜索是其上的两种**约束增强模式**，而混合搜索则是**横向扩展ANN能力维度**的高级范式，三者可组合（如“带标量过滤的混合范围搜索”），共同构成生产级向量检索的完整能力栈。",
+      "reference_answer": "ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 4,
+          "text": "addition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency.\nTypes of Searches Supported by Milvus\nMilvus supports various types of search functions to meet the demands of different use cases:\nANN Search: Finds the top K vectors closest to your query vector.\nFiltering Search: Performs ANN search under specified filtering conditions.\nRange Search: Finds vectors within a specified radius from your query vector.\nHybrid Search: Conducts ANN search based on multiple vector fields.\nKeyword Search: Keyword search based on BM25.\nReranking: Adjusts the order of search results based on additional criteria or a secondary algorithm,\nrefining the initial ANN search results.\nFetch: Retrieves data by their primary keys.\nQuery: Retrieves data using specific expressions.\nComprehensive Feature Set\nIn addition to the key search features mentioned above, Milvus also provides a set of features implemented\naround ANN searches so that you can fully utilize its capabilities."
+        }
+      ],
+      "agent": "deep_search"
+    },
+    {
+      "sample_id": "milvus-026",
+      "question": "Milvus 云服务每月的精确价格是多少？",
+      "answerable": false,
+      "tags": [
+        "无答案",
+        "价格"
+      ],
+      "retrieved_count": 0,
+      "retrieval_hit": null,
+      "retrieval_recall": null,
+      "retrieval_precision": null,
+      "reciprocal_rank": null,
+      "empty_result": true,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": false,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_correct": null,
+      "refusal_correct": true,
+      "latency_ms": 23093.728,
+      "tokens": 8307,
+      "llm_calls": 21,
+      "error": null,
+      "answer": "No relevant information found for query 'Milvus 云服务每月的精确价格是多少？'.",
+      "reference_answer": "该资料没有给出精确价格。",
+      "retrieved": [],
+      "agent": "deep_search"
+    },
+    {
+      "sample_id": "milvus-001",
+      "question": "Milvus 是什么，主要用来处理哪类数据？",
+      "answerable": true,
+      "tags": [
+        "事实",
+        "定义"
+      ],
+      "retrieved_count": 1,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.2,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.6666666666666666,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "latency_ms": 5155.034,
+      "tokens": 3563,
+      "llm_calls": 4,
+      "error": null,
+      "answer": "Milvus 是一个高性能、高可扩展的向量数据库，主要用于处理文本、图像、音频等非结构化数据。",
+      "reference_answer": "Milvus 是面向非结构化数据及其向量嵌入的开源向量数据库。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft.\nUnstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems."
+        }
+      ],
+      "agent": "chain_of_rag"
+    },
+    {
+      "sample_id": "milvus-020",
+      "question": "ANN、标量过滤、范围搜索和混合搜索的用途有何区别？",
+      "answerable": true,
+      "tags": [
+        "解释",
+        "多跳",
+        "检索"
+      ],
+      "retrieved_count": 1,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.2,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.75,
+      "grounded_criteria_coverage": 0.75,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "latency_ms": 9097.831,
+      "tokens": 4034,
+      "llm_calls": 4,
+      "error": null,
+      "answer": "ANN Search用于查找与查询向量最相似的top K个向量；标量过滤（Filtering Search）用于在满足指定标量条件的数据子集中执行ANN搜索；范围搜索（Range Search）用于查找距离查询向量在给定半径内的所有向量；混合搜索（Hybrid Search）用于基于多个向量字段联合进行ANN搜索。",
+      "reference_answer": "ANN 找近邻，过滤按标量条件约束，范围搜索按距离阈值取结果，混合搜索组合多路检索。",
+      "retrieved": [
+        {
+          "document": "doc_d8555f3a34b741d788fe88793d489fce.pdf",
+          "page": 2,
+          "chunk": 4,
+          "text": "addition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency.\nTypes of Searches Supported by Milvus\nMilvus supports various types of search functions to meet the demands of different use cases:\nANN Search: Finds the top K vectors closest to your query vector.\nFiltering Search: Performs ANN search under specified filtering conditions.\nRange Search: Finds vectors within a specified radius from your query vector.\nHybrid Search: Conducts ANN search based on multiple vector fields.\nKeyword Search: Keyword search based on BM25.\nReranking: Adjusts the order of search results based on additional criteria or a secondary algorithm,\nrefining the initial ANN search results.\nFetch: Retrieves data by their primary keys.\nQuery: Retrieves data using specific expressions.\nComprehensive Feature Set\nIn addition to the key search features mentioned above, Milvus also provides a set of features implemented\naround ANN searches so that you can fully utilize its capabilities."
+        }
+      ],
+      "agent": "chain_of_rag"
+    },
+    {
+      "sample_id": "milvus-026",
+      "question": "Milvus 云服务每月的精确价格是多少？",
+      "answerable": false,
+      "tags": [
+        "无答案",
+        "价格"
+      ],
+      "retrieved_count": 0,
+      "retrieval_hit": null,
+      "retrieval_recall": null,
+      "retrieval_precision": null,
+      "reciprocal_rank": null,
+      "empty_result": true,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": false,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_correct": null,
+      "refusal_correct": true,
+      "latency_ms": 4804.247,
+      "tokens": 1795,
+      "llm_calls": 3,
+      "error": null,
+      "answer": "No relevant information found",
+      "reference_answer": "该资料没有给出精确价格。",
+      "retrieved": [],
+      "agent": "chain_of_rag"
+    }
+  ],
+  "metric_notes": {
+    "retrieval_precision_at_k": "相关结果数除以固定 K；返回不足 K 条时，缺失位置按不相关计。",
+    "answer_criteria_coverage": "标准答案要点在生成答案中的确定性字符串覆盖率。",
+    "grounded_criteria_coverage": "标准答案要点在召回文本中的覆盖率，是证据充分度代理指标，不等同于 LLM 忠实度裁判。",
+    "evidence_source_accuracy": "返回来源中至少一个命中标注文档与页码的比例。"
+  }
+}

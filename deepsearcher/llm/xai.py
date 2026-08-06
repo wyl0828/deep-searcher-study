@@ -23,7 +23,7 @@ class XAI(BaseLLM):
         Initialize an X.AI language model client.
 
         Args:
-            model (str, optional): The model identifier to use. Defaults to "grok-2-latest".
+            model (str, optional): The model identifier to use. Defaults to "grok-4".
             **kwargs: Additional keyword arguments to pass to the OpenAI client.
                 - api_key: X.AI API key. If not provided, uses XAI_API_KEY environment variable.
                 - base_url: X.AI API base URL. If not provided, defaults to "https://api.x.ai/v1".

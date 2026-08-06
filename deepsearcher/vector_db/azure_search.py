@@ -1,10 +1,13 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
+from deepsearcher.utils import log
 from deepsearcher.vector_db.base import BaseVectorDB, CollectionInfo, RetrievalResult
 
 
 class AzureSearch(BaseVectorDB):
+    default_metric_type = "AZURE_RELEVANCE"
+
     def __init__(self, endpoint, index_name, api_key, vector_field):
         super().__init__(default_collection=index_name)
         from azure.core.credentials import AzureKeyCredential
@@ -60,8 +63,8 @@ class AzureSearch(BaseVectorDB):
 
             # Create the index
             index_client.create_index(index)
-        except Exception as e:
-            print(f"Error creating index: {str(e)}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("azure_search_create_index", exc))
 
     def insert_data(self, documents: List[dict]):
         """Batch insert documents with vector embeddings"""
@@ -102,21 +105,19 @@ class AzureSearch(BaseVectorDB):
 
         # Validate that vector is not empty
         if not vector or len(vector) == 0:
-            print("Error: Empty vector provided for search. Vector must have 1536 dimensions.")
+            log.warning("azure_search_vector_empty")
             return []
-
-        # Debug vector and field info
-        print(f"Vector length for search: {len(vector)}")
-        print(f"Vector field name: {self.vector_field}")
 
         # Ensure vector has the right dimensions
         if len(vector) != 1536:
-            print(f"Warning: Vector length {len(vector)} does not match expected 1536 dimensions")
+            log.warning(
+                f"azure_search_vector_dimension_mismatch actual={len(vector)} expected=1536"
+            )
             return []
 
         # Execute search with direct parameters - simpler approach
         try:
-            print(f"Executing search with top_k={top_k}")
+            log.debug(f"azure_search_started top_k={top_k}")
 
             # Directly use the search_by_vector method for compatibility
             body = {
@@ -133,9 +134,6 @@ class AzureSearch(BaseVectorDB):
                 ],
             }
 
-            # Print the search request body for debugging
-            print(f"Search request body: {body}")
-
             # Use the REST API directly
             result = search_client._client.documents.search_post(
                 search_request=body, headers={"api-key": self.api_key}
@@ -151,24 +149,28 @@ class AzureSearch(BaseVectorDB):
                         doc_id = doc_dict.get("id", "")
                         score = doc_dict.get("@search.score", 0.0)
 
-                        result = RetrievalResult(
+                        result = RetrievalResult.from_metric_value(
                             embedding=[],  # We don't get the vectors back
                             text=content,
                             reference=doc_id,
                             metadata={"source": doc_id},
-                            score=score,
+                            metric_type=self.default_metric_type,
+                            value=score,
+                            score_kind="rank_score",
                         )
                         search_results.append(result)
-                    except Exception as e:
-                        print(f"Error processing result: {str(e)}")
+                    except Exception as exc:
+                        log.error(
+                            log.safe_exception_message("azure_search_result_mapping", exc)
+                        )
 
             return search_results
-        except Exception as e:
-            print(f"Search error: {str(e)}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("azure_search_primary", exc))
 
             # Try another approach if the first one fails
             try:
-                print("Trying alternative search method...")
+                log.debug("azure_search_fallback_started")
                 results = search_client.search(search_text="*", select=["id", "content"], top=top_k)
 
                 # Process results
@@ -185,20 +187,24 @@ class AzureSearch(BaseVectorDB):
                             doc_id = getattr(doc, "id", "")
                             score = getattr(doc, "@search.score", 0.0)
 
-                        result = RetrievalResult(
+                        result = RetrievalResult.from_metric_value(
                             embedding=[],
                             text=content,
                             reference=doc_id,
                             metadata={"source": doc_id},
-                            score=score,
+                            metric_type=self.default_metric_type,
+                            value=score,
+                            score_kind="rank_score",
                         )
                         alt_results.append(result)
-                    except Exception as e:
-                        print(f"Error processing result: {str(e)}")
+                    except Exception as exc:
+                        log.error(
+                            log.safe_exception_message("azure_search_fallback_mapping", exc)
+                        )
 
                 return alt_results
-            except Exception as e:
-                print(f"Alternative search failed: {str(e)}")
+            except Exception as exc:
+                log.error(log.safe_exception_message("azure_search_fallback", exc))
                 return []
 
     def clear_db(self):
@@ -230,8 +236,8 @@ class AzureSearch(BaseVectorDB):
                 endpoint=self.endpoint, credential=AzureKeyCredential(self.api_key)
             )
             return [index.name for index in index_client.list_indexes()]
-        except Exception as e:
-            print(f"Failed to list indices: {str(e)}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("azure_search_list_indices", exc))
             return []
 
     def get_collection_info(self, name: str) -> Dict[str, Any]:
@@ -274,6 +280,6 @@ class AzureSearch(BaseVectorDB):
                 )
             return collections
 
-        except Exception as e:
-            print(f"Collection listing failed: {str(e)}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("azure_search_list_collections", exc))
             return []

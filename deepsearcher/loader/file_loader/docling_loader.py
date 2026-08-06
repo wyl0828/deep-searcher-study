@@ -61,9 +61,9 @@ class DoclingLoader(BaseLoader):
                 metadata = {"reference": file_path, "text": chunk.text}
                 documents.append(Document(page_content=chunk.text, metadata=metadata))
             return documents
-        except Exception as e:
-            log.color_print(f"Error processing file {file_path}: {str(e)}")
-            raise IOError(f"Failed to process file {file_path}: {str(e)}")
+        except Exception as exc:
+            log.error(log.safe_exception_message("docling_file_conversion", exc))
+            raise IOError("Docling file conversion failed.") from exc
 
     def load_directory(self, directory: str) -> List[Document]:
         """
