@@ -212,3 +212,12 @@ pyrightconfig.json
 /.playwright-cli/
 **/.playwright-cli/
 /tmp/
+/output/playwright/e2e-report/
+/output/playwright/e2e-results/
+
+# Resumable evaluation working files (final report.json/details.csv stay versioned)
+/evaluation/results/**/checkpoint.jsonl
+/evaluation/results/**/checkpoint.meta.json
+/evaluation/results/**/checkpoint.history.jsonl
+/evaluation/results/**/run.stdout.log
+/evaluation/results/**/run.stderr.log

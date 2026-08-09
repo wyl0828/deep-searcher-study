@@ -3,13 +3,27 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 
 class DatasetValidationError(ValueError):
     """Raised when an evaluation dataset violates the public schema."""
+
+
+@dataclass(frozen=True)
+class EvalSource:
+    document: str
+    path: str
+    sha256: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "document": self.document,
+            "path": self.path,
+            "sha256": self.sha256,
+        }
 
 
 @dataclass(frozen=True)
@@ -27,6 +41,10 @@ class EvalSample:
     evidence: tuple[EvidenceTarget, ...]
     criteria: tuple[tuple[str, ...], ...]
     tags: tuple[str, ...]
+    difficulty: str = "unspecified"
+    history: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    context_dependent: bool = False
+    standalone_question: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +54,7 @@ class EvalDataset:
     version: str
     description: str
     source: dict[str, Any]
+    sources: tuple[EvalSource, ...]
     samples: tuple[EvalSample, ...]
     sha256: str
     path: Path
@@ -47,6 +66,19 @@ def _require_text(value: Any, field: str) -> str:
     return value.strip()
 
 
+def _load_source(value: Any, field: str) -> EvalSource:
+    if not isinstance(value, dict):
+        raise DatasetValidationError(f"{field} must be an object")
+    sha256 = _require_text(value.get("sha256"), f"{field}.sha256")
+    if re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
+        raise DatasetValidationError(f"{field}.sha256 must be a lowercase SHA-256")
+    return EvalSource(
+        document=_require_text(value.get("document"), f"{field}.document"),
+        path=_require_text(value.get("path"), f"{field}.path"),
+        sha256=sha256,
+    )
+
+
 def load_dataset(path: str | Path) -> EvalDataset:
     dataset_path = Path(path).resolve()
     raw_bytes = dataset_path.read_bytes()
@@ -56,15 +88,26 @@ def load_dataset(path: str | Path) -> EvalDataset:
         raise DatasetValidationError(f"invalid JSON: {exc}") from exc
     if not isinstance(raw, dict):
         raise DatasetValidationError("dataset root must be an object")
-    if raw.get("schema_version") != 1:
-        raise DatasetValidationError("schema_version must be 1")
+    schema_version = raw.get("schema_version")
+    if schema_version not in {1, 2}:
+        raise DatasetValidationError("schema_version must be 1 or 2")
 
-    source = raw.get("source")
-    if not isinstance(source, dict):
-        raise DatasetValidationError("source must be an object")
-    source_sha = _require_text(source.get("sha256"), "source.sha256")
-    if re.fullmatch(r"[0-9a-f]{64}", source_sha) is None:
-        raise DatasetValidationError("source.sha256 must be a lowercase SHA-256")
+    if schema_version == 1:
+        sources = (_load_source(raw.get("source"), "source"),)
+    else:
+        raw_sources = raw.get("sources")
+        if not isinstance(raw_sources, list) or len(raw_sources) < 2:
+            raise DatasetValidationError("sources must contain at least two source objects")
+        sources = tuple(
+            _load_source(item, f"sources[{index}]")
+            for index, item in enumerate(raw_sources)
+        )
+    source_documents = [source.document for source in sources]
+    if len(set(source_documents)) != len(source_documents):
+        raise DatasetValidationError("source documents must be unique")
+    source_paths = [source.path for source in sources]
+    if len(set(source_paths)) != len(source_paths):
+        raise DatasetValidationError("source paths must be unique")
 
     raw_samples = raw.get("samples")
     if not isinstance(raw_samples, list) or not raw_samples:
@@ -104,6 +147,14 @@ def load_dataset(path: str | Path) -> EvalDataset:
                     page=page,
                 )
             )
+        if schema_version == 2:
+            unknown_documents = sorted(
+                {target.document for target in evidence} - set(source_documents)
+            )
+            if unknown_documents:
+                raise DatasetValidationError(
+                    f"{prefix}.evidence references unknown documents: {unknown_documents}"
+                )
 
         criteria: list[tuple[str, ...]] = []
         raw_criteria = item.get("criteria", [])
@@ -135,6 +186,43 @@ def load_dataset(path: str | Path) -> EvalDataset:
         tags = item.get("tags", [])
         if not isinstance(tags, list):
             raise DatasetValidationError(f"{prefix}.tags must be an array")
+        difficulty = str(item.get("difficulty") or "unspecified").strip().lower()
+        if difficulty not in {"easy", "medium", "hard", "unspecified"}:
+            raise DatasetValidationError(
+                f"{prefix}.difficulty must be easy, medium, hard or unspecified"
+            )
+        history: list[tuple[str, str]] = []
+        raw_history = item.get("history", [])
+        if not isinstance(raw_history, list):
+            raise DatasetValidationError(f"{prefix}.history must be an array")
+        for turn_index, turn in enumerate(raw_history):
+            if not isinstance(turn, dict) or turn.get("role") not in {"user", "assistant"}:
+                raise DatasetValidationError(
+                    f"{prefix}.history[{turn_index}] must have user or assistant role"
+                )
+            history.append(
+                (
+                    str(turn["role"]),
+                    _require_text(turn.get("content"), f"{prefix}.history[{turn_index}].content"),
+                )
+            )
+        context_dependent = item.get("context_dependent", False)
+        if not isinstance(context_dependent, bool):
+            raise DatasetValidationError(f"{prefix}.context_dependent must be boolean")
+        standalone_question = item.get("standalone_question")
+        if history:
+            if standalone_question is None:
+                raise DatasetValidationError(
+                    f"{prefix}.standalone_question is required when history is present"
+                )
+            standalone_question = _require_text(
+                standalone_question,
+                f"{prefix}.standalone_question",
+            )
+        elif context_dependent or standalone_question is not None:
+            raise DatasetValidationError(
+                f"{prefix} contextualization labels require conversation history"
+            )
         samples.append(
             EvalSample(
                 id=sample_id,
@@ -146,15 +234,20 @@ def load_dataset(path: str | Path) -> EvalDataset:
                 evidence=tuple(evidence),
                 criteria=tuple(criteria),
                 tags=tuple(_require_text(tag, f"{prefix}.tags item") for tag in tags),
+                difficulty=difficulty,
+                history=tuple(history),
+                context_dependent=context_dependent,
+                standalone_question=standalone_question,
             )
         )
 
     return EvalDataset(
-        schema_version=1,
+        schema_version=schema_version,
         dataset_id=_require_text(raw.get("dataset_id"), "dataset_id"),
         version=_require_text(raw.get("version"), "version"),
         description=_require_text(raw.get("description"), "description"),
-        source=source,
+        source=sources[0].as_dict(),
+        sources=sources,
         samples=tuple(samples),
         sha256=hashlib.sha256(raw_bytes).hexdigest(),
         path=dataset_path,

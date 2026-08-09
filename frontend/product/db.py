@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, event, inspect, select, text
@@ -198,8 +198,72 @@ def ensure_ingest_lifecycle_columns(engine: Engine) -> None:
             )
     with engine.begin() as connection:
         connection.execute(
-            text("UPDATE ingest_jobs SET available_at = CURRENT_TIMESTAMP WHERE available_at IS NULL")
+            text(
+                "UPDATE ingest_jobs SET available_at = CURRENT_TIMESTAMP WHERE available_at IS NULL"
+            )
         )
+
+
+def ensure_auth_ownership_schema(engine: Engine) -> None:
+    """Make existing local SQLite workspaces claimable by the first administrator."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+    from frontend.product.models import LEGACY_OWNER_ID
+
+    now = datetime.now(timezone.utc).isoformat()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT OR IGNORE INTO users "
+                "(id, username, display_name, password_hash, role, is_active, created_at, updated_at) "
+                "VALUES (:id, '__legacy__', '待接管的旧数据', 'disabled', "
+                "'system_pending', 0, :now, :now)"
+            ),
+            {"id": LEGACY_OWNER_ID, "now": now},
+        )
+        connection.execute(
+            text(
+                "UPDATE users SET role = 'system_pending' "
+                "WHERE id = :id AND role = 'admin' "
+                "AND NOT EXISTS (SELECT 1 FROM users WHERE id != :id)"
+            ),
+            {"id": LEGACY_OWNER_ID},
+        )
+    inspector = inspect(engine)
+    knowledge_base_columns = {column["name"] for column in inspector.get_columns("knowledge_bases")}
+    if "owner_id" not in knowledge_base_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE knowledge_bases ADD COLUMN owner_id VARCHAR(40)"))
+            connection.execute(
+                text("UPDATE knowledge_bases SET owner_id = :owner_id WHERE owner_id IS NULL"),
+                {"owner_id": LEGACY_OWNER_ID},
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_knowledge_bases_owner_id "
+                    "ON knowledge_bases (owner_id)"
+                )
+            )
+    conversation_columns = {
+        column["name"] for column in inspect(engine).get_columns("conversations")
+    }
+    if "owner_id" not in conversation_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE conversations ADD COLUMN owner_id VARCHAR(40)"))
+            connection.execute(
+                text(
+                    "UPDATE conversations SET owner_id = "
+                    "(SELECT owner_id FROM knowledge_bases "
+                    "WHERE knowledge_bases.id = conversations.knowledge_base_id) "
+                    "WHERE owner_id IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_conversations_owner_id "
+                    "ON conversations (owner_id)"
+                )
+            )
 
 
 def init_database() -> None:
@@ -210,6 +274,7 @@ def init_database() -> None:
     ensure_knowledge_base_index_columns(ENGINE)
     ensure_citation_locator_columns(ENGINE)
     ensure_ingest_lifecycle_columns(ENGINE)
+    ensure_auth_ownership_schema(ENGINE)
     from frontend.product.services.documents import (
         cleanup_orphaned_uploads,
         cleanup_stale_uploads,

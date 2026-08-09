@@ -1,8 +1,17 @@
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Literal, Optional, Union
 
 import numpy as np
-from pymilvus import AnnSearchRequest, DataType, Function, FunctionType, MilvusClient, RRFRanker
+from pymilvus import (
+    AnnSearchRequest,
+    DataType,
+    Function,
+    FunctionType,
+    MilvusClient,
+    RRFRanker,
+    WeightedRanker,
+)
 from pymilvus.exceptions import (
     CollectionNotExistException,
     ConnectError,
@@ -56,7 +65,9 @@ _INTERNAL_VERSION_PATTERN = re.compile(
 _MANIFEST_PROPERTY = "deepsearcher_collection_manifest"
 DEFAULT_RRF_K = 60
 RetrievalMode = Literal["auto", "dense", "bm25", "hybrid"]
+HybridRanker = Literal["rrf", "weighted", "weighted_rrf"]
 _RETRIEVAL_MODES = frozenset({"auto", "dense", "bm25", "hybrid"})
+_HYBRID_RANKERS = frozenset({"rrf", "weighted", "weighted_rrf"})
 
 
 def _normalize_retrieval_mode(value: str | None) -> RetrievalMode:
@@ -64,10 +75,76 @@ def _normalize_retrieval_mode(value: str | None) -> RetrievalMode:
     if normalized == "sparse":
         normalized = "bm25"
     if normalized not in _RETRIEVAL_MODES:
-        raise ValueError(
-            "retrieval_mode must be one of: auto, dense, bm25, hybrid"
-        )
+        raise ValueError("retrieval_mode must be one of: auto, dense, bm25, hybrid")
     return normalized
+
+
+def _normalize_hybrid_ranker(value: str | None) -> HybridRanker:
+    normalized = str(value or "rrf").strip().lower()
+    if normalized not in _HYBRID_RANKERS:
+        raise ValueError("hybrid_ranker must be one of: rrf, weighted, weighted_rrf")
+    return normalized
+
+
+def _hit_identity(hit: dict) -> tuple[object, ...]:
+    hit_id = hit.get("id")
+    if hit_id is not None:
+        return ("id", hit_id)
+    entity = hit.get("entity") or {}
+    metadata = entity.get("metadata") or {}
+    return (
+        "content",
+        entity.get("reference"),
+        metadata.get("document_id"),
+        metadata.get("page_number"),
+        metadata.get("chunk_index"),
+        entity.get("text"),
+    )
+
+
+def _weighted_rrf_hits(
+    sparse_hits: list[dict],
+    dense_hits: list[dict],
+    *,
+    sparse_weight: float,
+    dense_weight: float,
+    rrf_k: int,
+    dense_anchor_count: int,
+    limit: int,
+) -> list[dict]:
+    """Fuse two ranked hit lists while optionally preserving dense head anchors."""
+    scores: dict[tuple[object, ...], float] = {}
+    hits: dict[tuple[object, ...], dict] = {}
+    dense_ranks: dict[tuple[object, ...], int] = {}
+    sparse_ranks: dict[tuple[object, ...], int] = {}
+    for rank, hit in enumerate(dense_hits, start=1):
+        key = _hit_identity(hit)
+        hits.setdefault(key, hit)
+        dense_ranks.setdefault(key, rank)
+        scores[key] = scores.get(key, 0.0) + dense_weight / (rrf_k + rank)
+    for rank, hit in enumerate(sparse_hits, start=1):
+        key = _hit_identity(hit)
+        hits.setdefault(key, hit)
+        sparse_ranks.setdefault(key, rank)
+        scores[key] = scores.get(key, 0.0) + sparse_weight / (rrf_k + rank)
+
+    ranked = sorted(
+        hits,
+        key=lambda key: (
+            -scores[key],
+            dense_ranks.get(key, len(dense_hits) + 1),
+            sparse_ranks.get(key, len(sparse_hits) + 1),
+        ),
+    )
+    anchor_keys = list(dense_ranks)[: min(dense_anchor_count, limit)]
+    ordered = anchor_keys + [key for key in ranked if key not in set(anchor_keys)]
+    return [
+        {
+            **hits[key],
+            "distance": scores[key],
+        }
+        for key in ordered[:limit]
+    ]
 
 
 class Milvus(BaseVectorDB):
@@ -87,6 +164,11 @@ class Milvus(BaseVectorDB):
         db: str = "default",
         hybrid: bool = False,
         rrf_k: int = DEFAULT_RRF_K,
+        hybrid_ranker: str = "rrf",
+        hybrid_sparse_weight: float = 1.0,
+        hybrid_dense_weight: float = 1.0,
+        hybrid_candidate_multiplier: int = 1,
+        hybrid_dense_anchor_count: int = 0,
         **kwargs,
     ):
         """
@@ -101,6 +183,11 @@ class Milvus(BaseVectorDB):
             db (str, optional): Database name. Defaults to "default".
             hybrid (bool, optional): Whether to enable hybrid search. Defaults to False.
             rrf_k (int, optional): Reciprocal Rank Fusion constant. Defaults to 60.
+            hybrid_ranker: Fusion strategy: rrf, weighted or weighted_rrf.
+            hybrid_sparse_weight: Sparse contribution to weighted fusion.
+            hybrid_dense_weight: Dense contribution to weighted fusion.
+            hybrid_candidate_multiplier: Per-retriever candidates relative to top_k.
+            hybrid_dense_anchor_count: Dense head results preserved by weighted_rrf.
             **kwargs: Additional keyword arguments to pass to the MilvusClient.
         """
         super().__init__(default_collection)
@@ -113,6 +200,20 @@ class Milvus(BaseVectorDB):
         if isinstance(rrf_k, bool) or int(rrf_k) <= 0:
             raise ValueError("rrf_k must be a positive integer")
         self.rrf_k = int(rrf_k)
+        self.hybrid_ranker = _normalize_hybrid_ranker(hybrid_ranker)
+        if any(
+            isinstance(value, bool) or float(value) <= 0
+            for value in (hybrid_sparse_weight, hybrid_dense_weight)
+        ):
+            raise ValueError("hybrid fusion weights must be positive numbers")
+        if isinstance(hybrid_candidate_multiplier, bool) or int(hybrid_candidate_multiplier) <= 0:
+            raise ValueError("hybrid_candidate_multiplier must be a positive integer")
+        if isinstance(hybrid_dense_anchor_count, bool) or int(hybrid_dense_anchor_count) < 0:
+            raise ValueError("hybrid_dense_anchor_count must be a non-negative integer")
+        self.hybrid_sparse_weight = float(hybrid_sparse_weight)
+        self.hybrid_dense_weight = float(hybrid_dense_weight)
+        self.hybrid_candidate_multiplier = int(hybrid_candidate_multiplier)
+        self.hybrid_dense_anchor_count = int(hybrid_dense_anchor_count)
 
     @staticmethod
     def _map_error(
@@ -591,8 +692,7 @@ class Milvus(BaseVectorDB):
             retrieval_mode = "hybrid" if self.hybrid and query_text else "dense"
         if retrieval_mode in {"bm25", "hybrid"} and not self.hybrid:
             raise ValueError(
-                "bm25 and hybrid retrieval require a Milvus collection created "
-                "with hybrid=True"
+                "bm25 and hybrid retrieval require a Milvus collection created with hybrid=True"
             )
         if retrieval_mode in {"bm25", "hybrid"} and not query_text:
             raise ValueError(f"{retrieval_mode} retrieval requires query_text")
@@ -606,24 +706,69 @@ class Milvus(BaseVectorDB):
             if not self._collection_exists(collection, operation="search"):
                 raise CollectionNotFound(operation="search", collection=collection)
             if retrieval_mode == "hybrid":
+                hybrid_ranker = _normalize_hybrid_ranker(getattr(self, "hybrid_ranker", "rrf"))
+                candidate_limit = top_k * int(getattr(self, "hybrid_candidate_multiplier", 1))
+                sparse_weight = float(getattr(self, "hybrid_sparse_weight", 1.0))
+                dense_weight = float(getattr(self, "hybrid_dense_weight", 1.0))
                 sparse_search_params = {"metric_type": "BM25"}
                 sparse_request = AnnSearchRequest(
-                    [query_text], "sparse_vector", sparse_search_params, limit=top_k
+                    [query_text], "sparse_vector", sparse_search_params, limit=candidate_limit
                 )
 
                 dense_search_params = {"metric_type": self.metric_type}
                 dense_request = AnnSearchRequest(
-                    [vector], "embedding", dense_search_params, limit=top_k
+                    [vector], "embedding", dense_search_params, limit=candidate_limit
                 )
-
-                search_results = self.client.hybrid_search(
-                    collection_name=collection,
-                    reqs=[sparse_request, dense_request],
-                    ranker=RRFRanker(self.rrf_k),
-                    limit=top_k,
-                    output_fields=["embedding", "text", "reference", "metadata"],
-                    timeout=10,
-                )
+                output_fields = ["embedding", "text", "reference", "metadata"]
+                if hybrid_ranker == "weighted_rrf":
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        sparse_future = executor.submit(
+                            self.client.search,
+                            collection_name=collection,
+                            data=[query_text],
+                            anns_field="sparse_vector",
+                            search_params=sparse_search_params,
+                            limit=candidate_limit,
+                            output_fields=output_fields,
+                            timeout=10,
+                        )
+                        dense_future = executor.submit(
+                            self.client.search,
+                            collection_name=collection,
+                            data=[vector],
+                            anns_field="embedding",
+                            search_params=dense_search_params,
+                            limit=candidate_limit,
+                            output_fields=output_fields,
+                            timeout=10,
+                        )
+                        sparse_results = sparse_future.result()
+                        dense_results = dense_future.result()
+                    search_results = [
+                        _weighted_rrf_hits(
+                            list(sparse_results[0]),
+                            list(dense_results[0]),
+                            sparse_weight=sparse_weight,
+                            dense_weight=dense_weight,
+                            rrf_k=self.rrf_k,
+                            dense_anchor_count=int(getattr(self, "hybrid_dense_anchor_count", 0)),
+                            limit=top_k,
+                        )
+                    ]
+                else:
+                    ranker = (
+                        WeightedRanker(sparse_weight, dense_weight)
+                        if hybrid_ranker == "weighted"
+                        else RRFRanker(self.rrf_k)
+                    )
+                    search_results = self.client.hybrid_search(
+                        collection_name=collection,
+                        reqs=[sparse_request, dense_request],
+                        ranker=ranker,
+                        limit=top_k,
+                        output_fields=output_fields,
+                        timeout=10,
+                    )
             elif retrieval_mode == "bm25":
                 search_results = self.client.search(
                     collection_name=collection,
@@ -645,7 +790,13 @@ class Milvus(BaseVectorDB):
                 )
 
             result_metric = (
-                "RRF"
+                (
+                    "WEIGHTED_RRF"
+                    if getattr(self, "hybrid_ranker", "rrf") == "weighted_rrf"
+                    else "WEIGHTED"
+                    if getattr(self, "hybrid_ranker", "rrf") == "weighted"
+                    else "RRF"
+                )
                 if retrieval_mode == "hybrid"
                 else "BM25"
                 if retrieval_mode == "bm25"
@@ -833,8 +984,12 @@ class Milvus(BaseVectorDB):
                 "capabilities": capabilities,
                 "configured_default": "hybrid" if self.hybrid else "dense",
                 "fusion": {
-                    "algorithm": "RRF",
+                    "algorithm": getattr(self, "hybrid_ranker", "rrf").upper(),
                     "k": self.rrf_k,
+                    "dense_weight": getattr(self, "hybrid_dense_weight", 1.0),
+                    "sparse_weight": getattr(self, "hybrid_sparse_weight", 1.0),
+                    "candidate_multiplier": getattr(self, "hybrid_candidate_multiplier", 1),
+                    "dense_anchor_count": getattr(self, "hybrid_dense_anchor_count", 0),
                 },
             }
         except VectorDBError:

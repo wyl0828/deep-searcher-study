@@ -12,10 +12,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
+    select,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from frontend.product.db import Base
+
+LEGACY_OWNER_ID = "usr_legacy_owner"
 
 
 def utcnow() -> datetime:
@@ -35,17 +39,58 @@ class TimestampMixin:
     )
 
 
+class User(TimestampMixin, Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("usr"))
+    username: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), default="member", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    sessions: Mapped[list["UserSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship(back_populates="owner")
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner")
+
+
+class UserSession(TimestampMixin, Base):
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("ses"))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
 class KnowledgeBase(TimestampMixin, Base):
     __tablename__ = "knowledge_bases"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_knowledge_bases_owner_name"),)
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("kb"))
-    name: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+        default=LEGACY_OWNER_ID,
+    )
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str] = mapped_column(String(200), default="", nullable=False)
     collection_name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     index_manifest: Mapped[str | None] = mapped_column(Text)
     index_previous_collection: Mapped[str | None] = mapped_column(String(64))
     is_current: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    owner: Mapped[User] = relationship(back_populates="knowledge_bases")
     documents: Mapped[list["Document"]] = relationship(
         back_populates="knowledge_base", cascade="all, delete-orphan"
     )
@@ -124,6 +169,11 @@ class Conversation(TimestampMixin, Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("conv"))
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
     knowledge_base_id: Mapped[str] = mapped_column(
         ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
         index=True,
@@ -131,6 +181,7 @@ class Conversation(TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(80), default="新对话", nullable=False)
 
+    owner: Mapped[User] = relationship(back_populates="conversations")
     knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
@@ -159,6 +210,44 @@ class Message(TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="Citation.index",
     )
+    claims: Mapped[list["AnswerClaim"]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+        order_by="AnswerClaim.index",
+    )
+
+
+@event.listens_for(Conversation, "before_insert")
+def inherit_conversation_owner(_mapper, connection, conversation: Conversation) -> None:
+    if conversation.owner_id:
+        return
+    knowledge_base = conversation.knowledge_base
+    owner_id = knowledge_base.owner_id if knowledge_base is not None else None
+    if owner_id is None and conversation.knowledge_base_id:
+        owner_id = connection.execute(
+            select(KnowledgeBase.owner_id).where(KnowledgeBase.id == conversation.knowledge_base_id)
+        ).scalar_one_or_none()
+    conversation.owner_id = owner_id or LEGACY_OWNER_ID
+
+
+class AnswerClaim(TimestampMixin, Base):
+    __tablename__ = "answer_claims"
+    __table_args__ = (
+        UniqueConstraint("message_id", "index", name="uq_answer_claims_message_index"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("claim"))
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    support_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    citation_indices: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+
+    message: Mapped[Message] = relationship(back_populates="claims")
 
 
 class Citation(TimestampMixin, Base):

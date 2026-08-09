@@ -1,0 +1,419 @@
+{
+  "report_schema_version": 2,
+  "metric_version": "2.1.0",
+  "created_at": "2026-08-09T04:51:11.740723+00:00",
+  "dataset": {
+    "id": "deepsearcher-workspace-v2",
+    "version": "2.2.0",
+    "sha256": "4ea1d7cd1b3ca1136be2cd32362a7a9066d5a73d3ffd1eacdb747ec2e65e6c0d",
+    "sources": [
+      {
+        "document": "WhatisMilvus.pdf",
+        "path": "examples/data/WhatisMilvus.pdf",
+        "sha256": "00cac5d6ca84077ed81380becc06cde379be11db37fcef59ec4b041a4f39acc1"
+      },
+      {
+        "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+        "path": "output/pdf/DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+        "sha256": "96e82d991e27a309931695f05300338c6ecd07cfcbcc46efee9b5ede511067d2"
+      },
+      {
+        "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+        "path": "output/pdf/DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+        "sha256": "288eb9cc7e7dc9940eca3def97144886f5d5a38e97e7025d98069f8d8744b9a3"
+      }
+    ],
+    "sample_count": 1
+  },
+  "run": {
+    "mode": "answer",
+    "collection": "eval_workspace_v2",
+    "top_k": 8,
+    "max_iter": 3,
+    "deep_search_concurrency": 4,
+    "external_call_timeout_seconds": 30.0,
+    "request_timeout_seconds": 300.0,
+    "chain_early_stopping": true,
+    "chain_min_evidence_for_stop": 2,
+    "agents": [
+      "naive"
+    ],
+    "selection": {
+      "profile": "deepseek_smoke_v1",
+      "sample_ids": [
+        "workspace-001"
+      ],
+      "strata": {
+        "sample_count": 1,
+        "answerable": 1,
+        "unanswerable": 0,
+        "history": 0,
+        "multi_document": 0,
+        "difficulty": {
+          "easy": 1
+        }
+      }
+    },
+    "source_aliases": {
+      "WhatisMilvus.pdf": [],
+      "DeepSearcher第一阶段学习讲义-手机阅读版.pdf": [],
+      "DeepSearcher第二阶段学习讲义-手机阅读版.pdf": []
+    },
+    "config_path": "D:\\code\\deep-searcher-study\\deepsearcher\\config.yaml",
+    "config_sha256": "c0b2d99a1b7924196f306b508a61a097e353fedb421461eaa1c089d965c58446"
+  },
+  "environment": {
+    "python": "3.10.20",
+    "providers": {
+      "llm": {
+        "provider": "DeepSeek",
+        "model": "deepseek-v4-flash"
+      },
+      "embedding": {
+        "provider": "OpenAIEmbedding",
+        "model": "text-embedding-v4"
+      },
+      "vector_db": {
+        "provider": "Milvus"
+      }
+    },
+    "git": {
+      "commit": "9278d03d295af758468d39424e5d8553f19f77c0",
+      "dirty": true
+    }
+  },
+  "metrics": {
+    "naive": {
+      "sample_count": 1,
+      "successful_count": 1,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.125,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 1.0,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": null,
+      "context_query_match_rate": null,
+      "context_fallback_rate": null,
+      "latency_ms": {
+        "average": 7422.714,
+        "p50": 7422.714,
+        "p95": 7422.714
+      },
+      "tokens": {
+        "total": 1995,
+        "average": 1995
+      },
+      "llm_calls": {
+        "total": 1,
+        "average": 1
+      }
+    }
+  },
+  "metrics_by_tag": {
+    "naive": {
+      "事实": {
+        "sample_count": 1,
+        "successful_count": 1,
+        "error_rate": 0,
+        "retrieval_hit_rate": 1,
+        "retrieval_recall_at_k": 1.0,
+        "retrieval_precision_at_k": 0.125,
+        "mrr": 1.0,
+        "empty_result_rate": 0,
+        "duplicate_rate": 0.0,
+        "no_answer_false_positive_rate": null,
+        "answer_criteria_coverage": 1.0,
+        "grounded_criteria_coverage": 1.0,
+        "evidence_source_accuracy": 1,
+        "full_evidence_retrieval_rate": 1,
+        "multi_document_sample_count": 0,
+        "full_document_coverage_rate": null,
+        "refusal_accuracy": null,
+        "claim_support_rate": 1.0,
+        "ungrounded_claim_rate": 0.0,
+        "invalid_claim_citation_rate": 0.0,
+        "claim_citation_precision": 1.0,
+        "claim_citation_recall": 1.0,
+        "context_dependency_accuracy": null,
+        "context_query_match_rate": null,
+        "context_fallback_rate": null,
+        "latency_ms": {
+          "average": 7422.714,
+          "p50": 7422.714,
+          "p95": 7422.714
+        },
+        "tokens": {
+          "total": 1995,
+          "average": 1995
+        },
+        "llm_calls": {
+          "total": 1,
+          "average": 1
+        }
+      },
+      "单文档": {
+        "sample_count": 1,
+        "successful_count": 1,
+        "error_rate": 0,
+        "retrieval_hit_rate": 1,
+        "retrieval_recall_at_k": 1.0,
+        "retrieval_precision_at_k": 0.125,
+        "mrr": 1.0,
+        "empty_result_rate": 0,
+        "duplicate_rate": 0.0,
+        "no_answer_false_positive_rate": null,
+        "answer_criteria_coverage": 1.0,
+        "grounded_criteria_coverage": 1.0,
+        "evidence_source_accuracy": 1,
+        "full_evidence_retrieval_rate": 1,
+        "multi_document_sample_count": 0,
+        "full_document_coverage_rate": null,
+        "refusal_accuracy": null,
+        "claim_support_rate": 1.0,
+        "ungrounded_claim_rate": 0.0,
+        "invalid_claim_citation_rate": 0.0,
+        "claim_citation_precision": 1.0,
+        "claim_citation_recall": 1.0,
+        "context_dependency_accuracy": null,
+        "context_query_match_rate": null,
+        "context_fallback_rate": null,
+        "latency_ms": {
+          "average": 7422.714,
+          "p50": 7422.714,
+          "p95": 7422.714
+        },
+        "tokens": {
+          "total": 1995,
+          "average": 1995
+        },
+        "llm_calls": {
+          "total": 1,
+          "average": 1
+        }
+      }
+    }
+  },
+  "metrics_by_difficulty": {
+    "naive": {
+      "easy": {
+        "sample_count": 1,
+        "successful_count": 1,
+        "error_rate": 0,
+        "retrieval_hit_rate": 1,
+        "retrieval_recall_at_k": 1.0,
+        "retrieval_precision_at_k": 0.125,
+        "mrr": 1.0,
+        "empty_result_rate": 0,
+        "duplicate_rate": 0.0,
+        "no_answer_false_positive_rate": null,
+        "answer_criteria_coverage": 1.0,
+        "grounded_criteria_coverage": 1.0,
+        "evidence_source_accuracy": 1,
+        "full_evidence_retrieval_rate": 1,
+        "multi_document_sample_count": 0,
+        "full_document_coverage_rate": null,
+        "refusal_accuracy": null,
+        "claim_support_rate": 1.0,
+        "ungrounded_claim_rate": 0.0,
+        "invalid_claim_citation_rate": 0.0,
+        "claim_citation_precision": 1.0,
+        "claim_citation_recall": 1.0,
+        "context_dependency_accuracy": null,
+        "context_query_match_rate": null,
+        "context_fallback_rate": null,
+        "latency_ms": {
+          "average": 7422.714,
+          "p50": 7422.714,
+          "p95": 7422.714
+        },
+        "tokens": {
+          "total": 1995,
+          "average": 1995
+        },
+        "llm_calls": {
+          "total": 1,
+          "average": 1
+        }
+      }
+    }
+  },
+  "details": [
+    {
+      "sample_id": "workspace-001",
+      "question": "Milvus 是什么，它以哪两种形态提供？",
+      "answerable": true,
+      "tags": [
+        "事实",
+        "单文档"
+      ],
+      "difficulty": "easy",
+      "history_turn_count": 0,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 3,
+      "supported_claim_count": 3,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 1.0,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 7422.714,
+      "tokens": 1995,
+      "llm_calls": 1,
+      "error": null,
+      "answer": "Milvus 是一个高性能、高可扩展的向量数据库，能够在从笔记本电脑到大规模分布式系统的各种环境中高效运行 [E1]。它主要以两种形态提供：开源软件和云服务 [E1]。其中，开源版本是 LF AI & Data Foundation 旗下的 Apache 2.0 许可项目 [E1]。",
+      "reference_answer": "Milvus 是高性能、可扩展的向量数据库，同时提供开源软件和云服务。",
+      "retrieved": [
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 112,
+          "text": "原 始 问题：\nTEXT\n比较 Milvus 与 pgvector 的 架构 、 适 用 场景 和 运维 成本。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 38,
+          "chunk": 134,
+          "text": "DeepSearcher 第一阶段学习讲义\nTEXT\nMilvus 是 专门 用于向量检索的数据库。\nMilvus 是 面 向向量相似度 搜 索的数据 系统 。\n普 通去 重 不一定能识 别 这种 近似 重 复。 更进 一步可\n以使 用文 本 哈希 、 来 源与 offset、语义 聚 类或\nReranker 控制 证据多 样性 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 114,
+          "text": "DeepSearch 首 先可能生成：\nPYTHON\n[\n\"Milvus 的 架构 是什么？\",\n\"pgvector 的 架构 是什么？\",\n\"Milvus 和 pgvector 分 别适合 哪 些场景 ？\",\n\" 两者 的 部署 与 运维 成本有什么 差别 ？\"\n]"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 2,
+          "chunk": 4,
+          "text": "Search Engine in C++ : Over 80% of a vector database's performance is determined by its search engine.\nMilvus uses C++ for this critical component due to the language's high performance, low-level optimization,\nand efficient resource management. Most importantly, Milvus integrates numerous hardware-aware code\noptimizations, ranging from assembly-level vectorization to multi-thread parallelization and scheduling, to\nfully leverage hardware capabilities.\nColumn-Oriented : Milvus is a column-oriented vector database system. The primary advantages come\nfrom the data access patterns. When performing queries, a column-oriented database reads only the\nspecific fields involved in the query, rather than entire rows, which greatly reduces the amount of data\naccessed. Additionally, operations on column-based data can be easily vectorized, allowing for operations to\nbe applied in the entire columns at once, further enhancing performance."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 30,
+          "chunk": 94,
+          "text": "DeepSearcher 第一阶段学习讲义\nTEXT\nMilvus 是什么？\nNaiveRAG 会 ：\n1. 选择 可能 包含 答 案 的 Collection。\n2. 把问题生成 query vector。\n3. 从 Milvus 取 top-k Chunk。\n4. 对 重 复 结 果去 重 。\n5. 如 果 开 启 文 本 窗口 ，优先 取 metadata[\"wider_t\next\"] 。\n6. 把 上下 文和问题 放 进 Prompt。\n7. 调 用 千 问生成一 次 答 案 。\n它 不 会 在生成答 案后 继 续 检查 “ 是 否 漏 了 历史 、 架\n构 或应 用 场景 ” ， 也 不 会 自动 改写 问题再查一 次 。\n简 单事实题 中 ，这种行为 反 而 是优 点 ： 更 便宜 、 更\n快 、 更容易 解 释 。"
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": null,
+      "context_predicted_dependency": null,
+      "context_dependency_correct": null,
+      "context_query_match": null,
+      "context_fallback_used": null,
+      "context_tokens": 0
+    }
+  ],
+  "metric_notes": {
+    "retrieval_precision_at_k": "相关结果数除以固定 K；返回不足 K 条时，缺失位置按不相关计。",
+    "answer_criteria_coverage": "标准答案要点在生成答案中的确定性字符串覆盖率。",
+    "grounded_criteria_coverage": "标准答案要点在召回文本中的覆盖率，是证据充分度代理指标，不等同于 LLM 忠实度裁判。",
+    "evidence_source_accuracy": "返回来源中至少一个命中标注文档与页码的比例。",
+    "full_evidence_retrieval_rate": "回答所需的全部标注文档页都被召回的样本比例。",
+    "full_document_coverage_rate": "跨文档问题所需的每份文档至少命中一条证据的样本比例。",
+    "claim_support_rate": "生成答案中带有本次有效证据编号的声明比例。",
+    "claim_citation_precision": "声明实际引用的证据中，命中金标文档与页码的比例。",
+    "claim_citation_recall": "金标证据页中至少被一个声明引用的比例。",
+    "context_dependency_accuracy": "有历史样本中，是否需要依赖历史的分类准确率。",
+    "context_query_match_rate": "上下文改写结果与数据集标注独立问题的规范化精确匹配率。"
+  },
+  "decision": {
+    "recommended_default": null,
+    "reasons": [
+      "NO_AGENT_MET_ANSWER_QUALITY_GATE"
+    ],
+    "ranking": [],
+    "quality_weights": {
+      "answer_criteria_coverage": 0.3,
+      "grounded_criteria_coverage": 0.1,
+      "claim_support_rate": 0.2,
+      "claim_citation_precision": 0.1,
+      "claim_citation_recall": 0.1,
+      "refusal_accuracy": 0.15,
+      "citation_validity": 0.05
+    },
+    "thresholds": {
+      "max_error_rate": 0.0,
+      "min_claim_support_rate": 0.65,
+      "min_refusal_accuracy": 0.75,
+      "max_invalid_claim_citation_rate": 0.1
+    },
+    "scorecards": {
+      "naive": {
+        "eligible": false,
+        "rejection_reasons": [
+          "REFUSAL_NOT_MEASURED"
+        ],
+        "quality_score": 0.85,
+        "quality_values": {
+          "answer_criteria_coverage": 1.0,
+          "grounded_criteria_coverage": 1.0,
+          "claim_support_rate": 1.0,
+          "claim_citation_precision": 1.0,
+          "claim_citation_recall": 1.0,
+          "refusal_accuracy": 0.0,
+          "citation_validity": 1.0
+        },
+        "average_tokens": 1995,
+        "p95_latency_ms": 7422.714
+      }
+    },
+    "tie_breakers": [
+      "average_tokens",
+      "p95_latency_ms",
+      "agent_name"
+    ]
+  }
+}

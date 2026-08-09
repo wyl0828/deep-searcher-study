@@ -33,6 +33,21 @@ export type KnowledgeBase = {
   updated_at: string;
 };
 
+export type ProductUser = {
+  id: string;
+  username: string;
+  display_name: string;
+  role: "admin" | "member";
+  is_active: boolean;
+  created_at: string;
+};
+
+export type AuthStatus = {
+  setup_required: boolean;
+  authenticated: boolean;
+  user: ProductUser | null;
+};
+
 export type ProductDocument = {
   id: string;
   knowledge_base_id: string;
@@ -82,14 +97,34 @@ export type Citation = {
   supported: boolean;
 };
 
+export type AnswerClaim = {
+  id: string;
+  index: number;
+  text: string;
+  support_status:
+    | "supported"
+    | "unsupported"
+    | "invalid_citation"
+    | "conflicting";
+  citation_indices: number[];
+};
+
 export type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   status: "pending" | "succeeded" | "failed";
-  answer_state: "grounded" | "insufficient_evidence" | "failed" | null;
+  answer_state:
+    | "grounded"
+    | "fully_grounded"
+    | "partially_grounded"
+    | "conflicting_evidence"
+    | "insufficient_evidence"
+    | "failed"
+    | null;
   created_at: string;
   citations: Citation[];
+  claims: AnswerClaim[];
 };
 
 export type QueryStageEvent =
@@ -99,6 +134,18 @@ export type QueryStageEvent =
       sequence: number;
       event: "started";
       data: { stage: "query_started" };
+    }
+  | {
+      version: 1;
+      request_id: string;
+      sequence: number;
+      event: "contextualization";
+      data: {
+        depends_on_history: boolean;
+        history_turn_count: number;
+        fallback_used: boolean;
+        reason: string;
+      };
     }
   | {
       version: 1;
@@ -218,12 +265,62 @@ async function readResponse<T>(response: Response): Promise<T> {
 async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
     ...options,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
   });
   return readResponse<T>(response);
+}
+
+export function getAuthStatus(): Promise<AuthStatus> {
+  return requestJson("/api/auth/status");
+}
+
+export async function setupWorkspace(input: {
+  username: string;
+  password: string;
+  display_name: string;
+}): Promise<ProductUser> {
+  const response = await requestJson<{ user: ProductUser }>("/api/auth/setup", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.user;
+}
+
+export async function loginWorkspace(input: {
+  username: string;
+  password: string;
+}): Promise<ProductUser> {
+  const response = await requestJson<{ user: ProductUser }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.user;
+}
+
+export function logoutWorkspace(): Promise<{ logged_out: boolean }> {
+  return requestJson("/api/auth/logout", { method: "POST" });
+}
+
+export async function listUsers(): Promise<ProductUser[]> {
+  const response = await requestJson<{ items: ProductUser[] }>("/api/admin/users");
+  return response.items;
+}
+
+export async function createUser(input: {
+  username: string;
+  password: string;
+  display_name: string;
+  role: "admin" | "member";
+}): Promise<ProductUser> {
+  const response = await requestJson<{ user: ProductUser }>("/api/admin/users", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.user;
 }
 
 export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
@@ -279,6 +376,7 @@ export async function uploadDocument(
     `/api/knowledge-bases/${knowledgeBaseId}/documents`,
     {
       method: "POST",
+      credentials: "same-origin",
       body,
     },
   );
@@ -346,8 +444,9 @@ type StreamEnvelope = {
 };
 
 const QUERY_STAGE_EVENTS = new Set([
-  "started",
-  "routing",
+    "started",
+    "contextualization",
+    "routing",
   "iteration",
   "retrieval",
   "web_search",
@@ -402,6 +501,7 @@ export async function streamMessage(
     `/api/conversations/${conversationId}/messages/stream`,
     {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content, use_web_search: useWebSearch }),
       signal,

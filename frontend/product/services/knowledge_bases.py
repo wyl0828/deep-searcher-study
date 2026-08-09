@@ -82,13 +82,16 @@ async def delete_knowledge_base(
             ) from exc
 
     was_current = knowledge_base.is_current
+    owner_id = knowledge_base.owner_id
     session.delete(knowledge_base)
     session.flush()
 
     next_current: KnowledgeBase | None = None
     if was_current:
         next_current = session.scalar(
-            select(KnowledgeBase).order_by(
+            select(KnowledgeBase)
+            .where(KnowledgeBase.owner_id == owner_id)
+            .order_by(
                 KnowledgeBase.updated_at.desc(),
                 KnowledgeBase.created_at.desc(),
             )
@@ -97,7 +100,12 @@ async def delete_knowledge_base(
             next_current.is_current = True
     else:
         next_current = session.scalar(
-            select(KnowledgeBase).where(KnowledgeBase.is_current.is_(True)).limit(1)
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.owner_id == owner_id,
+                KnowledgeBase.is_current.is_(True),
+            )
+            .limit(1)
         )
     session.commit()
     return next_current

@@ -13,6 +13,7 @@ def query(
     use_web_search: bool = False,
     *,
     searcher=None,
+    initial_tokens: int = 0,
 ) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
@@ -36,7 +37,8 @@ def query(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
-    return default_searcher.query(original_query, **kwargs)
+    answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
+    return answer, results, int(consume_tokens or 0) + max(int(initial_tokens or 0), 0)
 
 
 def query_with_trace(
@@ -47,6 +49,7 @@ def query_with_trace(
     *,
     searcher=None,
     trace_collector=None,
+    initial_tokens: int = 0,
 ):
     """Query the knowledge base and return an additional structured execution trace."""
     collector = trace_collector or TraceCollector(original_query)
@@ -56,12 +59,17 @@ def query_with_trace(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
-    answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
+    answer, results, agent_tokens = default_searcher.query(original_query, **kwargs)
+    consume_tokens = int(agent_tokens or 0) + max(int(initial_tokens or 0), 0)
     return (
         answer,
         results,
         consume_tokens,
-        collector.build(total_tokens=consume_tokens, final_results=results),
+        collector.build(
+            total_tokens=consume_tokens,
+            final_results=results,
+            answer=answer,
+        ),
     )
 
 

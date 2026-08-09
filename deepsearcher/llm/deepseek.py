@@ -18,12 +18,12 @@ class DeepSeek(BaseLLM):
         client: The OpenAI-compatible client instance for DeepSeek API.
     """
 
-    def __init__(self, model: str = "deepseek-reasoner", **kwargs):
+    def __init__(self, model: str = "deepseek-v4-flash", **kwargs):
         """
         Initialize a DeepSeek language model client.
 
         Args:
-            model (str, optional): The model identifier to use. Defaults to "deepseek-reasoner".
+            model (str, optional): The model identifier to use. Defaults to "deepseek-v4-flash".
             **kwargs: Additional keyword arguments to pass to the OpenAI client.
                 - api_key: DeepSeek API key. If not provided, uses DEEPSEEK_API_KEY environment variable.
                 - base_url: DeepSeek API base URL. If not provided, uses DEEPSEEK_BASE_URL environment

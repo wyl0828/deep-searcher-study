@@ -7,6 +7,7 @@ from sqlalchemy import Integer, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from frontend.product.models import (
+    LEGACY_OWNER_ID,
     Conversation,
     Document,
     IngestJob,
@@ -15,7 +16,17 @@ from frontend.product.models import (
 )
 
 
-def list_knowledge_bases(session: Session) -> list[dict]:
+def _resolved_owner_id(session: Session, owner_id: str | None) -> str:
+    if owner_id is not None:
+        return owner_id
+    from frontend.product.auth import ensure_legacy_owner
+
+    ensure_legacy_owner(session)
+    return LEGACY_OWNER_ID
+
+
+def list_knowledge_bases(session: Session, owner_id: str | None = None) -> list[dict]:
+    resolved_owner_id = _resolved_owner_id(session, owner_id)
     document_counts = (
         select(
             Document.knowledge_base_id,
@@ -48,6 +59,7 @@ def list_knowledge_bases(session: Session) -> list[dict]:
             conversation_counts,
             conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
         )
+        .where(KnowledgeBase.owner_id == resolved_owner_id)
         .order_by(KnowledgeBase.is_current.desc(), KnowledgeBase.updated_at.desc())
     ).all()
     items = []
@@ -84,11 +96,19 @@ def create_knowledge_base(
     *,
     name: str,
     description: str,
+    owner_id: str | None = None,
 ) -> KnowledgeBase:
+    resolved_owner_id = _resolved_owner_id(session, owner_id)
     has_current = session.scalar(
-        select(func.count()).select_from(KnowledgeBase).where(KnowledgeBase.is_current)
+        select(func.count())
+        .select_from(KnowledgeBase)
+        .where(
+            KnowledgeBase.owner_id == resolved_owner_id,
+            KnowledgeBase.is_current,
+        )
     )
     knowledge_base = KnowledgeBase(
+        owner_id=resolved_owner_id,
         name=name.strip(),
         description=description.strip(),
         collection_name=f"kb_{uuid4().hex}",
@@ -100,26 +120,48 @@ def create_knowledge_base(
     return knowledge_base
 
 
-def set_current_knowledge_base(session: Session, knowledge_base_id: str) -> KnowledgeBase | None:
-    knowledge_base = session.get(KnowledgeBase, knowledge_base_id)
+def set_current_knowledge_base(
+    session: Session,
+    knowledge_base_id: str,
+    owner_id: str | None = None,
+) -> KnowledgeBase | None:
+    resolved_owner_id = _resolved_owner_id(session, owner_id)
+    knowledge_base = session.scalar(
+        select(KnowledgeBase).where(
+            KnowledgeBase.id == knowledge_base_id,
+            KnowledgeBase.owner_id == resolved_owner_id,
+        )
+    )
     if knowledge_base is None:
         return None
-    session.execute(update(KnowledgeBase).values(is_current=False))
+    session.execute(
+        update(KnowledgeBase)
+        .where(KnowledgeBase.owner_id == resolved_owner_id)
+        .values(is_current=False)
+    )
     knowledge_base.is_current = True
     session.commit()
     session.refresh(knowledge_base)
     return knowledge_base
 
 
-def get_conversation(session: Session, conversation_id: str) -> Conversation | None:
-    return session.scalar(
+def get_conversation(
+    session: Session,
+    conversation_id: str,
+    owner_id: str | None = None,
+) -> Conversation | None:
+    query = (
         select(Conversation)
         .where(Conversation.id == conversation_id)
         .options(
             selectinload(Conversation.knowledge_base),
             selectinload(Conversation.messages).selectinload(Message.citations),
+            selectinload(Conversation.messages).selectinload(Message.claims),
         )
     )
+    if owner_id is not None:
+        query = query.where(Conversation.owner_id == owner_id)
+    return session.scalar(query)
 
 
 def create_ingest_job(session: Session, document: Document) -> IngestJob:

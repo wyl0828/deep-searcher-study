@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from deepsearcher.llm.base import ChatResponse
 from deepsearcher.vector_db.base import RetrievalResult
 from evaluation.dataset import load_dataset
 from evaluation.retrieval_compare import (
@@ -16,6 +17,9 @@ from evaluation.retrieval_compare import (
 )
 
 DATASET = Path(__file__).resolve().parents[2] / "evaluation" / "datasets" / "milvus_v1.json"
+WORKSPACE_DATASET = (
+    Path(__file__).resolve().parents[2] / "evaluation" / "datasets" / "workspace_v2.json"
+)
 
 
 class FakeEmbedding:
@@ -74,6 +78,51 @@ def test_evaluate_modes_embeds_each_question_once_and_repeats_every_mode():
     assert all(mode_rows[0]["retrieval_hit"] is True for mode_rows in rows.values())
     assert all(mode_rows[0]["search_repetitions"] == 2 for mode_rows in rows.values())
     assert all(mode_rows[0]["ranking_stability_rate"] == 1 for mode_rows in rows.values())
+
+
+def test_evaluate_modes_uses_contextualized_query_for_every_mode():
+    class ContextLLM:
+        def __init__(self):
+            self.calls = 0
+
+        def chat(self, _messages):
+            self.calls += 1
+            return ChatResponse(
+                content=(
+                    '{"depends_on_history": true, '
+                    '"standalone_query": "Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？"}'
+                ),
+                total_tokens=9,
+            )
+
+        @staticmethod
+        def remove_think(content):
+            return content
+
+    dataset = load_dataset(WORKSPACE_DATASET)
+    embedding = FakeEmbedding()
+    vector_db = FakeVectorDB()
+    rows, summaries = evaluate_modes(
+        dataset,
+        embedding_model=embedding,
+        vector_db=vector_db,
+        contextualizer_llm=ContextLLM(),
+        collection="eval_test",
+        modes=("dense", "hybrid"),
+        top_k=5,
+        repetitions=1,
+        sample_ids=("workspace-061",),
+        source_aliases={"WhatisMilvus.pdf": ("WhatisMilvus.pdf",)},
+    )
+
+    assert {call["query_text"] for call in vector_db.calls} == {
+        "Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？"
+    }
+    assert rows["dense"][0]["context_dependency_correct"] is True
+    assert rows["dense"][0]["context_query_match"] is True
+    assert rows["dense"][0]["tokens"] == 9
+    assert rows["dense"][0]["llm_calls"] == 1
+    assert summaries["hybrid"]["context_dependency_accuracy"] == 1.0
 
 
 def _summary(quality, search_p95=5.0, error_rate=0.0):
@@ -149,6 +198,16 @@ def test_parse_args_exposes_rrf_and_repetition_contract():
         [
             "--rrf-k",
             "37",
+            "--hybrid-ranker",
+            "weighted_rrf",
+            "--dense-weight",
+            "1.5",
+            "--sparse-weight",
+            "0.75",
+            "--candidate-multiplier",
+            "2",
+            "--dense-anchors",
+            "2",
             "--repetitions",
             "5",
             "--batch-size",
@@ -159,6 +218,11 @@ def test_parse_args_exposes_rrf_and_repetition_contract():
     )
 
     assert args.rrf_k == 37
+    assert args.hybrid_ranker == "weighted_rrf"
+    assert args.dense_weight == 1.5
+    assert args.sparse_weight == 0.75
+    assert args.candidate_multiplier == 2
+    assert args.dense_anchors == 2
     assert args.repetitions == 5
     assert args.batch_size == 8
     assert args.prepare is True

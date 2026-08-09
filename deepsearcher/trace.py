@@ -8,6 +8,7 @@ import threading
 from typing import Any, Callable, Dict, Iterable, List, Optional
 from uuid import uuid4
 
+from deepsearcher.grounding import MAX_GROUNDING_EVIDENCE_TEXT, build_grounding
 from deepsearcher.vector_db.base import RetrievalResult
 from deepsearcher.web_search.tavily import canonical_public_url
 
@@ -54,7 +55,7 @@ def redact_sensitive_text(value: Any, *, max_length: int) -> Optional[str]:
 class TraceCollector:
     """Collect explicit Agent events without parsing logs or exposing hidden reasoning."""
 
-    VERSION = 3
+    VERSION = 4
     EVENT_VERSION = 1
     MAX_VISIBLE_DOCUMENTS = 5
     MAX_DOCUMENT_TEXT = 600
@@ -73,6 +74,8 @@ class TraceCollector:
         self.routing_tokens = 0
         self.final_answer_tokens = 0
         self._selection_events: List[Dict[str, Any]] = []
+        self.contextualization: Optional[Dict[str, Any]] = None
+        self._grounding_evidence_text: Dict[int, str] = {}
         self._iterations: List[Dict[str, Any]] = []
         self._current: Optional[Dict[str, Any]] = None
         self._event_callback = event_callback
@@ -109,6 +112,27 @@ class TraceCollector:
 
     def emit_started(self) -> None:
         self.emit_event("started", {"stage": "query_started"})
+
+    def record_contextualization(
+        self,
+        *,
+        depends_on_history: bool,
+        history_turn_count: int,
+        fallback_used: bool,
+        reason: str,
+        token_usage: int = 0,
+    ) -> None:
+        self.raise_if_cancelled()
+        safe_reason = self._safe_identifier(reason) or "unknown"
+        self.contextualization = {
+            "depends_on_history": bool(depends_on_history),
+            "history_turn_count": max(int(history_turn_count or 0), 0),
+            "fallback_used": bool(fallback_used),
+            "reason": safe_reason,
+            "token_usage": max(int(token_usage or 0), 0),
+        }
+        if self.contextualization["history_turn_count"]:
+            self.emit_event("contextualization", dict(self.contextualization))
 
     def select_agent(
         self,
@@ -250,6 +274,16 @@ class TraceCollector:
         self.raise_if_cancelled()
         self.final_answer_tokens = int(token_usage or 0)
 
+    def record_grounding_evidence(
+        self,
+        evidence_snapshot: Iterable[tuple[RetrievalResult, str]],
+    ) -> None:
+        """Retain the exact evidence text shown to the final-answer model."""
+        self.raise_if_cancelled()
+        self._grounding_evidence_text = {
+            id(result): str(text) for result, text in evidence_snapshot
+        }
+
     def record_selection_event(
         self,
         stage: str,
@@ -271,15 +305,17 @@ class TraceCollector:
         total_tokens: int,
         final_results: Iterable[RetrievalResult],
         final_answer_tokens: Optional[int] = None,
+        answer: str | None = None,
     ) -> Dict[str, Any]:
         final_results_list = list(final_results)
         final_result_ids = {id(result) for result in final_results_list}
         iterations = [
             self._serialize_iteration(iteration, final_result_ids) for iteration in self._iterations
         ]
-        return {
+        trace = {
             "version": self.VERSION,
             "agent": self.agent,
+            "contextualization": self.contextualization,
             "routing": self.routing_decision,
             "iterations": iterations,
             "selection_events": list(self._selection_events),
@@ -295,6 +331,13 @@ class TraceCollector:
                 "total_tokens": int(total_tokens or 0),
             },
         }
+        if answer is not None:
+            trace["grounding"] = build_grounding(
+                answer,
+                final_results_list,
+                serialize_evidence=self._serialize_grounding_document,
+            )
+        return trace
 
     def _serialize_iteration(
         self,
@@ -321,6 +364,20 @@ class TraceCollector:
             "has_enough_information": iteration["has_enough_information"],
             "token_usage": token_usage,
         }
+
+    def _serialize_grounding_document(
+        self,
+        result: RetrievalResult,
+        supported: bool,
+    ) -> Dict[str, Any]:
+        document = self._serialize_document(result, supported)
+        evidence_text = self._grounding_evidence_text.get(id(result))
+        if evidence_text is not None:
+            document["text"] = redact_sensitive_text(
+                evidence_text,
+                max_length=MAX_GROUNDING_EVIDENCE_TEXT,
+            )
+        return document
 
     def _serialize_document(self, result: RetrievalResult, supported: bool) -> Dict[str, Any]:
         text = redact_sensitive_text(result.text, max_length=self.MAX_DOCUMENT_TEXT)

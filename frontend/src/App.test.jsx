@@ -13,6 +13,12 @@ const productApi = vi.hoisted(() => ({
       this.retryable = retryable;
     }
   },
+  getAuthStatus: vi.fn(),
+  setupWorkspace: vi.fn(),
+  loginWorkspace: vi.fn(),
+  logoutWorkspace: vi.fn(),
+  listUsers: vi.fn(),
+  createUser: vi.fn(),
   listKnowledgeBases: vi.fn(),
   createKnowledgeBase: vi.fn(),
   getKnowledgeBase: vi.fn(),
@@ -89,6 +95,20 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   workspaceQueryClient.clear();
   window.history.pushState({}, "", "/");
+  productApi.getAuthStatus.mockResolvedValue({
+    setup_required: false,
+    authenticated: true,
+    user: {
+      id: "usr_test",
+      username: "test-user",
+      display_name: "测试用户",
+      role: "admin",
+      is_active: true,
+      created_at: "2026-07-24T09:00:00+08:00",
+    },
+  });
+  productApi.logoutWorkspace.mockResolvedValue({ logged_out: true });
+  productApi.listUsers.mockResolvedValue([]);
   productApi.listKnowledgeBases.mockResolvedValue([knowledgeBase]);
   productApi.getKnowledgeBase.mockResolvedValue(knowledgeBase);
   productApi.reindexKnowledgeBase.mockResolvedValue(knowledgeBase);
@@ -166,6 +186,60 @@ beforeEach(() => {
   });
 });
 
+it("首次启动会创建管理员并进入隔离工作台", async () => {
+  productApi.getAuthStatus.mockResolvedValue({
+    setup_required: true,
+    authenticated: false,
+    user: null,
+  });
+  productApi.setupWorkspace.mockResolvedValue({
+    id: "usr_owner",
+    username: "owner",
+    display_name: "工作台管理员",
+    role: "admin",
+    is_active: true,
+    created_at: knowledgeBase.created_at,
+  });
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "创建工作台管理员" })).toBeVisible();
+  await user.type(screen.getByLabelText("显示名称"), "工作台管理员");
+  await user.type(screen.getByLabelText("用户名"), "owner");
+  await user.type(screen.getByLabelText("密码"), "correct-horse-battery");
+  await user.click(screen.getByRole("button", { name: "创建管理员并进入" }));
+
+  await waitFor(() =>
+    expect(productApi.setupWorkspace).toHaveBeenCalledWith({
+      username: "owner",
+      password: "correct-horse-battery",
+      display_name: "工作台管理员",
+    }),
+  );
+  expect(await screen.findByText("向你的资料提问")).toBeVisible();
+  expect(screen.getByText("用户管理")).toBeVisible();
+});
+
+it("未登录用户可登录且登录失败会显示安全错误", async () => {
+  productApi.getAuthStatus.mockResolvedValue({
+    setup_required: false,
+    authenticated: false,
+    user: null,
+  });
+  productApi.loginWorkspace.mockRejectedValue(
+    new productApi.ProductApiError("用户名或密码不正确。", "INVALID_CREDENTIALS"),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "登录学习工作台" })).toBeVisible();
+  await user.type(screen.getByLabelText("用户名"), "member-one");
+  await user.type(screen.getByLabelText("密码"), "wrong-password");
+  await user.click(screen.getByRole("button", { name: "登录" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("用户名或密码不正确。");
+});
+
 it("默认展示面向用户的新对话工作台", async () => {
   render(<App />);
 
@@ -181,7 +255,7 @@ it("键盘用户可以跳过侧栏直接到主要内容", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  const skipLink = screen.getByRole("link", { name: "跳到主要内容" });
+  const skipLink = await screen.findByRole("link", { name: "跳到主要内容" });
   expect(skipLink).toHaveAttribute("href", "#workspace-main");
   expect(document.querySelector("main#workspace-main")).toHaveAttribute(
     "tabindex",
@@ -313,20 +387,32 @@ it("回答过程中逐步展示安全阶段并允许用户停止", async () => {
           version: 1,
           request_id: "request-progress",
           sequence: 2,
+          event: "contextualization",
+          data: {
+            depends_on_history: true,
+            history_turn_count: 2,
+            fallback_used: false,
+            reason: "rewritten",
+          },
+        },
+        {
+          version: 1,
+          request_id: "request-progress",
+          sequence: 3,
           event: "retrieval",
           data: { iteration: 1, retrieved_count: 7 },
         },
         {
           version: 1,
           request_id: "request-progress",
-          sequence: 3,
+          sequence: 4,
           event: "support",
           data: { iteration: 1, supported_count: 2 },
         },
         {
           version: 1,
           request_id: "request-progress",
-          sequence: 4,
+          sequence: 5,
           event: "reflection",
           data: { iteration: 1, has_enough_information: true },
         },
@@ -341,6 +427,7 @@ it("回答过程中逐步展示安全阶段并允许用户停止", async () => {
   await user.click(await screen.findByRole("button", { name: "重新生成" }));
 
   expect(await screen.findByText("已找到 7 个候选片段")).toBeInTheDocument();
+  expect(screen.getByText("已结合 2 条历史消息理解追问")).toBeInTheDocument();
   expect(screen.getByText("其中 2 个片段通过证据核验")).toBeInTheDocument();
   expect(screen.getByText("证据检查完成，正在组织回答")).toBeInTheDocument();
   expect(
@@ -458,6 +545,91 @@ it("引用抽屉打开和关闭时恢复键盘焦点", async () => {
     expect(webInlineCitation).toHaveFocus();
     expect(citationToggle).toHaveAttribute("aria-expanded", "false");
   });
+});
+
+it("声明级引用区分已有依据和无效引用", async () => {
+  const user = userEvent.setup();
+  window.history.pushState({}, "", "/chat/conv_1");
+  productApi.getConversation.mockResolvedValue({
+    id: "conv_1",
+    title: "声明级引用",
+    knowledge_base: knowledgeBase,
+    messages: [
+      {
+        id: "msg_assistant_claims",
+        role: "assistant",
+        content:
+          "Milvus 是向量数据库。[E1]\n\n```python\nprint('preserved')\n```\n\n它支持任意 SQL。[E9]",
+        status: "succeeded",
+        answer_state: "partially_grounded",
+        created_at: knowledgeBase.created_at,
+        citations: [
+          {
+            id: "citation_claim_1",
+            index: 1,
+            document_id: "doc_claim",
+            display_name: "grounding.pdf",
+            page_number: 2,
+            chunk_index: 1,
+            section_title: "What is Milvus",
+            section_path: ["What is Milvus"],
+            char_start: 0,
+            char_end: 20,
+            bbox: null,
+            location_id: "loc-claim-1",
+            source_locator: "page=2",
+            parser_version: "test",
+            extraction_method: "text",
+            source_type: "knowledge_base",
+            source_url: null,
+            source_domain: null,
+            trusted: true,
+            text: "Milvus 是向量数据库。",
+            supported: true,
+          },
+        ],
+        claims: [
+          {
+            id: "claim_1",
+            index: 1,
+            text: "Milvus 是向量数据库。",
+            support_status: "supported",
+            citation_indices: [1],
+          },
+          {
+            id: "claim_2",
+            index: 2,
+            text: "它支持任意 SQL。",
+            support_status: "invalid_citation",
+            citation_indices: [],
+          },
+        ],
+      },
+    ],
+    created_at: knowledgeBase.created_at,
+    updated_at: knowledgeBase.updated_at,
+  });
+
+  render(<App />);
+
+  expect(
+    await screen.findByText("回答中只有部分声明找到了可核对依据，未支持内容已单独标记。"),
+  ).toBeInTheDocument();
+  expect(screen.getAllByText("Milvus 是向量数据库。").length).toBeGreaterThan(0);
+  expect(screen.getByText("print('preserved')")).toBeInTheDocument();
+  expect(screen.queryByText(/\[E9\]/)).not.toBeInTheDocument();
+
+  await user.click(screen.getByText("逐条证据核验（2 条）"));
+  expect(screen.getByText("已有依据")).toBeInTheDocument();
+  expect(screen.getByText("引用无效")).toBeInTheDocument();
+
+  const claimCitation = screen.getByRole("button", {
+    name: "查看声明 1 的引用 1：grounding.pdf，第 2 页",
+  });
+  await user.click(claimCitation);
+  expect(
+    screen.getByRole("button", { name: "选择引用 1：grounding.pdf，第 2 页" }),
+  ).toHaveFocus();
 });
 
 it("没有引用的对话会禁用来源切换并说明原因", async () => {

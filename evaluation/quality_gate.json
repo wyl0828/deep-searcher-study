@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "dataset": "evaluation/datasets/workspace_v2.json",
+  "dataset_version": "2.2.0",
+  "dataset_sample_count": 72,
+  "metric_version": "2.1.0",
+  "reports": {
+    "retrieval": {
+      "path": "evaluation/results/workspace-v2-retrieval-20260809/report.json",
+      "expected_rows": 216,
+      "group_field": "retrieval_mode",
+      "group_rows": {"dense": 72, "bm25": 72, "hybrid": 72},
+      "required_detail_fields": [
+        "difficulty",
+        "multi_document",
+        "required_evidence_count",
+        "matched_evidence_count",
+        "required_document_count",
+        "matched_document_count",
+        "full_evidence_retrieved",
+        "full_document_coverage"
+      ],
+      "thresholds": [
+        {"path": "metrics.dense.error_rate", "op": "le", "value": 0},
+        {"path": "metrics.dense.retrieval_hit_rate", "op": "ge", "value": 0.9},
+        {"path": "metrics.dense.retrieval_recall_at_k", "op": "ge", "value": 0.8},
+        {"path": "metrics.dense.mrr", "op": "ge", "value": 0.68},
+        {"path": "metrics.dense.grounded_criteria_coverage", "op": "ge", "value": 0.78},
+        {"path": "metrics.dense.full_evidence_retrieval_rate", "op": "ge", "value": 0.74},
+        {"path": "metrics.dense.multi_document_sample_count", "op": "eq", "value": 8},
+        {"path": "metrics.dense.full_document_coverage_rate", "op": "ge", "value": 0.25},
+        {"path": "metrics.hybrid.retrieval_recall_at_k", "op": "ge", "value": 0.87},
+        {"path": "metrics.hybrid.mrr", "op": "ge", "value": 0.71},
+        {"path": "metrics.hybrid.grounded_criteria_coverage", "op": "ge", "value": 0.81},
+        {"path": "metrics.hybrid.full_document_coverage_rate", "op": "ge", "value": 0.375},
+        {"path": "decision.quality.gain", "op": "ge", "value": 0.01},
+        {"path": "decision.recommended_default", "op": "eq", "value": "hybrid"}
+      ]
+    },
+    "context": {
+      "path": "evaluation/results/workspace-v2-context-20260809/report.json",
+      "expected_rows": 36,
+      "group_field": "retrieval_mode",
+      "group_rows": {"dense": 12, "bm25": 12, "hybrid": 12},
+      "required_detail_fields": [
+        "context_expected_dependency",
+        "context_predicted_dependency",
+        "context_dependency_correct",
+        "context_query_match",
+        "context_fallback_used"
+      ],
+      "thresholds": [
+        {"path": "metrics.dense.error_rate", "op": "le", "value": 0},
+        {"path": "metrics.dense.context_dependency_accuracy", "op": "ge", "value": 1},
+        {"path": "metrics.dense.retrieval_hit_rate", "op": "ge", "value": 0.85},
+        {"path": "metrics.dense.retrieval_recall_at_k", "op": "ge", "value": 0.8},
+        {"path": "metrics.hybrid.retrieval_recall_at_k", "op": "ge", "value": 0.85}
+      ]
+    },
+    "answer": {
+      "path": "evaluation/results/workspace-v2-answer-stratified-20260809/report.json",
+      "expected_rows": 72,
+      "group_field": "agent",
+      "group_rows": {"naive": 24, "deep_search": 24, "chain_of_rag": 24},
+      "required_detail_fields": [
+        "answer_criteria_coverage",
+        "grounding_state",
+        "claim_support_rate",
+        "invalid_claim_citation_rate",
+        "claim_citation_precision",
+        "claim_citation_recall"
+      ],
+      "thresholds": [
+        {"path": "metrics.naive.error_rate", "op": "le", "value": 0},
+        {"path": "run.selection.profile", "op": "eq", "value": "answer_stratified_v1"},
+        {"path": "run.selection.strata.sample_count", "op": "eq", "value": 24},
+        {"path": "run.selection.strata.answerable", "op": "eq", "value": 20},
+        {"path": "run.selection.strata.unanswerable", "op": "eq", "value": 4},
+        {"path": "run.selection.strata.history", "op": "eq", "value": 6},
+        {"path": "run.selection.strata.multi_document", "op": "eq", "value": 4},
+        {"path": "run.selection.strata.difficulty.easy", "op": "eq", "value": 7},
+        {"path": "run.selection.strata.difficulty.medium", "op": "eq", "value": 8},
+        {"path": "run.selection.strata.difficulty.hard", "op": "eq", "value": 9},
+        {"path": "metrics.naive.answer_criteria_coverage", "op": "ge", "value": 0.75},
+        {"path": "metrics.naive.claim_support_rate", "op": "ge", "value": 0.65},
+        {"path": "metrics.naive.refusal_accuracy", "op": "ge", "value": 0.75},
+        {"path": "decision.recommended_default", "op": "eq", "value": "naive"},
+        {"path": "metrics.deep_search.error_rate", "op": "le", "value": 0},
+        {"path": "metrics.deep_search.answer_criteria_coverage", "op": "ge", "value": 0.7},
+        {"path": "metrics.deep_search.claim_support_rate", "op": "ge", "value": 0.6},
+        {"path": "metrics.chain_of_rag.error_rate", "op": "le", "value": 0},
+        {"path": "metrics.chain_of_rag.answer_criteria_coverage", "op": "ge", "value": 0.4},
+        {"path": "metrics.chain_of_rag.claim_support_rate", "op": "ge", "value": 0.65},
+        {"path": "metrics.chain_of_rag.refusal_accuracy", "op": "ge", "value": 0.75}
+      ]
+    }
+  },
+  "full": {
+    "collection": "eval_workspace_v2",
+    "answer_sample_profile": "answer_stratified_v1",
+    "answer_sample_ids": [
+      "workspace-001", "workspace-002", "workspace-006", "workspace-013",
+      "workspace-015", "workspace-019", "workspace-021", "workspace-024",
+      "workspace-027", "workspace-032", "workspace-038", "workspace-048",
+      "workspace-049", "workspace-050", "workspace-053", "workspace-070",
+      "workspace-061", "workspace-063", "workspace-066", "workspace-069",
+      "workspace-056", "workspace-058", "workspace-060", "workspace-072"
+    ]
+  }
+}

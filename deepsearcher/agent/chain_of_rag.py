@@ -13,6 +13,7 @@ from deepsearcher.agent.selection import (
 )
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
+from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
 from deepsearcher.llm.base import BaseLLM
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
@@ -62,6 +63,8 @@ Respond "No relevant information found" when the supplied evidence is insufficie
 
 ## Main query
 {query}
+
+{grounding_instructions}
 
 Respond with an appropriate answer only, do not explain yourself or output anything else.
 """
@@ -713,19 +716,24 @@ class ChainOfRAG(RAGAgent):
         log.color_print(
             f"<think> Summarize answer from all {len(all_retrieved_results)} retrieved chunks... </think>\n"
         )
+        trace_collector = kwargs.get("trace_collector")
         chat_response = self.llm.chat(
             [
                 {
                     "role": "user",
                     "content": FINAL_ANSWER_PROMPT.format(
-                        retrieved_documents=self._format_retrieved_results(all_retrieved_results),
+                        retrieved_documents=format_grounding_evidence(
+                            all_retrieved_results,
+                            use_wider_text=self.text_window_splitter,
+                            trace_collector=trace_collector,
+                        ),
                         intermediate_context="\n".join(intermediate_context),
                         query=query,
+                        grounding_instructions=GROUNDING_PROMPT,
                     ),
                 }
             ]
         )
-        trace_collector = kwargs.get("trace_collector")
         if trace_collector is not None:
             trace_collector.record_final_answer(chat_response.total_tokens)
         log.color_print(

@@ -1,0 +1,100 @@
+﻿agent,sample_id,question,answerable,difficulty,history_turn_count,context_expected_dependency,context_predicted_dependency,context_dependency_correct,context_query_match,context_fallback_used,context_tokens,multi_document,required_evidence_count,matched_evidence_count,required_document_count,matched_document_count,full_evidence_retrieved,full_document_coverage,retrieved_count,retrieval_hit,retrieval_recall,retrieval_precision,reciprocal_rank,empty_result,duplicate_count,duplicate_rate,no_answer_false_positive,answer_criteria_coverage,grounded_criteria_coverage,evidence_source_correct,refusal_correct,grounding_state,claim_count,supported_claim_count,claim_support_rate,ungrounded_claim_rate,invalid_claim_citation_rate,claim_citation_precision,claim_citation_recall,latency_ms,tokens,llm_calls,error,answer,reference_answer
+naive,workspace-061,那三种分别适合什么场景？,True,medium,2,True,True,True,False,False,241,False,1,1,1,1,True,,8,True,1.0,0.375,0.5,False,0,0.0,,1.0,1.0,True,,partially_grounded,7,6,0.8571428571428571,0.14285714285714285,0.0,0.4,1.0,13473.952,2328,2,,"Milvus Lite、Standalone 和 Distributed 三种部署形态分别适用于以下具体场景，依据证据严格推导如下：
+
+**Milvus Lite** 适用于个人学习、快速原型开发（如在 Jupyter Notebook 中验证向量检索逻辑）、小规模数据测试（例如数百至数万条向量），以及资源受限的边缘设备运行场景；其本质是嵌入式 Python 库，无需独立服务进程，便于轻量集成与本地迭代 [E2][E4][E5]。但该模式无法模拟真实网络服务的故障行为、水平扩展能力或高可用性特征，因此不适用于生产级服务验证或性能压测 [E1][E5]。
+
+**Milvus Standalone**（即 Docker Milvus）适用于需验证真实服务连接性、资源隔离性及基础故障恢复能力的学习与中等规模开发场景，典型如单机环境下的建表、插入、L2 距离排序等完整 API 验证；它将所有组件（query node、data node、index node 等）打包为单一 Docker 镜像，部署便捷，适合向量检索作为独立能力且数据量与并发持续增长但尚未达到亿级规模的过渡阶段 [E1][E2][E4][E5]。然而其部署和资源成本高于 Lite 版本，且需承担独立服务的运维负担（如监控、容量治理）[E1][E5]。
+
+**Milvus Distributed** 专为超大规模生产环境设计，适用于处理十亿至数十亿级向量的场景，支持 Kubernetes 原生部署，具备云原生架构、关键组件冗余（如 query/data/index 节点独立扩缩容）、状态分离与硬件感知优化能力，已服务于 Salesforce、PayPal、Airbnb 等企业的大规模向量搜索需求 [E2][E4][E7]。该模式通过高度解耦的组件设计（搜索、写入、索引/压缩任务并行化）实现性能与成本效率的协同优化，是唯一支持持续线性扩展以应对数据与负载指数增长的部署形态 [E7]。",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+naive,workspace-062,换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？,True,hard,2,False,False,True,True,True,234,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.8,True,,fully_grounded,9,9,1.0,0.0,0.0,0.2,1.0,12332.815,2905,2,,"FastAPI 应用启动时通过 `lifespan` 事件管理外部组件的生命周期，而非在模块导入阶段初始化依赖 [E1][E3]。具体而言，应用启动后执行 `lifespan`，此时才读取配置、创建 `RuntimeRegistry`，并按需构建当前活动版本所需的全部外部组件实例，包括：LLM 客户端、Embedding 客户端、文件加载器与网页爬虫、VectorDB（如 Milvus）客户端、由 `DeepSearch` 和 `ChainOfRAG` 构成的默认 `RAGRouter`，以及保留的基础能力 `NaiveRAG` [E1]。
+
+所有外部组件均绑定至 `RuntimeRegistry` 的生命周期内，而非全局单例或模块级对象；`init_config()` 模块级对象仅保留给 CLI/库调用使用，而在线 HTTP 请求严格从 `lifespan` 中初始化的 `RuntimeRegistry` 获取请求作用域的不可变 runtime 租约 [E1][E3]。每个请求通过依赖注入 `Depends(get_runtime)` 获得租约，请求结束时自动释放；版本切换时，旧版本 runtime 实例不会立即销毁，而是等待最后一个使用该版本的请求完成后再关闭，确保无资源泄漏或竞态访问 [E1]。
+
+初始化失败（如 LLM 或 VectorDB 连接失败）不会导致进程崩溃，而是使 `/health` 与业务接口返回带具体故障组件名称的 HTTP 503 状态码，便于定位问题根源 [E1]。关闭阶段执行统一清理：先等待所有 Server-Sent Events（SSE）流任务自然结束，再释放向量数据库客户端等有状态资源 [E1]。
+
+值得注意的是，外部组件的线程/异步模型直接影响生命周期管理策略：同步客户端（如多数 LLM/Embedding SDK）运行于 Uvicorn 线程池中，其阻塞行为会持续占用工作线程，因此需配置并发上限与超时机制；若错误地将路由改为 `async def` 但内部仍调用同步方法，则反而会阻塞事件循环 [E5]。此外，多个 Uvicorn worker 进程间内存隔离，配置变更无法自动同步，必须通过外部协调机制（如配置中心）保障一致性 [E4]。
+
+测试层面，生命周期正确性需通过并发测试验证：在配置切换与查询请求同时发生时，确认版本隔离有效且旧 runtime 资源被彻底回收 [E8]。",导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。
+naive,workspace-063,那是越大越相似吗？,True,easy,2,True,True,True,False,False,227,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.6666666666666666,True,,fully_grounded,5,5,1.0,0.0,0.0,0.2,1.0,8853.25,2437,2,,"L2距离（即欧氏距离）越大，表示向量越**不相似**，而非越相似；L2距离越小，才表示向量在几何空间中越接近、越相似 [E1][E3][E5][E7]。  
+例如，在二维示例中，查询向量 Q = [0, 0] 与文档 A = [0.1, 0]、B = [0.9, 0]、C = [2.1, 0] 的 L2 距离分别为 0.1、0.9、2.1；距离最小的 A 被判定为最相似并排在首位 [E3]。  
+同样，项目明确指出“L2 是距离，越小越近”，且当前 Milvus 实验中返回的 “score” 字段实际存储的是 distance 值，因此“score 越大越相似”的说法是错误的 [E1]。  
+进一步佐证：两个方向完全一致但模长差异大的向量（如 [1, 0, 0] 和 [9, 0, 0]）具有最大余弦相似度（1），但 L2 距离为 8，显著大于零，说明 L2 对模长敏感，距离大直接反映几何位置疏远 [E2]。  
+所有证据一致强调：L2 距离是绝对几何距离度量，其数值大小与相似性呈**负相关** [E1][E3][E5][E7]。",不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+naive,workspace-066,默认关掉它具体意味着什么，又有什么误判风险？,True,hard,2,True,True,True,False,False,241,False,2,2,1,1,True,,8,True,1.0,0.25,0.5,False,0,0.0,,1.0,0.8,True,,partially_grounded,6,4,0.6666666666666666,0.3333333333333333,0.3333333333333333,0.4,1.0,12228.633,2828,2,,"ChainOfRAG 默认关闭 early stopping 的具体含义是：在 ChainOfRAG 的执行流程中，`early_stopping=False` 为构造函数默认参数，导致系统**每轮结束后均不调用信息充分性判断模块，也不生成或记录任何反思（reflection）结果，而是严格执行至预设的最大迭代轮数 `max_iter`** [E6][E8]。这意味着即使第一轮已检索并生成了完整、准确的中间答案，系统仍会继续执行后续轮次，不会因“信息已足够”而提前终止 [E8]。该设计使行为更确定、可预测，避免模型主观判断引发的过早终止，但代价是冗余计算和资源浪费 [E8]。
+
+该设置带来的核心误判风险并非源于 early stopping 本身的误判，而是**因缺失充分性反思所诱发的系统性风险链**：首先，关闭 early stopping 意味着完全放弃每轮对当前信息是否足以支撑最终答案的主动验证，从而丧失对多跳推理链中“事实完备性”的动态监控 [E13][E6]；其次，由于缺乏充分性校验，错误的中间答案无法被及时识别和阻断，将不可避免地传播至后续轮次，污染追问生成与文档筛选，最终导致最终答案缺失关键事实或引入幻觉 [E5][E7]；第三，该机制下系统不进行“是否找到新支持文档”“是否增加新事实”“是否重复历史追问”等多维度停止信号评估，仅依赖硬性轮数上限，因而无法规避无意义检索——例如当已有证据已覆盖原问题全部要点时，仍强制执行剩余轮次，造成 Token 消耗与延迟非必要增长 [E2][E5]。
+
+此外，需强调 ChainOfRAG 当前实现并非 CoRAG 论文的完整复现，其充分性判断模块未集成论文中所需的训练对齐与鲁棒校验机制，进一步放大了关闭 early stopping 后的可靠性缺陷 [E15][E5]。因此，默认关闭 early stopping 并非技术限制，而是权衡确定性与质量后的保守策略，其根本代价是**以可预测性换取推理链的自我纠错能力缺失** [E8][E5]。",过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。
+naive,workspace-070,那这个项目本地选的是哪一种，为什么？,True,hard,2,True,True,True,False,False,244,True,2,2,2,2,True,True,8,True,1.0,0.5,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,15,10,0.6666666666666666,0.3333333333333333,0.0,0.6,1.0,13407.823,2442,2,,"根据提供的证据，Milvus 项目本地部署应选择 **Milvus Standalone** 形态，而非 Lite 或 Distributed。原因如下：
+
+1. **Milvus Lite 不适用当前环境**：  
+   当前本地已使用 Docker Milvus 成功验证建表、插入、L2 排序及维度匹配等核心功能，但环境中缺少 `milvus_lite` 依赖，因此无法运行或验证 Lite 版本；且证据明确指出“不能声称所有 Lite 测试均通过”[E1]。此外，Lite 被定义为纯 Python 库，适用于 Jupyter Notebook 快速原型或边缘设备，**不提供独立网络服务能力，也无法模拟服务故障与扩展行为**[E1][E2][E3][E5]。而项目已进入需验证服务连接、资源限制和故障响应的阶段，这超出了 Lite 的设计定位[E1]。
+
+2. **Milvus Distributed 过度复杂且不必要**：  
+   Distributed 模式面向“十亿级甚至更大规模”向量场景，需 Kubernetes 集群支持，具备云原生架构与关键组件冗余能力[E3][E5]。但证据强调：“小规模项目未必需要承担独立服务的运维成本”[E2]，且当前项目仅涉及 Chunk 向量、原文、来源及 metadata 的存储与 top-k 搜索，未体现分布式扩展需求[E6]。Distributed 的部署、监控与容量治理代价显著高于实际需要[E2]。
+
+3. **Milvus Standalone 是最优匹配形态**：  
+   Standalone 是“单机服务器部署，所有组件打包为单一 Docker 镜像，便于部署”[E3][E5]；它既提供了真实 Milvus 服务的完整能力（如 Collection 管理、向量索引、metadata 支持、独立客户端接口），又避免了 Distributed 的复杂性[E2][E3]。证据 E1 明确指出 Docker Milvus（即 Standalone 的典型实现方式）适用于“学习真实服务连接、资源限制和故障”，且本地已用其完成建表、插入、L2 排序等关键功能验证[E1]。同时，Standalone 可直接复用现有 Docker 环境，无需额外引入 Kubernetes 或轻量库依赖，符合“本地部署”与“已验证服务行为”的双重约束[E1][E3]。
+
+综上，Milvus Standalone 在功能完整性、部署便捷性、故障可测性及运维成本之间实现了最佳平衡，是当前项目本地部署的唯一合理选择[E1][E2][E3][E5]。",DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+naive,workspace-071,那具体必须达到多少？,False,medium,2,True,True,True,False,False,231,False,0,0,0,0,,,7,,,,,False,0,0.0,True,,,,True,partially_grounded,10,7,0.7,0.3,0.0,,,12247.117,2503,2,,"DeepSearcher 在生产环境中的并发和容量要求未给出具体数值（如 QPS、最大并发连接数、TPS 或内存/CPU 阈值等）[No relevant information found]。  
+
+证据明确指出：  
+- 系统当前仅实现“每进程查询限流”作为保护层，但该限流属于内部轻量级防护，并非面向生产环境的完整容量控制方案 [E5]；  
+- 生产化必需依赖“外部 deadline、分布式配额、可靠入库队列和最终用户 RBAC”，说明并发与容量管理需在服务网格或基础设施层（而非代码内）统一实施 [E5]；  
+- “十倍流量的改造顺序”将“入口鉴权限流和请求体上限”列为第一优先级，其次才是“有界并发与背压”，表明并发控制需结合请求准入（如 body size、租户令牌有效性）与资源调度协同设计，但未提供任何具体阈值 [E6]；  
+- 核心与代理均硬编码限制 `max_iter ≤ 10`，这是迭代深度约束，而非并发或吞吐量指标 [E6]；  
+- 明确警告“单纯增加 Uvicorn worker 不能提高模型限额，还会复制连接和进程内配置”，说明横向扩容无法线性提升模型调用容量，暗示模型网关或推理服务存在独立配额瓶颈，但未给出该配额的具体数值 [E6]；  
+- 成本分析强调总调用数、总 Token、总时间和并发上限需被设置，但仅作为优化建议中的第5条，未披露其默认值、推荐值或生产强制值 [E4]；  
+- 所有讲义与架构描述均未出现数字型容量指标（如“支持 500 QPS”“单节点承载 200 并发”“向量库连接池大小=32”等）[E3][E4][E5][E6][E7]。  
+
+综上，所有证据均未提供 DeepSearcher 生产环境并发和容量的**具体数值要求**（例如最大并发请求数、每秒处理能力、内存占用阈值、模型调用配额上限等量化参数），仅描述了管控维度（如租户隔离、deadline、分布式配额）和演进路径（如先限流再扩容），但缺失可执行的数值基准 [No relevant information found]。",资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。
+deep_search,workspace-061,那三种分别适合什么场景？,True,medium,2,True,True,True,False,False,241,False,1,1,1,1,True,,5,True,1.0,0.25,0.5,False,0,0.0,,1.0,1.0,True,,partially_grounded,12,11,0.9166666666666666,0.08333333333333333,0.0,0.4,1.0,15289.611,5809,5,,"- **Milvus Lite** is a lightweight, Python-library-based deployment designed for local, resource-constrained environments. It is suitable for personal learning, rapid prototyping (e.g., in Jupyter Notebooks), and small-scale data testing [E2][E3][E5]. It cannot simulate independent network service behavior or cluster-level failures, nor does it reflect real-world scalability or fault tolerance characteristics [E1][E5]. It is not intended for production use where service availability, horizontal scaling, or distributed resilience are required [E1][E5].
+
+- **Milvus Standalone** is a single-machine, server-style deployment where all Milvus components (e.g., query, data, index) are bundled into one Docker image, enabling convenient local or edge-server deployment [E2][E3]. It targets scenarios where vector search is an independent capability and data volume or concurrent load is expected to grow steadily—but not at billion-scale—while avoiding the operational overhead of Kubernetes orchestration [E5]. It requires dedicated deployment, monitoring, and capacity planning, unlike Lite [E5].
+
+- **Milvus Distributed** is a cloud-native, Kubernetes-based deployment architecture explicitly designed for billion-scale or larger vector workloads, supporting tens of billions of vectors with consistent stability [E2][E3][E4]. Its highly decoupled, stateless component design (query node, data node, index node) allows independent vertical and horizontal scaling, redundancy in critical components, and optimized cost-performance trade-offs [E3][E4]. It is appropriate for enterprise-grade, production-critical applications demanding high reliability, elasticity, and multi-tenant operational maturity [E2][E4].
+
+No evidence specifies precise vector count thresholds (e.g., “<1M for Lite”, “1M–100M for Standalone”) or defines exact hardware/resource boundaries—only qualitative scale descriptors (e.g., “small data”, “billion-scale”, “edge devices with limited resources”) [E1][E2][E3][E5]. There is no conflict among the chunks regarding deployment purpose; all consistently associate Lite with prototyping/local use, Standalone with simplified single-node service, and Distributed with large-scale, resilient, cloud-native production [E1][E2][E3][E4][E5].",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+deep_search,workspace-062,换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？,True,hard,2,False,False,True,True,True,234,False,1,1,1,1,True,,4,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.8,True,,partially_grounded,9,8,0.8888888888888888,0.1111111111111111,0.0,0.3333333333333333,1.0,15273.173,7650,6,,"FastAPI 应用启动时通过 `lifespan` 事件处理器管理外部组件的生命周期，而非在模块导入时初始化依赖。具体而言，应用工厂定义后，`lifespan` 启动阶段才读取配置、创建 `RuntimeRegistry`，并按需构建当前活动版本所需的外部组件实例，包括 LLM 客户端、Embedding 客户端、文件加载器、网页爬虫、VectorDB 客户端、RAGRouter（由 DeepSearch 和 ChainOfRAG 组成）以及 NaiveRAG 等基础能力 [E1][E3]。这些组件不共享全局状态，而是通过依赖注入（如 `Depends(get_runtime)`）为每个请求提供租约式访问，租约在请求退出时自动释放 [E1][E3]。初始化失败不会导致进程崩溃，而是使 `/health` 和业务接口返回带组件名的 503 错误，确保服务可观测性与部分可用性 [E1]。
+
+关闭阶段，`lifespan` 统一等待 SSE 清理任务完成，并释放向量客户端等资源；旧版本实例会在最后一个使用其 runtime 的请求结束后才关闭，实现优雅降级 [E1]。相较传统 `startup`/`shutdown` 事件，`lifespan` 提供了更严格的异步上下文管理能力，支持异步初始化与清理，且与 ASGI 生命周期深度绑定，从而保障多 worker 场景下资源隔离与一致性 [E1][E2]。但该模式也引入额外代码层次，需权衡可测试性提升与结构复杂度增加 [E2]。
+
+所有外部组件均不通过模块级全局变量（如 `init_config()` 创建的对象）提供给在线请求，仅 `lifespan` 中的 `RuntimeRegistry` 作为唯一可信来源 [E1]。HTTP 入口层（如 `main.py`）本身不触发任何外部连接，严格遵循“导入即定义、运行时才连接”的原则 [E1][E3]。",导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。
+deep_search,workspace-063,那是越大越相似吗？,True,easy,2,True,True,True,False,False,228,False,1,1,1,1,True,,7,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,9,9,1.0,0.0,0.0,0.14285714285714285,1.0,18937.959,7901,6,,"在 Milvus 中，L2 distance（欧氏距离）是一种**距离度量**，其数值越小表示两个向量在几何空间中越接近，即**越相似**；反之，L2 distance 越大，表示两个向量相距越远，**越不相似** [E1][E2][E4][E6][E7]。  
+证据明确指出：“L2 是距离，越小越近”[E1]，“当前默认 L2 越小越近”[E2][E6]，并以二维示例验证：问题向量 [0, 0] 到 [0.1, 0]、[0.9, 0]、[2.1, 0] 的 L2 距离分别为 0.1、0.9、2.1，其中距离最小者（0.1）对应最相似的文档 A，排在最前 [E4]。  
+尽管结果字段名为 `score`，但实际存储的是 Milvus 返回的 `distance`，因此不能解读为“score 越大越相似”[E1]；相反，生产响应应明确标注 `higher_is_better=false` 或等效语义以避免歧义 [E7]。  
+
+L2 与其它度量（如余弦相似度 Cosine 或内积 IP）行为不同：Cosine 和 IP 属于**相似度度量**，值越大越相似；而 L2 是**距离度量**，值越小越相似 [E1]。例如，向量 [1, 0, 0] 与 [9, 0, 0] 方向完全一致，Cosine 相似度为 1，但 L2 距离为 8，显著大于零，说明二者在 L2 下并不“接近”[E3]。这种差异源于度量本身的数学定义和语义：L2 衡量绝对几何距离，Cosine 衡量方向一致性，IP 同时受方向和模长影响 [E1]。  
+
+此外，L2 的可解释性依赖于向量空间的一致性：要求文档与查询向量来自同一 Embedding 模型、相同维度、相同预处理与归一化配置；否则即使维度匹配，距离也缺乏可靠语义 [E5][E6]。维度不匹配则根本无法计算 L2（因坐标无法逐项对齐）[E4]。  
+
+综上，**L2 distance 越大，表示越不相似**；该结论由所有相关证据一致支持，无冲突 [E1][E2][E4][E6][E7]。",不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+deep_search,workspace-066,默认关掉它具体意味着什么，又有什么误判风险？,True,hard,2,True,True,True,False,False,241,False,2,2,1,1,True,,8,True,1.0,0.25,1.0,False,0,0.0,,1.0,0.8,True,,partially_grounded,10,7,0.7,0.3,0.2,0.2222222222222222,1.0,19743.209,9477,6,,"ChainOfRAG 默认关闭 early stopping 的具体含义是：系统在初始化时将 `early_stopping=False` 设为默认参数，导致每轮迭代结束后不触发信息充分性判断逻辑，也不执行任何基于充分性的反思（reasoning）分支；系统将无条件执行至预设的最大迭代轮数 `max_iter`，无论中间某轮是否已获得足以回答原始问题的完整证据 [E4][E6][E13]。该设置意味着“充分性反思”模块根本未被调用，而非模型返回了空值或否定判断 [E4][E6][E7]。
+
+这一设计带来的误判风险主要包括三类：  
+1. **冗余推理与资源浪费**：即使首轮检索已获取覆盖原始问题所有要点的关键事实，系统仍会继续执行后续轮次，造成不必要的 Token 消耗和延迟累积 [E6]；由于 ChainOfRAG 采用串行检索链，每轮均需 LLM 生成追问、路由、向量检索及中间答案生成，其计算开销随轮数累积增长，且上下文持续膨胀导致 Token 和延迟非严格线性但显著上升 [E3][E8]。  
+2. **错误中间答案向后传播**：因缺乏每轮充分性校验，早期生成的错误中间答案可能被带入后续轮次，误导追问构造与文档选择，形成级联误差；这被明确列为 ChainOfRAG 的主要风险之一 [E2][E9]。  
+3. **文档索引校验不完整**：关闭 early stopping 后，系统不评估支持证据是否覆盖原问题各要点，亦不检测新轮次是否引入新事实或重复历史内容，导致证据覆盖完整性无法保障 [E1][E2]。
+
+量化评估该误判风险目前缺乏直接指标：证据未提供具体统计方法（如误判率、过早/过晚停止频率、冗余轮次占比）或实证评测数据；仅指出应综合质量、p95 延迟、Token 消耗与失败率进行 Pareto 折中优化，而非单一追求正确率 [E8]。同时，当前 ChainOfRAG 并非 CoRAG 论文方法的完整复现，其充分性判断机制缺失进一步削弱了风险可控性 [E2][E5][E15]。
+
+关于误判类型，证据一致指出关闭 early stopping 不会导致“过早终止”（因反思分支完全不运行），但会加剧“冗余推理”与“错误传播”；而“过早停止”仅在 `early_stopping=True` 时由模型误判充分性引发 [E1][E4][E6]。因此，“过早终止”不属于默认关闭状态下的风险，而是启用该机制后才存在的潜在问题 [E1][E4]。",过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。
+deep_search,workspace-070,那这个项目本地选的是哪一种，为什么？,True,hard,2,True,True,True,False,False,244,True,2,2,2,2,True,True,4,True,1.0,0.375,1.0,False,0,0.0,,0.6,1.0,True,,partially_grounded,10,8,0.8,0.2,0.0,0.75,1.0,16798.309,5633,6,,"For local deployment of Milvus, the recommended形态 (form) is **Milvus Lite** for personal learning, prototyping, and small-data testing, and **Milvus Standalone** (Docker-based) when simulating a real networked service with resource constraints and fault behavior [E2][E4].  
+
+Milvus Lite is a lightweight Python library—not a standalone server—designed for quick prototyping in Jupyter Notebooks or edge devices with limited resources; it cannot model independent network service failures or horizontal scalability [E1][E2][E4]. It is explicitly labeled as suitable for “personal learning, prototype, small data testing” but fails to represent production-grade service characteristics like fault tolerance or distributed scaling [E2][E4].
+
+Milvus Standalone deploys all components in a single Docker image, offering a convenient single-machine server setup ideal for local development that requires realistic service connectivity, persistence, and basic concurrency—unlike Lite—and avoids the operational overhead of Kubernetes orchestration [E1][E3][E4]. Evidence confirms that Docker-based Milvus (i.e., Standalone) has been successfully used locally for core operations including collection creation, vector insertion, L2 distance sorting, and dimension validation [E2].
+
+Milvus Distributed is not appropriate for local deployment: it targets billion-scale scenarios on Kubernetes clusters, emphasizes cloud-native architecture and component redundancy, and incurs significant infrastructure and operational complexity [E1][E3]. No evidence supports its use for local development or testing.
+
+Thus, the choice between Lite and Standalone depends on whether the goal is *code-integrated experimentation* (Lite) or *service-integrated validation* (Standalone). Lite avoids deployment overhead but sacrifices service realism; Standalone trades simplicity for fidelity to production service behavior—including failure modes and resource boundaries—making it more suitable for pre-production local testing where service contracts (e.g., REST/gRPC APIs, persistence, concurrent access) matter [E2][E4]. Neither Lite nor Standalone provides fault tolerance or elastic scalability—those are exclusive to Distributed mode [E1][E3][E4].",DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+deep_search,workspace-071,那具体必须达到多少？,False,medium,2,True,True,True,False,False,231,False,0,0,0,0,,,5,,,,,False,0,0.0,True,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,11037.961,6361,6,,No relevant information found.,资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。
+chain_of_rag,workspace-061,那三种分别适合什么场景？,True,medium,2,True,True,True,False,False,241,False,1,1,1,1,True,,5,True,1.0,0.25,0.5,False,0,0.0,,1.0,1.0,True,,fully_grounded,3,3,1.0,0.0,0.0,0.4,1.0,10148.094,5872,5,,"Milvus Lite is suitable for personal learning, prototyping, and small data testing [E1][E4].  
+Milvus Standalone (Docker Milvus) is suitable for learning real service connectivity, resource constraints, and failures, or when vector search is an independent capability with continuously growing data and concurrency [E1][E2][E3][E4].  
+Milvus Distributed is suitable for billion-scale or larger scenarios, featuring a cloud-native architecture designed for high scalability, redundancy, and massive vector management [E2][E3][E5].",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+chain_of_rag,workspace-062,换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？,True,hard,2,False,False,True,True,True,234,False,1,1,1,1,True,,1,True,1.0,0.125,1.0,False,0,0.0,,0.6,0.8,True,,fully_grounded,1,1,1.0,0.0,0.0,1.0,1.0,11505.267,7947,6,,FastAPI 应用启动时通过 lifespan 事件管理外部组件生命周期：读取配置，创建 RuntimeRegistry，并构建当前活动版本所需的 LLM 客户端、Embedding 客户端、文件加载器、网页爬虫、VectorDB 客户端、RAGRouter 和 NaiveRAG；初始化失败时应用进程不退出，/health 与业务接口返回带安全组件名的 503；关闭阶段统一等待 SSE 清理任务并释放向量客户端 [E1].,导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。
+chain_of_rag,workspace-063,那是越大越相似吗？,True,easy,2,True,True,True,False,False,224,False,1,1,1,1,True,,3,True,1.0,0.125,1.0,False,0,0.0,,0.0,0.6666666666666666,True,,fully_grounded,1,1,1.0,0.0,0.0,0.3333333333333333,1.0,6392.603,5319,5,,No [E1][E2][E3],不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+chain_of_rag,workspace-066,默认关掉它具体意味着什么，又有什么误判风险？,True,hard,2,True,True,True,False,False,247,False,2,0,1,0,False,,4,False,0.0,0.0,0.0,False,0,0.0,,0.8,0.4,False,,fully_grounded,2,2,1.0,0.0,0.0,0.0,0.0,10612.011,6478,5,,"ChainOfRAG 默认关闭 early stopping（i.e., `early_stopping=False`），意味着系统不会在每轮判断当前信息是否足够，而是直接执行满 `max_iter` 轮，导致充分性反思分支根本未运行 [E2][E3]. 误判风险包括错误中间答案向后传播 [E4], 文档索引校验不完整 [E3], 以及缺乏充分性反思导致冗余检索和延迟增加 [E2][E3].",过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。
+chain_of_rag,workspace-070,那这个项目本地选的是哪一种，为什么？,True,hard,2,True,True,True,False,False,244,True,2,2,2,2,True,True,5,True,1.0,0.375,1.0,False,0,0.0,,0.2,1.0,True,,fully_grounded,1,1,1.0,0.0,0.0,0.6,1.0,8993.241,5686,5,,Milvus 项目本地部署选择 Milvus Lite 形态，因其适用于个人学习、原型开发和小数据测试，且适合在本地快速验证建表、插入、L2排序和维度匹配等基础功能 [E1][E2][E3][E4][E5].,DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+chain_of_rag,workspace-071,那具体必须达到多少？,False,medium,2,True,True,True,False,False,234,False,0,0,0,0,,,0,,,,,True,0,0.0,False,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,8430.507,2951,5,,No relevant information found,资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。

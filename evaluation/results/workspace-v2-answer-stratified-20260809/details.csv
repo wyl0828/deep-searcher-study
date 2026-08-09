@@ -1,0 +1,637 @@
+﻿agent,sample_id,question,answerable,difficulty,history_turn_count,context_expected_dependency,context_predicted_dependency,context_dependency_correct,context_query_match,context_fallback_used,context_tokens,multi_document,required_evidence_count,matched_evidence_count,required_document_count,matched_document_count,full_evidence_retrieved,full_document_coverage,retrieved_count,retrieval_hit,retrieval_recall,retrieval_precision,reciprocal_rank,empty_result,duplicate_count,duplicate_rate,no_answer_false_positive,answer_criteria_coverage,grounded_criteria_coverage,evidence_source_correct,refusal_correct,grounding_state,claim_count,supported_claim_count,claim_support_rate,ungrounded_claim_rate,invalid_claim_citation_rate,claim_citation_precision,claim_citation_recall,latency_ms,tokens,llm_calls,error,answer,reference_answer
+naive,workspace-001,Milvus 是什么，它以哪两种形态提供？,True,easy,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,5,5,1.0,0.0,0.0,0.3333333333333333,1.0,7009.561,2015,1,,"Milvus 是一个高性能、高可扩展的向量数据库，专门用于向量相似度检索 [E1][E5]。它可以高效运行在各种环境中，从笔记本电脑到大规模分布式系统 [E1]。Milvus 是 LF AI & Data Foundation 旗下的开源项目，采用 Apache 2.0 许可证分发，核心贡献者多来自高性能计算领域 [E1]。
+
+它以两种形态提供：开源软件和云服务 [E1]。此外，Milvus 在实现上采用列式存储，并使用 C++ 构建核心搜索引擎以提升性能 [E7]。",Milvus 是高性能、可扩展的向量数据库，同时提供开源软件和云服务。
+naive,workspace-002,Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？,True,medium,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.375,0.5,False,0,0.0,,1.0,1.0,True,,partially_grounded,15,12,0.8,0.2,0.0,0.4,1.0,15152.653,3069,1,,"根据证据，Milvus 的三种部署模式覆盖了从本地原型到大规模集群的不同数据规模 [E2]。
+
+- **Milvus Lite**：  
+  Milvus Lite 是 Milvus 的轻量级 Python 库版本，适合快速原型开发、Jupyter Notebook 中的本地实验，以及资源受限的边缘设备运行 [E2][E3]。它也非常适合个人学习、原型验证和小规模数据测试 [E1][E4]。主要限制是它不能代表独立的网络服务，也无法模拟集群的故障和扩展能力，因此不适合用来验证服务化、高可用或大规模扩展场景 [E1][E4]。
+
+- **Milvus Standalone**：  
+  Milvus Standalone 是单机服务器部署模式，所有组件打包在一个 Docker 镜像中，方便部署 [E2][E3]。它适合学习真实服务连接、资源限制和故障处理等场景，但部署和资源成本比 Milvus Lite 更高 [E1]。如果你的场景中向量检索是独立能力，且数据和并发量持续增长，单机服务化部署是比 Lite 更合适的选择 [E4]。
+
+- **Milvus Distributed**：  
+  Milvus Distributed 部署在 Kubernetes 集群上，采用云原生架构，专门面向十亿级甚至更大规模的向量场景 [E2][E3]。这种架构在关键组件上提供冗余，保证系统稳定性 [E2][E3]。在实际大规模应用中，Milvus 已支持数百亿向量，并服务 Salesforce、PayPal、Shopee、Airbnb、eBay、NVIDIA、IBM 等大型企业 [E8]。其系统无状态、组件高度解耦，查询节点、数据节点和索引节点可以独立扩缩容，从而支撑数据增长和性能优化 [E8]。因此，它适合对扩展性、高可用和超大规模数据有要求的生产环境 [E2][E8]。",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+naive,workspace-006,Milvus 官方列出了哪些 API 或 SDK？,True,easy,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,2,2,1.0,0.0,0.0,1.0,1.0,4713.587,1661,1,,根据官方列出的信息，Milvus 提供的 API 和 SDK 包括：RESTful API（官方）、PyMilvus（Python SDK，官方）、Go SDK（官方）、Java SDK（官方）、Node.js（JavaScript）SDK（官方）[E1]。此外，还有一个 C# SDK，但它是由 Microsoft 贡献的，并非官方发布[E1]。,包括 RESTful API、PyMilvus、Go SDK、Java SDK 和 Node.js SDK；文档还列出微软贡献的 C# SDK。
+naive,workspace-013,为什么不能说 1500/100 是最优分块参数，应如何验证？,True,medium,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,25,20,0.8,0.2,0.0,0.14285714285714285,1.0,21137.44,3825,1,,"## 为什么不能说 1500/100 是最优分块参数
+
+- 1500/100 只是当前项目的工程默认值，不是通过评测选出的最优值 [E4][E8]。API 入库时当前固定使用底层默认的 1500/100，且未暴露 `chunk_size`、`chunk_overlap` 等参数，因此它更像“默认配置”而不是“最优结果” [E8]。
+- 现有本地实验只证明“参数会改变 Chunk 数量”：同一份 `WhatisMilvus.pdf` 在 1500/100 下产生 10 个 Chunk，改成 500/50 后产生 25 个 Chunk [E1]。这个实验不能证明 1500/100 质量更优，只能说明参数会影响切分粒度 [E1]。
+- 不能说“Chunk 越小越精准”，更准确的说法是：Chunk 变小通常会提高检索颗粒度，但最终召回质量必须通过评测验证 [E2]。
+- 较小 Chunk 可以提高检索颗粒度，但过小会割裂语义并增加向量数量，因此需要 overlap 缓解边界断裂，并在生成时优先使用 `wider_text` 补充上下文 [E4]。这说明分块参数存在权衡，不能凭直觉断定某组参数最优 [E4]。
+- 如果 overlap 接近 Chunk 本身长度，会产生大量重复内容。例如 Chunk A 正文 500 字，Chunk B 其中 450 字与 A 重复，这样的重复片段比例是必须考虑的代价 [E6]。
+- 评估索引也不能只看延迟，还要同时看 Recall@K [E5]。如果把 P95 从 500 ms 降到 100 ms，却让大量标准证据掉出 top-k，这个优化对问答系统并不合格 [E5]。
+
+## 应如何验证最优分块参数
+
+正确的验证方法不是只看 Chunk 数量，而是准备带标准证据片段的问题集，对不同参数组合进行比较 [E1]。需要对比的指标至少包括：
+
+1. **Recall@K**：标准证据能否被检索到 [E1][E5]。
+2. **回答正确率和忠实度**：生成答案是否准确、是否忠于检索到的证据 [E1]。
+3. **重复片段比例**：尤其要控制 overlap 过大带来的重复内容 [E1][E6]。
+4. **入库时间与存储量**：更小的 Chunk 会增加向量数量，从而影响存储和入库成本 [E1][E4]。
+5. **查询延迟和 Token**：需要评估检索和生成阶段的延迟及消耗 [E1]。
+
+需要注意：Chunk 从 1500 改成 500 时，单片段更短，所以总成本会下降 [E3]；但若为了补足上下文而提高 top-k，总 Token 不一定下降 [E2]。因此不能仅凭“Chunk 变小”断言更优，必须用 Recall@K 等指标做端到端验证 [E2][E1]。
+
+## 结论
+
+目前只能说 1500/100 是工程默认参数，并且已验证它会改变 Chunk 数量；还没有通过 Recall@K 等评测证明它最优 [E4][E1]。要验证最优分块参数，必须基于带标准证据的问题集，对 `chunk_size`、`chunk_overlap` 以及相关 top-k 设置进行系统对比，最终以检索质量、回答质量、重复比例、成本和延迟等指标综合判断 [E1][E5]。",它只是工程默认值。应在带标准证据的问题集上比较 Recall@K、回答正确率和忠实度、重复片段比例、入库时间、存储、查询延迟与 Token。
+naive,workspace-015,当前项目应如何解释 L2 和 score 字段？,True,easy,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,11,10,0.9090909090909091,0.09090909090909091,0.0,0.2,1.0,9679.915,3256,1,,"当前项目应明确区分 L2 与 score 字段的语义，避免按字段名误读。
+
+L2 本质是欧氏距离，属于“距离”而非“相似度”，数值越小表示向量越近 [E1]。项目默认使用 L2，排序规则是从小到大，例如临时 2 维 Collection 实验得到距离 0.01、0.81、4.81，应按从小到大排列 [E1]。默认查询路径中 L2 就是距离，越小越近 [E7][E8]。
+
+score 字段不能独立解释为相似度：当前 RetrievalResult.score 承接的是 Milvus 返回的 distance，而不是相似度 [E1][E3]。虽然字段名是 score，但当前实际保存的是 Milvus 的 distance [E1][E8]。因此不能说“score 越大越相似”或“score 越大越相关” [E1][E2]。前端把 score 笼统标为“相似度”不够严谨 [E3]。生产环境响应应同时携带 metric、score_type、higher_is_better、retrieval_mode 等字段，以明确 score 的度量语义 [E3]。
+
+此外，三种常见度量的直观含义不同：L2 比较绝对几何距离，Cosine 比较向量方向是否一致，IP 比较内积且同时受方向和模长影响 [E1]。选择度量时应参考 Embedding 模型建议、向量是否归一化，以及真实评测结果 [E1]。",L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+naive,workspace-019,为什么生产环境不能滥用 force_new_collection？,True,easy,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.75,True,,fully_grounded,8,8,1.0,0.0,0.0,0.25,1.0,12097.307,2806,1,,生产环境不能滥用 `force_new_collection`，因为该参数的行为是删除已有 Collection 后重建 [E1]。本地实验这样做很方便，但在生产环境直接删除已有 Collection 可能造成数据丢失 [E1]。生产环境不能在没有备份和评测的情况下直接删除旧 Collection [E2]。正确做法是保留旧 Collection，创建新版本 Collection，使用新模型重新生成向量，运行检索回归评测，再切换查询流量，并保留回滚能力 [E2]。也可以概括为：创建版本化 Collection、验证后切流，并保留旧版本用于回滚 [E1]。此外，Collection 本身不能只靠开关升级，因为它缺少稀疏字段、Function 和索引，需要新建 Schema 并重新入库，因此用 `force_new_collection` 简单删除重建并不符合生产升级需要 [E5]。当前文件入库 API 没有暴露 `force_new_collection`，默认不删除 Collection，正是为了减少误操作入口 [E7]。因此，滥用 `force_new_collection` 的主要风险是数据丢失，并缺少可回滚的发布路径 [E1][E2]。,它可能删除已有 Collection 并造成数据丢失。更安全的做法是创建版本化 Collection、验证后切流并保留旧版本回滚。
+naive,workspace-021,Hybrid 检索为什么可能有帮助，又为什么不能仅凭代码存在就启用？,True,hard,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.25,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,12,11,0.9166666666666666,0.08333333333333333,0.0,0.2857142857142857,1.0,13628.3,2018,1,,"Hybrid 检索之所以可能有帮助，是因为 Dense 与 BM25 的召回能力互补：Dense 适合同义词和自然语言改写，但对错误码、SKU、函数名、版本号等可能不稳定；BM25 擅长稀有精确字符串匹配，却难以普遍理解同义表达 [E8]。Hybrid 同时执行两路召回，可以兼顾语义近似和字面匹配 [E8]。RRF 按名次而非原始分数融合，用 Σ 1/(k + rank) 的方式避免直接比较方向、范围和量纲都不同的 L2 分数与 BM25 分数 [E8]。从代码层面看，Milvus 实现已经具备 Analyzer、sparse_vector、BM25 Function、稀疏倒排索引、双路 AnnSearchRequest 和 RRFRanker()，这些组件为混合检索提供了技术基础 [E8]。
+
+然而，不能仅凭代码存在就启用 hybrid。首先，当前 YAML 并没有启用 hybrid，实际仍是 Dense-only [E8]，所以“有代码”不等于“已生效”。其次，源码存在也不等于已经证明“混合检索效果更好” [E1][E2]；必须在同一问题集上比较 Dense、BM25 和 Hybrid 的 Recall@K、延迟、存储和资源开销，才能得出可靠结论 [E2]。此外，检索失败的类型也需要区分：后端请求失败、Milvus 检索失败、检索成功但没有相关证据，不能用同一个“没有答案”提示掩盖 [E4]。DeepSearcher 在没有任何检索结果时会返回“没有相关信息”，这种保守行为比无证据硬答更可靠，但仍然无法区分“真实无命中”和“检索系统失败” [E5]。同时，混合检索的完整性还受限于子查询和补充查询依赖模型输出可解析列表、结构校验不完整，并且互联网检索仍是 TODO、当前只查向量数据库 [E6]。另外，向量检索只是给出候选，DeepSearch 随后还要让 LLM 判断每个候选 Chunk 是否有帮助 [E7]。因此，hybrid 有潜在价值，但必须通过对照实验验证，并结合系统实际配置和失败类型判断，不能因为代码存在就直接启用 [E1][E2][E8]。",Dense 有利于语义改写，BM25 对编号、日期和专有词更稳，RRF 可融合两路；但是否提升必须在同一问题集比较 Recall、延迟、存储和资源开销。
+naive,workspace-024,DeepSearch 从原问题到最终答案要经过哪些主要阶段？,True,hard,0,,,,,,0,False,2,0,1,0,False,,3,False,0.0,0.0,0.0,False,0,0.0,,0.0,0.0,False,,insufficient_evidence,1,0,0.0,1.0,0.0,,0.0,7254.317,995,1,,No relevant information found,先生成最多四个子查询并发检索，对候选 Chunk 做 YES/NO 支持性过滤，合并去重；非最后一轮反思并生成补充查询，达到停止条件后汇总证据生成答案。
+naive,workspace-027,ChainOfRAG 如何沿事实线索完成多跳查询？,True,hard,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.375,1.0,False,0,0.0,,1.0,0.6,True,,partially_grounded,13,12,0.9230769230769231,0.07692307692307693,0.0,0.5,1.0,23923.228,4216,1,,"ChainOfRAG 是为多跳事实问题设计的串行检索问答方法，核心思路是“沿着事实线索逐步追查” [E2][E4]。它适合后一个问题依赖前一个答案的多跳事实问题，也适合逐步发现实体和关系的任务 [E7][E5]。
+
+具体流程如下：
+
+1. 从原始问题出发；每一轮根据原始问题和历史中间问答生成一个简单追问 [E1][E7]。
+2. 对该追问执行 Collection 路由、向量检索，并根据检索到的文档生成中间答案 [E1][E7]。
+3. 由 LLM 选择支持该问答对的文档；这一候选过滤方式不是简单去重，而是选择支持问答对的文档 [E1][E3]。
+4. 将“追问 + 中间答案”保存下来，并进入下一轮；中间问答会形成串行检索链 [E1][E7]。
+5. 如果启用 early stopping，每一轮会判断当前信息是否足够；默认关闭 early stopping，因此最多执行 max_iter 轮 [E1]。停止方式也可以描述为“可选充分性判断或达到上限” [E3][E7]。
+6. 最终汇总支持文档和中间问答，生成最终答案 [E7]。
+
+在风险方面，ChainOfRAG 的主要风险是错误中间答案会向后传播 [E4]；当前默认关闭 early stopping 时，中间答案还可能传播错误，文档索引校验不完整，并且它只是受 CoRAG 思想启发，不是论文训练方法的完整复现 [E1]。成本和延迟会随串行轮数累积 [E3]。在对比中，ChainOfRAG 使用“原问题、历史中间问答”作为输入，并以“选择支持问答对的文档”作为候选过滤方式 [E3]。",每轮根据原问题和历史中间问答生成一个简单追问，完成 Collection 路由、检索和中间答案，再选择支持文档；后续轮次依赖已得到的事实，最后汇总。
+naive,workspace-032,核心 API 的 Provider 配置、文件入库、网站入库、普通查询和流式查询分别是什么边界？,True,hard,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.25,0.5,False,0,0.0,,1.0,1.0,True,,partially_grounded,42,35,0.8333333333333334,0.16666666666666666,0.0,0.3333333333333333,1.0,94101.104,6423,1,,"基于证据，核心 API 的边界可以按接口分别梳理如下。
+
+### 总体边界
+当前项目已具备可读的配置、文件入库、网页入库、查询和可选 Trace 接口。[E1] 当前还没有最终用户登录与角色体系，已完成的是服务到服务租户令牌、Collection 授权和每进程查询限流。[E3] 当前架构是同步阻塞依赖加线程池承载，不是端到端异步架构。[E1] 配置使用共享 SQLite 控制面、CAS 发布和请求租约延迟回收，多 worker 会在请求边界观察活动版本。[E1]
+
+### Provider 配置
+Provider 配置接口是 `POST /set-provider-config/`，输入位置是 JSON Body。[E2] 它的作用是当前受信租户构建并发布下一个 runtime 版本。[E2] 关键边界是：旧请求继续使用旧租约；密钥不回显且只能引用环境变量。[E2] 租户发布/回滚要求管理令牌，默认租户 Provider 更新要求服务令牌，配置不回显密钥。[E3] Pydantic 模型 `ProviderConfigRequest` 会校验 `feature`、`provider`、`config` 三个字段是否存在以及基本类型。[E6] 但 `feature` 只是普通字符串，是否受支持要进入 `set_provider_config()` 后才判断。[E6]
+
+### 文件入库
+文件入库接口是 `POST /load-files/`，输入位置是 JSON Body。[E2] 当前作用是读取后端机器上的文件路径，切 Chunk、Embedding 后写入 Milvus。[E2] 关键边界是：它不是浏览器二进制上传接口，默认 `batch_size=256`。[E2] 该接口接收的是后端可见路径或路径列表，而不是文件字节。[E5] 路径必须存在于 FastAPI 服务所在机器；浏览器用户本机的 `C:/Users/.../a.pdf` 对部署在另一台服务器上的后端没有意义。[E5] 执行流程是：路径存在性检查 → 文件或目录解析为 Document → 按 1500/100 默认参数切 Chunk → 按 `batch_size` 批量生成 Embedding → 写入指定或默认 Collection。[E5] 当前入口没有暴露 `chunk_size`、`chunk_overlap` 和 `force_new_collection`，因此 API 入库固定使用底层函数默认的 1500/100，并默认不删除 Collection。[E5] 因为接受服务端路径，所以强制服务令牌，且只能由 BFF/受信运维调用，不能直接公开给浏览器。[E3] 浏览器上传由 BFF 校验并持久化后再调用该接口。[E1] 产品工作台链路是：浏览器选择 PDF → product-api.ts 用 FormData 发送 multipart → `/api/knowledge-bases/{id}/documents` 读取并校验 → 计算 SHA-256 拒绝知识库内重复 PDF → 保存 Document、IngestJob 和持久文件并标记 queued → 返回 202，BackgroundTasks 将状态改为 processing → 用服务端文件路径调用 `/load-files/` → 成功变为 ready，失败变为 failed。[E8]
+
+### 网站入库
+网站入库接口是 `POST /load-website/`，输入位置是 JSON Body。[E2] 当前作用是抓取 URL、切 Chunk、Embedding 后写入 Milvus。[E2] 关键边界是：它依赖爬虫和外部网络，当前入口没有暴露抓取超时等治理参数。[E2] URL 抓取可能产生费用滥用、SSRF 和恶意内容入库风险。[E3]
+
+### 普通查询
+普通查询接口是 `POST /query`，输入位置是 JSON Body。[E6] 当前作用是调用当前租户 RAGRouter 查询，可选返回 Trace。[E6] 关键边界是：问题不进入 URL；最长 4000 字，`max_iter` 为 1–10。[E6] 查询已经改用 POST Body，但仍要避免在自定义日志、APM payload 或错误上报中记录请求体。[E3] Pydantic 校验中 `max_iter` 设置了 `ge=1, le=10`，传入 0 时请求会在进入业务函数之前被 FastAPI/Pydantic 拒绝，并返回安全的 422 错误信封。[E6] `original_query` 最长 4000 字、`max_iter` 最多 10 只是请求预算，不等于完整成本治理。[E6] 核心与代理都限制 `max_iter ≤ 10`，但仍需总 deadline、模型 Token 预算和分布式并发控制。[E3] 当前已完成的是服务到服务租户令牌、Collection 授权和每进程查询限流。[E3]
+
+### 流式查询
+流式查询接口是 `POST /query/stream`，输入位置是 JSON Body + SSE。[E6] 当前作用是增量返回受控执行阶段与最终结果。[E6] 关键边界是：阶段不是思维链；断连时协作取消并释放 runtime 租约。[E6]",Provider 接口发布受信租户的新 runtime 且不回显密钥；load-files 接受后端路径；load-website 依赖外网爬虫；query 用 POST JSON 返回结果/可选 Trace；query/stream 用 SSE 返回安全阶段和终态。
+naive,workspace-038,Trace 为什么不是模型思维链，它如何从 Agent 到产品引用？,True,medium,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.375,0.5,False,0,0.0,,1.0,1.0,True,,conflicting_evidence,12,12,1.0,0.0,0.0,0.5,1.0,15329.355,3286,1,,"Trace 不是模型思维链，因为它是应用主动记录的“执行事件”，而不是模型内部不可见的推理过程 [E1]。Trace 记录的是 Agent、Collection、检索文档、迭代、延迟和 Token 等可观察的流程信息，它能帮助观察运行过程，但不能声称“展示了模型完整思维链” [E1]。准确说法应该是“执行 Trace”或“阶段日志” [E1]。Trace 记录程序只记录显式可见的输入、输出和阶段事件，不读取也不声称暴露模型隐藏的思维链 [E3]。需要指出的是，检索到的材料中存在直接冲突：E2 声称“是模型思维链”，这与 E1 和 E3 的定义矛盾 [CONFLICT:E1,E2]。
+
+从 Agent 到产品引用的链路，证据给出了清晰的数据流动过程：`query_with_trace()` 创建请求级 TraceCollector，RAGRouter 记录 Agent，ChainOfRAG 逐轮记录子问题、Collection、检索文档、中间答案、支持文档、反思和 Token，然后 `build()` 生成版本化安全 JSON [E3]。在学习控制台侧，该 JSON 经 FastAPI `/api/query`、`api.js` 到达 `/console` 的 TracePanel 展示 [E3]。在产品工作台侧，Trace 经 Citation 持久化、`product-api.ts` 最终进入引用抽屉 [E3]。被选中的 Agent 会把受控应用事件写入 Collector，例如在 DeepSearch 与 ChainOfRAG 之间由 RAGRouter 先做选择，再执行 Collection 路由、Embedding、Milvus 检索和答案生成 [E6]；`query_with_trace()` 返回 `(answer, retrieval_results, consume_tokens, trace)`，而 `perform_query()` 会丢弃检索结果，只向客户端返回 `result`、`consume_token` 和 `trace` [E6]。
+
+无论学习控制台还是产品工作台，两条链路都只展示应用事件，而不是模型隐藏思维链 [E3]。当前脱敏策略包括：最多展示 5 条文档、每条 600 字，不返回 Embedding 和原始 metadata；本地路径只保留文件名，URL 删除查询参数，引用 metadata 使用白名单 [E3]。NaiveRAG、ChainOfRAG 和 DeepSearch 都已接入 Trace v2 安全阶段事件；产品问答通过 SSE 增量展示允许公开的路由、检索、支持和反思统计，旧 `/console` 的 `/api/query` 仍在查询完成后用 `build()` 返回完整 JSON Trace [E3]。",TraceCollector 记录路由、检索、支持、反思和 Token 等显式应用事件，并做截断脱敏；核心 API 返回安全 Trace/SSE 阶段，产品层将支持文档持久化为 Citation。它不读取模型隐藏推理。
+naive,workspace-048,自动化、真实浏览器和 SSE 闭环通过后，仍不能宣称哪些能力？,True,medium,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.375,1.0,False,0,0.0,,0.6,0.4,True,,partially_grounded,6,5,0.8333333333333334,0.16666666666666666,0.0,0.6666666666666666,1.0,27696.727,4053,1,,"根据证据，自动化测试、真实浏览器验证和 SSE 闭环通过后，仍不能宣称以下能力：
+
+1. 不能宣称模型质量已达到 SLO、容量上限已被验证、完整无障碍合规已达成，或已获得生产安全认证 [E1]。
+2. 不能宣称已经证明真实 LLM、真实 Milvus、所有浏览器兼容、并发竞态安全、屏幕阅读器矩阵支持或完整 WCAG 合规 [E2]。
+3. 不能宣称生产级高并发或准确率提升，因为没有正式压测和质量指标 [E5]。
+4. 不能宣称端到端异步或无限并发，因为同步路由只是在线程池中运行 [E5]。
+5. 不能宣称 SSE 具有 Exactly Once 投递能力，也不能宣称客户端断线等于任务取消；客户端断线不等于任务取消，SSE 也不保证 Exactly Once [E5]。",不能外推为模型质量 SLO、容量上限、完整无障碍合规、生产安全认证、高并发或所有回答声明都 grounded。
+naive,workspace-049,Milvus 官方三种部署形态与 DeepSearcher 当前本地选择之间是什么关系？,True,hard,0,,,,,,0,True,2,1,2,1,False,False,8,True,0.5,0.125,0.3333333333333333,False,0,0.0,,0.6,0.6,True,,partially_grounded,8,7,0.875,0.125,0.0,1.0,0.5,14941.182,2663,1,,"根据证据，DeepSearcher 当前本地选择与 Milvus 部署形态之间的关系可以概括为：
+
+- Milvus 存在不同的部署方式，并对应不同阶段和使用限制 [E3]。
+- DeepSearcher 本地环境实际选用的是 Docker Milvus，并用它验证了建表、插入、L2 排序和维度不匹配等操作 [E3]。
+- Milvus Lite 被定位为适合个人学习、原型和小数据测试，但它不能代表独立网络服务的故障和扩展能力 [E3]。
+- Docker Milvus 的定位是学习真实服务连接、资源限制和故障场景，但部署和资源成本更高 [E3]。
+- 当前本地环境缺少 `milvus_lite` 依赖，因此不能声称所有 Lite 测试均已通过 [E3]。
+- 因此，DeepSearcher 的“当前本地选择”是在 Milvus 多种部署方式中选择 Docker Milvus，而非 Milvus Lite；这一选择既符合“学习真实服务连接与资源限制”的目标，也受到本地依赖环境的限制 [E3]。
+- 证据中只明确对比了 Milvus Lite 和 Docker Milvus 两种方式 [E3]；关于“官方三种部署形态”中的第三种形态及其与 DeepSearcher 当前本地选择的关系，所提供的证据中没有相关信息。",官方形态包括 Lite、Standalone 和 Distributed；DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+naive,workspace-050,Milvus 支持的混合与关键词检索能力，是否意味着 DeepSearcher 当前生产配置已经启用 Hybrid？,True,hard,0,,,,,,0,True,3,2,2,2,False,True,7,True,0.6666666666666666,0.25,0.3333333333333333,False,0,0.0,,0.5,0.5,True,,fully_grounded,7,7,1.0,0.0,0.0,0.25,0.3333333333333333,10908.3,2295,1,,"Milvus 确实支持混合检索与关键词检索，因为其支持的检索类型中明确包含 Hybrid Search 和基于 BM25 的 Keyword Search [E3]。但“Milvus 支持这些能力”并不等于“DeepSearcher 当前生产配置已经启用 Hybrid” [E1][E7]。
+
+对 DeepSearcher 当前配置的描述是：离线侧用千问 text-embedding-v4 生成 1024 维向量并写入 Docker Milvus；在线侧由 RAGRouter 选择 DeepSearch 与 ChainOfRAG，再完成 Collection 路由、迭代检索和 qwen-plus 最终回答 [E1]。其在线查询流程也明确描述为“向量检索”，而非混合检索 [E7]。E1 还指出，当前项目已具备本地学习和定向验证基础，但仍没有正式业务黄金集、最终用户 RBAC、分布式限流和生产级任务队列 [E1]。
+
+此外，E6 特别提醒：不能因为源码存在就声称“混合检索效果更好”，必须比较 dense、BM25 和 hybrid 在 Recall@K、延迟、存储和资源开销上的表现 [E6]。因此，Milvus 支持混合与关键词检索只说明 DeepSearcher 具备启用 Hybrid 的底层能力，但不能据此推断当前生产配置已经启用 Hybrid [E1][E3][E7]。",不意味着。Milvus 支持多向量 Hybrid 和 BM25 Keyword Search，DeepSearcher 代码也有混合路径，但当前 YAML 仍为 Dense-only；已有 Collection 若要启用还需新 Schema 和重新入库。
+naive,workspace-053,为什么产品中存在 Citation 仍不能证明回答的每个事实都有依据？,True,hard,0,,,,,,0,True,3,1,2,1,False,False,8,True,0.3333333333333333,0.125,0.25,False,0,0.0,,0.75,0.5,True,,partially_grounded,8,7,0.875,0.125,0.0,0.3333333333333333,0.3333333333333333,8575.895,1974,1,,"产品中存在 Citation 并不能证明回答的每个事实都有依据，原因如下：
+
+1. 引用存在不等于答案一定受证据支持，还必须验证引用片段是否真的包含答案事实，否则引用可能只是“挂在那里”而并未真正支撑对应内容[E4]。  
+2. 当前流程中，引用主要只能到文件级，因为解析阶段没有稳定保存页码、章节和字符 offset，导致无法准确回答“证据在第几页”，也就难以精确核对每个事实是否被该文件中的具体片段覆盖[E4]。  
+3. 最终 Prompt 同时包含原始问题、所有中间问题和答案、累积的支持文档；即使支持文档为空，当前流程仍可能根据中间上下文生成答案，因此引用存在并不能保证回答严格依赖支持文档[E1]。  
+4. Prompt 虽然会提醒模型中间答案不一定准确，但这种提醒并不能自动纠错，中间上下文的错误可能被带入最终答案，而引用无法自动证明这些事实有依据[E1]。  
+5. 生产上还需要定义“没有支持文档时是否拒答”“至少需要多少条证据”“每个关键事实能否映射到引用”等规则，说明目前引用与事实依据之间并没有强制的对应关系[E1]。  
+6. 诊断时还需要判断金标证据是否进入 TopK：若未进入是检索问题；若进入后仍答错，则主要检查生成和上下文组织，这说明即使有引用，生成阶段仍可能偏离证据[E5]。  
+
+因此，Citation 的存在只是“标明了来源”，并不自动等同于“每个事实都被该来源支持”，必须逐项验证引用片段是否真正包含对应事实[E4][E5]。",引用只说明系统保存了某些支持文档或来源位置；还必须逐条验证回答声明是否真正被对应片段支持。当前产品引用基础不能证明所有声明都 grounded。
+naive,workspace-070,那这个项目本地选的是哪一种，为什么？,True,hard,2,True,True,True,False,False,1345,True,2,2,2,2,True,True,8,True,1.0,0.375,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,9,8,0.8888888888888888,0.1111111111111111,0.0,1.0,1.0,20084.426,4148,2,,"根据检索到的证据，该项目本地选择的是 **Milvus Standalone（即 Docker Milvus）**，而不是 Milvus Lite 或 Milvus Distributed [E1][E3][E4]。
+
+原因如下：
+
+- 本地已经使用 Docker Milvus 验证了建表、插入、L2 排序和维度不匹配等核心操作 [E1]。Docker Milvus 对应的是 Milvus Standalone 部署形态，即单机服务端部署，所有组件打包在单个 Docker 镜像中，便于部署 [E3][E4]。
+- 选择 Standalone 而不是 Lite，是因为 Milvus Lite 适合个人学习、原型和小数据测试，但不能代表独立网络服务的故障和扩展能力 [E1]。而本地项目需要验证“真实服务连接、资源限制和故障”等行为，Docker Milvus/Standalone 更合适 [E1]。
+- 当前环境缺少 `milvus_lite` 依赖，因此不能声称所有 Lite 测试均通过，这也进一步说明本地实际采用的是 Docker Milvus/Standalone [E1]。
+- 至于 Milvus Distributed，它面向 Kubernetes 集群、十亿级甚至更大规模场景，并强调关键组件冗余 [E3][E4]；在本地项目证据中并未体现使用 Distributed 的部署选择 [E1][E3][E4]。
+
+因此，本地项目选择的是 **Milvus Standalone（Docker Milvus）**，因为需要用独立服务形态验证真实连接、资源限制和故障行为，而 Lite 无法满足这些要求，分布式形态又超出了本地项目的需求范围 [E1][E3][E4]。",DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+naive,workspace-061,那三种分别适合什么场景？,True,medium,2,True,True,True,False,False,483,False,1,1,1,1,True,,8,True,1.0,0.375,0.5,False,0,0.0,,1.0,1.0,True,,partially_grounded,10,9,0.9,0.1,0.0,0.4,1.0,17100.529,3484,2,,"Milvus 的 Lite、Standalone 和 Distributed 三种部署形态分别对应不同阶段和数据规模，具体适合场景如下：
+
+- **Milvus Lite**：适合个人学习、原型验证和小数据测试 [E1][E5]。它作为轻量级 Python 库，可以方便地集成到应用中，尤其适合在 Jupyter Notebook 中快速搭建原型，或者运行在资源受限的边缘设备上 [E2][E3]。但它的主要限制是不能代表独立网络服务的故障和扩展能力，也无法模拟独立网络服务或集群故障 [E1][E5]。
+
+- **Milvus Standalone**：适合学习真实服务连接、资源限制和故障场景 [E1]。它是单机服务器部署，所有组件打包在同一个 Docker 镜像中，部署便捷 [E2][E3]。当向量检索是独立能力，且数据和并发持续增长时，这种“服务化 Milvus”形态是更合适的选择 [E5]；不过相比 Lite，它的部署和资源成本更高，并且需要单独部署、监控和容量治理 [E1][E5]。
+
+- **Milvus Distributed**：适合部署在 Kubernetes 集群上，采用云原生架构，面向十亿级甚至更大规模向量场景设计，并确保关键组件具备冗余能力 [E2][E3]。其大规模扩展能力有实际案例支撑：Milvus 在 2022 年已支持十亿级向量，2023 年进一步扩展到数百亿级，并为 300 多家大型企业提供支撑 [E8]。由于 Milvus 组件高度解耦且无状态，查询、数据写入和索引/压缩等关键任务可以独立扩展，从而在 Kubernetes 或公有云上实现持续扩容 [E8]。",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+naive,workspace-063,那是越大越相似吗？,True,easy,2,True,True,True,False,False,461,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,6,5,0.8333333333333334,0.16666666666666666,0.0,0.25,1.0,9997.079,2447,2,,不是。当前项目使用的是 Milvus 默认的 L2（欧氏距离），而 L2 是“距离”，**越小越近、越小越相似**，不是越大越相似 [E1][E2]。项目里虽然把返回结果字段命名为 `score`，但实际保存的是 Milvus 返回的 `distance`，因此不能说“score 越大越相似” [E1]。在本地实验中，L2 距离按从小到大排序（例如 0.01、0.81、4.81），排名越靠前代表距离越近 [E1][E4]。同样地，Milvus 在集合中按 metric 搜索后返回的 `RetrievalResult.score` 承接的是 distance，默认 L2 下也是越小越近 [E3]。为了严谨，生产响应应该同时携带 metric、score_type、higher_is_better 等字段来明确该分数是“越大越好”还是“越小越好”，而不是笼统标为“相似度” [E3]。,不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+naive,workspace-066,默认关掉它具体意味着什么，又有什么误判风险？,True,hard,2,True,True,True,False,False,400,False,2,2,1,1,True,,8,True,1.0,0.25,1.0,False,0,0.0,,1.0,0.8,True,,partially_grounded,15,13,0.8666666666666667,0.13333333333333333,0.0,0.4,1.0,21901.65,4576,2,,"## ChainOfRAG early stopping 默认关闭的具体含义
+
+- 构造函数的默认值是 `early_stopping = False` [E4]。  
+- 关闭后，系统在每轮结束时不调用信息充分性判断，也不会记录反思结果，而是直接继续执行直到 `max_iter` [E2][E4]。  
+- 这不是“反思返回空值”，而是反思分支根本没有运行 [E2][E4]。因此，如果 Trace 里看不到反思，应先检查开关是否开启，而不是认为模型返回内容丢失 [E4]。  
+- 因为默认没有充分性反思，系统无法在第一轮信息已足够时提前停止；即使第一轮已经找到完整答案，后续轮次仍会继续执行 [E4]。  
+- 默认关闭的好处是行为更确定，不会被模型“过早停止”打断；代价是可能执行大量不必要的后续检索，增加 Token 和延迟 [E4]。
+
+## 误判风险分析
+
+- 默认关闭 early stopping 本身不会产生“充分性判断”的误判，因为该判断逻辑根本不会运行 [E2][E4]。  
+- 如果开启 early stopping，则存在两类误判风险 [E1]：  
+  - 过早停止：已有部分证据，但模型误判为足够并返回 Yes，导致最终答案缺少关键事实 [E1]。  
+  - 过晚停止：证据已经充分，但模型仍返回 No，于是继续无意义检索，增加 Token 和延迟 [E1]。  
+- 正因如此，停止条件不应只依赖一次主观判断，可以结合以下信号：是否找到新的支持文档、新一轮是否增加新事实、追问是否与历史重复、支持证据是否覆盖原问题各要点、是否达到 Token/时间/轮数预算 [E1]。  
+- 默认关闭的代价不仅是效率问题：当前 ChainOfRAG 默认实现中，中间答案还可能传播错误，文档索引校验也不完整；它只是受 CoRAG 思想启发，不是论文训练方法的完整复现 [E5]。  
+- 在成本层面，ChainOfRAG 的成本和延迟随串行轮数累积 [E6]，默认关闭 early stopping 会使这种累积更确定地发生，而不是在信息足够时提前终止 [E4]。",过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。
+naive,workspace-069,所以现在默认已经用上两路融合了吗？,True,medium,2,True,True,True,False,False,407,False,2,1,1,1,False,,8,True,0.5,0.25,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,5,5,1.0,0.0,0.0,0.3333333333333333,0.5,9840.867,3018,2,,当前默认**没有**使用 Dense 和 BM25 两路融合并用 RRF 融合；当前 YAML 未启用 hybrid，实际仍是 Dense-only [E1]。Milvus 适配层虽然存在 hybrid=True 路径，可以并行执行稠密向量检索与 BM25 稀疏检索，再用 RRF 合并排名，但这只是代码路径存在，不代表默认启用 [E1][E3]。RRF 是按名次而非原始分数融合，使用 Σ 1/(k+rank) 的方式，目的是避免直接比较 L2 与 BM25 这两种方向、范围和量纲都不同的分数 [E1]。因此，要使用 Dense+BM25 的 RRF 融合，需要在 YAML 中显式启用 hybrid，而不是当前默认状态 [E1]。另外，即使存在 hybrid 路径，也不能仅凭源码存在就声称“混合检索效果更好”，仍需在同一问题集上比较 dense、BM25 和 hybrid 的 Recall@K、延迟、存储和资源开销 [E4]。,没有。Dense 用 Embedding 找语义近似，BM25 找字面匹配，Hybrid 同时召回两路，RRF 按排名融合；当前 YAML 仍是 Dense-only。
+naive,workspace-056,资料规定 DeepSearcher 生产环境每秒必须支持多少个查询？,False,easy,0,,,,,,0,False,0,0,0,0,,,7,,,,,False,0,0.0,True,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,6610.26,2027,1,,No relevant information found,资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。
+naive,workspace-058,当前业务评测证明 DeepSearch 比 NaiveRAG 的答案准确率高多少个百分点？,False,medium,0,,,,,,0,False,0,0,0,0,,,8,,,,,False,0,0.0,True,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,3911.416,2033,1,,No relevant information found,资料没有给出这一业务准确率提升结论，不能编造提升比例。
+naive,workspace-060,Milvus 文档承诺所有向量检索在任何数据规模下都能达到多少毫秒延迟？,False,medium,0,,,,,,0,False,0,0,0,0,,,8,,,,,False,0,0.0,True,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,2738.693,1957,1,,No relevant information found,资料没有给出适用于所有数据规模和环境的固定毫秒延迟承诺。
+naive,workspace-072,另一个问题：当前最终用户登录明确采用了哪一家 OIDC 身份提供商？,False,easy,2,False,False,True,True,False,488,False,0,0,0,0,,,8,,,,,False,0,0.0,True,,,,False,fully_grounded,4,4,1.0,0.0,0.0,,,9006.083,3456,2,,当前没有最终用户登录机制，因此未采用任何 OIDC 身份提供商 [E1][E6]。证据明确指出“尚无最终用户登录/RBAC”以及“默认本地接口仍未形成最终用户登录与角色体系” [E1][E6]。现有身份相关机制仅为服务到服务租户令牌、Collection 授权等 [E1][E6]。证据中未出现任何 OIDC 身份提供商的具体选型或名称 [E1][E6]。,资料没有确定 OIDC 身份提供商，当前也没有最终用户登录与 RBAC。
+deep_search,workspace-001,Milvus 是什么，它以哪两种形态提供？,True,easy,0,,,,,,0,False,1,1,1,1,True,,7,True,1.0,0.25,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,7,7,1.0,0.0,0.0,0.3333333333333333,1.0,39299.483,10049,5,,"根据现有资料，Milvus 是一个高性能、高可扩展的向量数据库，专门用于向量相似度搜索，可运行在从笔记本电脑到大规模分布式系统的多种环境中 [E1][E4][E5]。它作为 LF AI & Data Foundation 下的开源项目发布，采用 Apache 2.0 许可证 [E1]。
+
+关于“以哪两种形态提供”，Milvus 官方资料显示它同时以开源软件和云服务两种形态提供 [E1]。此外，另有资料描述了 Milvus 的三种部署模式：Milvus Lite、Milvus Standalone 和 Milvus Distributed [E6]。其中，Milvus Lite 是一个可嵌入应用的 Python 库，适合 Jupyter Notebook 快速原型或资源有限的边缘设备；Milvus Standalone 是单机服务器部署，所有组件打包在一个 Docker 镜像中；Milvus Distributed 可部署在 Kubernetes 集群上，面向十亿级或更大规模场景，并具备关键组件冗余 [E6]。
+
+因此，“开源软件/云服务”与“Lite/Standalone/Distributed”属于不同分类维度：前者是交付形态，后者是部署模式 [E1][E6]。另有资料也对比了 Milvus Lite 与 Docker Milvus，指出前者适合个人学习和小数据测试，后者更适合学习真实服务连接和资源限制 [E2][E3]。",Milvus 是高性能、可扩展的向量数据库，同时提供开源软件和云服务。
+deep_search,workspace-002,Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？,True,medium,0,,,,,,0,False,1,1,1,1,True,,5,True,1.0,0.25,0.3333333333333333,False,0,0.0,,1.0,1.0,True,,partially_grounded,21,15,0.7142857142857143,0.2857142857142857,0.0,0.4,1.0,52336.643,10948,5,,"## Milvus Lite、Standalone、Distributed 部署场景总结
+
+### 1. Milvus Lite
+
+- **适合场景**：个人学习、原型开发、小数据量测试 [E1][E2]；适合在 Jupyter Notebook 中快速验证，或运行在资源受限的边缘设备上 [E3][E4]。
+- **产品形态**：以 Python 库形式提供，可方便地集成进应用中，是 Milvus 的轻量级版本 [E4]。
+- **主要限制**：不能模拟独立网络服务的故障和扩展能力 [E1]；也不能模拟独立网络服务与集群故障 [E2]。因此，它更适合本地实验和小规模验证，而不是生产级独立服务。
+
+### 2. Milvus Standalone
+
+- **适合场景**：当向量检索是独立能力，且数据和并发持续增长时，适合采用服务化部署 [E2]；也适合用于学习真实服务连接、资源限制和故障处理 [E1]。
+- **产品形态**：单机服务器部署，所有组件打包在一个 Docker 镜像中，部署便捷 [E3][E4]。
+- **需要承担的代价**：需要单独部署、监控和容量治理 [E2]。相比 Milvus Lite，部署和资源成本更高 [E1]。
+
+### 3. Milvus Distributed
+
+- **适合场景**：部署在 Kubernetes 集群上，面向十亿级甚至更大规模向量场景设计 [E3][E4]；在生产环境中支撑大规模数据与高并发检索。
+- **架构特点**：采用云原生架构，关键组件具有冗余性 [E3][E4]；系统无状态，易于通过 Kubernetes 或公有云扩展 [E5]。
+- **扩展能力**：Milvus 组件高度解耦，搜索、数据插入、索引/压缩等任务可并行化，查询节点、数据节点、索引节点可独立扩缩容 [E5]。2023 年已支持百亿级向量规模，并被 Salesforce、PayPal、Shopee、Airbnb、eBay、NVIDIA、IBM、LINE、ROBLOX 等大型企业用于大规模场景 [E5]。
+
+### 4. 三者主要区别
+
+- **Milvus Lite** 是嵌入式 Python 库，适合本地快速原型和小规模测试 [E4][E1]。
+- **Milvus Standalone** 是单机服务器，所有组件打包为单个 Docker 镜像，适合独立服务化部署 [E3][E4]。
+- **Milvus Distributed** 是运行在 Kubernetes 上的云原生分布式部署，适合大规模、高可用生产环境 [E3][E4][E5]。
+
+总体来说，选择哪种部署方式取决于数据规模、可用性要求以及是否愿意承担独立服务的运维成本 [E2][E4]。",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+deep_search,workspace-006,Milvus 官方列出了哪些 API 或 SDK？,True,easy,0,,,,,,0,False,1,1,1,1,True,,1,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,8,7,0.875,0.125,0.0,1.0,1.0,19331.202,4957,5,,"根据提供的资料，Milvus 官方列出的 API 和 SDK 包括：
+
+- RESTful API（官方）[E1]
+- PyMilvus（Python SDK，官方）[E1]
+- Go SDK（官方）[E1]
+- Java SDK（官方）[E1]
+- Node.js (JavaScript) SDK（官方）[E1]
+- C#（由微软贡献，并非标注为官方）[E1]
+
+因此，官方明确标注的 SDK 涵盖 Python、Go、Java 和 Node.js，另有 RESTful API；C# SDK 被列为贡献版本，而非官方正式 SDK。[E1]",包括 RESTful API、PyMilvus、Go SDK、Java SDK 和 Node.js SDK；文档还列出微软贡献的 C# SDK。
+deep_search,workspace-013,为什么不能说 1500/100 是最优分块参数，应如何验证？,True,medium,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.8,True,,partially_grounded,33,27,0.8181818181818182,0.18181818181818182,0.0,0.16666666666666666,1.0,88958.058,15008,5,,"## 结论：为什么不能说 1500/100 是最优分块参数
+
+不能把 1500/100 称为“最优分块参数”，因为现有证据只表明它是一个默认参数，并未证明它经过系统评测后优于其他参数。[E1]
+
+- 当前默认参数是 `chunk_size=1500`、`chunk_overlap=100`。[E1]
+- 同一份 `WhatisMilvus.pdf` 的本地实验中，1500/100 产生 10 个 Chunk，改为 500/50 后产生 25 个 Chunk。[E1]
+- 该实验只能证明“参数会改变片段数量”，不能证明“默认值最优”。[E1]
+- 真正的“最优”必须通过带标准答案的评测来确定，而不是凭默认值或单个数量变化下结论。[E1]
+
+## 应如何验证分块参数
+
+正确评测方法应准备带有标准证据片段的问题集，然后对不同参数进行比较，至少包括以下指标：[E1]
+
+- **Recall@K**：检索能否召回标准证据。[E1]
+- **回答正确率和忠实度**：生成答案是否准确且忠于检索到的证据。[E1]
+- **重复片段比例**：衡量 overlap 是否导致过多重复内容。[E1]
+- **入库时间与存储量**：不同参数对索引构建和存储成本的影响。[E1]
+- **查询延迟和 Token 消耗**：实际检索和回答阶段的开销。[E1]
+
+## 分块大小不是越小越好
+
+Chunk 太大会让上下文相对完整，但检索颗粒度粗，命中片段可能包含较多无关内容，单个片段占用更多 Token。[E5]
+
+Chunk 太小会让检索颗粒度更细，单个片段无关内容可能更少，但语义容易被切断，且 Chunk、Embedding 和向量存储数量都会增加。[E5]
+
+因此不能说“Chunk 越小越精准”；更准确的说法是：Chunk 变小通常会提高检索颗粒度，但最终召回质量必须通过评测验证。[E4]
+
+## overlap 不能无限增大
+
+`chunk_overlap` 让相邻 Chunk 保留少量重复文字，主要是缓解关键信息恰好位于切分边界的问题。[E3]
+
+但 overlap 不能无限增大，否则会导致：[E3]
+
+- Chunk 重复度提高，重复向量和存储增加。[E3]
+- 检索可能返回多个近似片段，占用 top-k 名额。[E3]
+- 重复上下文浪费 Token。[E3]
+- 当 overlap 接近 Chunk 本身长度时，相邻 Chunk 会高度重复，例如 Chunk A 有 500 字，Chunk B 其中 450 字与 A 重复。[E2]
+
+还要注意区分 `overlap` 与 `wider_text`：overlap 发生在文档切分阶段，用于缓解切分边界断裂；wider_text 发生在命中后的回答生成阶段，用于补充局部片段的上下文。[E3]
+
+## 评估检索不能只看延迟
+
+近似向量索引的典型取舍是：搜索更快，但可能漏掉少量真实近邻。[E6]
+
+因此评估索引不能只看延迟，还要同时看 Recall@K。[E6]
+
+如果 P95 延迟从 500 ms 降到 100 ms，却导致大量标准证据掉出 top-k，那么这种优化对于问答系统并不合格。[E6]
+
+## 总结
+
+1500/100 只能被视为“当前默认参数”，不能被称为“最优参数”。[E1]
+
+要验证分块参数是否最优，必须基于带标准证据的问题集，对 Recall@K、回答正确率与忠实度、重复片段比例、入库时间与存储量、查询延迟和 Token 等指标进行系统性对比。[E1]
+
+在验证过程中，还需要综合考虑 chunk 大小、overlap 设置以及检索索引的 recall 表现，不能仅凭片段数量、延迟或“越小越精准”等直觉判断。[E3][E4][E5][E6]",它只是工程默认值。应在带标准证据的问题集上比较 Recall@K、回答正确率和忠实度、重复片段比例、入库时间、存储、查询延迟与 Token。
+deep_search,workspace-015,当前项目应如何解释 L2 和 score 字段？,True,easy,0,,,,,,0,False,1,1,1,1,True,,7,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,25,17,0.68,0.32,0.0,0.14285714285714285,1.0,122281.591,15729,5,,"### 当前项目应如何解释 L2 和 score 字段？
+
+1. **L2 是当前项目默认使用的距离度量**  
+   当前项目默认使用 L2，也就是欧氏距离 [E1]。L2 是“距离”，**越小越近**，而不是“相似度” [E1][E3]。三种常见度量的直观区别是：L2 比较绝对几何距离，Cosine 比较向量方向是否一致，IP 比较内积且同时受方向和模长影响 [E1]。
+
+2. **score 字段实际保存的是 Milvus 返回的 distance**  
+   当前 `RetrievalResult.score` 承接 Milvus 的 `distance`，默认 L2 越小越近 [E2]。因此不能说“score 越大越相似” [E1][E3]。前端如果笼统将 score 标为“相似度”是不够严谨的 [E2]。生产响应应同时携带 `metric`、`score_type`、`higher_is_better`、`retrieval_mode`，以明确 score 的语义 [E2]。
+
+3. **L2 与 Cosine 可能给出的直觉不同**  
+   例如向量 `[1,0,0]` 和 `[9,0,0]` 方向完全一致，Cosine 相似度为 1，但长度相差 8，L2 距离并不小 [E6]。这说明“哪个更相关”不能脱离模型和 metric 来绝对判断 [E6]。
+
+4. **解释 score 时必须结合 Embedding 模型与度量配置**  
+   Embedding 模型不同相当于不同坐标系，即使维度相同，不同模型的坐标含义也不一致 [E4]。文档向量和问题向量必须来自同一模型（或兼容的向量空间），否则计算出的距离没有可靠语义 [E4]。知识库不仅应记录 dimension，还应记录 provider 与模型名称、模型版本、文本预处理方式、是否归一化、使用的 metric、文档与 Chunk 配置版本 [E4]。选择度量时应参考 Embedding 模型建议、向量是否归一化以及真实评测结果 [E1]。
+
+5. **当前项目实际为 Dense-only，Hybrid 只是已有代码分支**  
+   当前配置是 Dense-only；Hybrid 是已有代码分支，并未启用 [E5][E7]。Hybrid 会同时执行 Dense 与 BM25 两路召回，并用 RRF 按名次融合 [E7]。RRF 使用 Σ 1/(k + rank) 融合排名，避免直接比较 L2 与 BM25 这两种方向、范围和量纲都不同的分数 [E7]。因此如果未来启用 Hybrid，score 字段的语义会进一步变化，需要额外说明检索模式与融合方式。
+
+**结论**：在当前项目中，L2 应解释为“距离”，越小越接近；score 字段实际是 Milvus 的 distance，而不是通用相似度，不能直接认为“越大越相关”。解释 score 时，必须结合具体的 metric、模型、是否归一化以及检索模式，并在生产响应中显式携带这些元信息，避免歧义 [E1][E2][E4]。",L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+deep_search,workspace-019,为什么生产环境不能滥用 force_new_collection？,True,easy,0,,,,,,0,False,1,1,1,1,True,,5,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.25,True,,fully_grounded,8,8,1.0,0.0,0.0,0.2,1.0,45579.968,10378,5,,在生产环境中滥用 `force_new_collection` 的主要风险在于它可能删除已有 Collection 后重建，这会导致数据丢失 [E1]。该参数在本地实验时方便，但生产环境一旦误操作，影响不可逆 [E1]。正确做法是创建版本化 Collection、验证后切换流量，并保留旧版本以便回滚 [E1]。同时，不能在缺少备份和评测的情况下直接删除旧 Collection [E2]。由于 Collection 的结构往往包含稀疏字段、Function 和索引等，不能只靠开关升级，通常需要新建 Schema 并重新入库 [E3]。如果更换了向量模型，即使维度一致，语义空间也可能不同，因此需要新建 Collection、重新向量化，并通过检索回归评测后再切换流量 [E5]。当前 API 入口默认不删除 Collection，目的就是减少误操作入口 [E4]。总之，生产环境禁用或慎用 `force_new_collection` 是为了避免无备份、无评测的数据丢失，并确保可回滚的发布流程 [E1][E2][E5]。,它可能删除已有 Collection 并造成数据丢失。更安全的做法是创建版本化 Collection、验证后切流并保留旧版本回滚。
+deep_search,workspace-021,Hybrid 检索为什么可能有帮助，又为什么不能仅凭代码存在就启用？,True,hard,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.25,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,46,20,0.43478260869565216,0.5652173913043478,0.0,0.2222222222222222,1.0,103673.439,18344,5,,"## 关于 Hybrid 检索的潜在价值与启用前提的总结报告
+
+### 一、Hybrid 检索为什么可能有帮助
+
+Hybrid 检索的核心价值在于同时利用两路互补的召回机制：Dense 检索根据 Embedding 找语义近似，擅长同义词和自然语言改写；BM25 根据词频、稀有度和文档长度找字面匹配，擅长稀有精确字符串（如错误码、SKU、函数名、版本号）[E8]。单独使用任一路径都有明显短板：Dense 对精确代码或版本号可能不稳定，BM25 不能普遍理解同义表达[E8]。Hybrid 同时执行两路召回，并用 RRF 按名次而不是原始分数融合，避免直接比较 L2 距离与 BM25 分数这两种方向、范围和量纲都不同的分数[E8]。因此，Hybrid 在理论上能兼顾语义相关性与精确匹配，提升召回覆盖。
+
+### 二、为什么不能仅凭代码存在就启用
+
+**1. 源码存在不等于效果已被证明。** 不能因为源码存在就声称“混合检索效果更好”[E1]。必须在同一问题集上比较 dense、BM25 和 hybrid 的 Recall@K、延迟、存储和资源开销[E1]。“已经混合检索有代码”不等于“已经验证” [E2]。
+
+**2. 代码存在也不等于实际已启用。** 在 DeepSearcher 的当前实现中，Milvus 已经具备 Analyzer、sparse_vector、BM25 Function、稀疏倒排索引、双路 AnnSearchRequest 和 RRFRanker()，但当前 YAML 没有启用 hybrid，实际仍是 Dense-only[E8]。也就是说，代码/组件存在但配置未开启，实际运行模式可能仍是单路检索。
+
+**3. 启用混合检索需要满足基础设施条件，而不能只靠“开关”升级。** Collection 也缺少稀疏字段、Function 和索引，需要新建 Schema 并重新入库[E4]。如果现有 Collection 没有这些结构，直接改配置无法生效。
+
+**4. 必须通过完整评测才能判断是否有效。** 完整评测需要分三层：检索层看金标证据是否进入 TopK；生成层看给定证据后答案是否正确、忠实、可引用；系统层看延迟、Token、成本、失败率和稳定性[E6]。常用检索指标包括 Recall@K、MRR、nDCG、重复率和空结果率；生成指标包括 Answer Correctness、Faithfulness、Citation Correctness 和拒答准确率[E3]。不能只凭代码存在或单一延迟指标就下结论。
+
+**5. 评测还需要注意现有脚本的局限。** 仓库自带的 evaluation/evaluate.py 使用 2WikiMultiHopQA 比较 DeepSearcher 与 Naive RAG 的 Recall@2/Recall@5，但它从 supporting_facts 提取文档标题，因此主要是标题级检索评测；脚本没有使用标准答案字段，也就没有评估最终答案正确性、Faithfulness、引用正确性和拒答能力[E6]。所以即便现有脚本跑通，也未必能证明 Hybrid 在完整问答质量上更好。
+
+### 三、启用 Hybrid 前应进行的评估与诊断步骤
+
+**1. 建立可重复实验和黄金集。** 第一版业务黄金集可以先做 20 题，覆盖单跳、多跳、比较、精确实体、不可回答和冲突问题[E6]。在同一批问题上对比 Dense、BM25、Hybrid，不能只看延迟，还要同时看 Recall@K[E1][E5]。
+
+**2. 遵循分层诊断顺序。** 第一步确认标准证据 Chunk 是否已入库；第二步检查它是否进入 top-k，以及 distance、top-k 和去重后结果如何；第三步检查标准证据是否完整进入 Prompt、wider_text 是否带入过多无关内容、回答是否添加了证据中不存在的信息[E7]。只有前三步正常，才应该优先调整 Prompt 或生成模型；否则只改 Prompt 会掩盖真正的检索问题[E7]。
+
+**3. 注意索引和分块带来的评估陷阱。** 近似向量索引的典型取舍是搜索更快但可能漏掉少量真实近邻，因此评估索引不能只看延迟，还要同时看 Recall@K；如果把 P95 从 500 ms 降到 100 ms，却让大量标准证据掉出 top-k，这个优化对问答系统并不合格[E5]。类似地，不能简单说“Chunk 越小越精准”，Chunk 变小通常会提高检索颗粒度，但最终召回质量必须通过评测验证；为补足上下文而提高 top-k 后，总 Token 不一定下降[E9]。
+
+### 四、结论
+
+Hybrid 检索因结合 Dense 的语义能力和 BM25 的精确字面匹配而具有潜在价值[E8]。但仅凭代码存在不能启用或宣称有效，因为源码存在不等于效果已被证明[E1][E2]，当前配置可能仍是 Dense-only[E8]，底层 Schema 可能缺少稀疏字段与索引[E4]，而且必须通过同一问题集上的检索、生成、系统三层评测来验证[E6][E1]。正确的做法是先补齐基础设施，再建立黄金集，按分层诊断流程评估 Recall@K、延迟、存储、资源开销、答案正确性、忠实性与引用正确性，然后才能决定是否启用 Hybrid[E1][E3][E6][E7]。",Dense 有利于语义改写，BM25 对编号、日期和专有词更稳，RRF 可融合两路；但是否提升必须在同一问题集比较 Recall、延迟、存储和资源开销。
+deep_search,workspace-024,DeepSearch 从原问题到最终答案要经过哪些主要阶段？,True,hard,0,,,,,,0,False,2,1,1,1,False,,8,True,0.5,0.125,0.5,False,0,0.0,,1.0,0.5,True,,partially_grounded,22,16,0.7272727272727273,0.2727272727272727,0.0,0.2,0.5,49289.946,9953,4,,"根据所给证据，DeepSearch 从原问题到最终答案的流程可以归纳为以下主要阶段：
+
+1. **初始查询分解**  
+   - 原始问题会被生成最多 4 个子查询 [E2]。  
+   - 这些子查询会用于并发执行检索 [E2]。
+
+2. **迭代检索与追问生成**  
+   - 在每一轮中，系统根据原始问题和历史中间问答生成一个简单追问 [E1]。  
+   - 使用 CollectionRouter 选择知识库，并为追问生成查询向量 [E1]。  
+   - 在各 Collection 中检索并去重 [E1]。  
+   - 检索策略采用“短文本检索、宽上下文生成”：较短 Chunk 保持检索颗粒度，命中后再用 wider_text 帮助模型理解完整语境 [E3]。
+
+3. **证据筛选与中间答案生成**  
+   - 对每个候选 Chunk 做 YES/NO 相关性判断，然后合并去重 [E2]。  
+   - LLM 只根据本轮文档生成中间答案，并选择真正支持该问答对的文档 [E1]。  
+   - 没有支持文档的答案不会进入可信上下文 [E6]。
+
+4. **迭代控制与补充查询**  
+   - 系统判断还缺什么证据，并生成最多 3 个补充查询 [E2]。  
+   - 当达到 max_iter 或无新查询时结束 [E2]；如果启用 early stopping，还会判断信息是否已经足够 [E1]。  
+   - 整个过程不满足于单次检索，而是根据不断变化的状态改写查询，逐步收集信息 [E7]。  
+   - 对关键实体进行第二来源验证，并保留原始问题以检测追问是否偏离目标 [E6]。
+
+5. **最终答案生成与回溯**  
+   - 迭代结束后汇总全部证据生成最终答案 [E2][E7]。  
+   - 下一轮看到的是中间问答文本，而不是模型内部思维链 [E1]。  
+   - Trace 会记录每轮问题、答案和证据，便于人工回溯 [E6]。",先生成最多四个子查询并发检索，对候选 Chunk 做 YES/NO 支持性过滤，合并去重；非最后一轮反思并生成补充查询，达到停止条件后汇总证据生成答案。
+deep_search,workspace-027,ChainOfRAG 如何沿事实线索完成多跳查询？,True,hard,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.25,1.0,False,0,0.0,,1.0,0.4,True,,partially_grounded,33,20,0.6060606060606061,0.3939393939393939,0.0,0.375,1.0,85283.683,14504,5,,"# ChainOfRAG 如何沿事实线索完成多跳查询？
+
+## 一、定位与适用场景
+
+ChainOfRAG 是一种面向多跳事实问题的检索增强生成方法，核心理念是“沿着事实线索逐步追查”[E2][E9]。它特别适合回答“后一个问题依赖前一个答案”的多跳事实问题[E9]，也适合原始查询较模糊、需要逐步发现实体和关系的任务[E3]。
+
+## 二、工作机制：串行检索链
+
+ChainOfRAG 以**原始问题 + 历史中间问答**作为每轮输入[E5]，每轮执行以下步骤[E1]：
+
+1. 根据原始问题和历史中间问答生成一个**简单追问**；
+2. 执行 **Collection 路由**和**向量检索**；
+3. 根据检索到的文档生成**中间答案**；
+4. 由 LLM **选择支持该问答对的文档**；
+5. 将“追问 + 中间答案”保存并进入下一轮，形成**串行检索链**[E1]。
+
+完整流程可概括为[E9]：
+
+> 原始问题 → 根据历史问答生成一个简单追问 → 选择 Collection 并检索 → 根据文档生成中间答案 → 选择支持该问答对的文档 → 保存“追问 + 中间答案” → 可选判断信息是否足够 → 下一轮根据已有答案继续追问 → 汇总支持文档和中间问答生成最终答案[E9]
+
+在每一步中，理想链路不是让模型凭记忆猜测，而是先命中包含关键实体（如 Alice）和日期的 Chunk，再根据该证据组织答案[E8]。
+
+## 三、停止机制
+
+如果启用 early stopping，每一轮会判断当前信息是否足够；否则最多执行 `max_iter` 轮[E1]。当前默认**关闭** early stopping[E1]。因此停止方式为“可选的充分性判断”或“达到轮数上限”[E5]。
+
+## 四、主要风险与局限
+
+ChainOfRAG 的主要风险是**错误的中间答案会向后传播**，导致后续轮次被误导[E4][E1]。此外，中间答案还可能传播错误，且文档索引校验不完整[E1]。
+
+## 五、与其他方法的对比
+
+| 对比项 | NaiveRAG | DeepSearch | ChainOfRAG |
+|---|---|---|---|
+| 输入 | — | — | 原问题、历史中间问答[E5] |
+| 候选过滤 | 基础去重 | Chunk 级 YES/NO 过滤 | 选择支持问答对的文档[E5] |
+| 停止方式 | 一轮结束 | 无补充查询或达到上限 | 可选充分性判断或达到上限[E5] |
+| 成本与延迟 | 较低、较稳定 | 较高，调用量可能很大 | 随串行轮数累积[E5] |
+
+在主要风险上：NaiveRAG 的问题是证据覆盖不足；DeepSearch 的问题是成本高、输出格式脆弱；ChainOfRAG 的问题是错误中间答案向后传播[E4]。
+
+## 六、与 CoRAG 论文的边界
+
+ChainOfRAG 只借鉴了 CoRAG 的**逐步查询改写**和**多轮检索**思想[E7]。当前实现是基于通用 LLM Prompt 的**应用层循环**，并未实现论文中的模型训练、拒绝采样中间检索链和完整测试时解码策略[E7]。因此准确表述是：ChainOfRAG 受 CoRAG 思想启发，但不是论文训练方法的完整复现[E1][E7]。",每轮根据原问题和历史中间问答生成一个简单追问，完成 Collection 路由、检索和中间答案，再选择支持文档；后续轮次依赖已得到的事实，最后汇总。
+deep_search,workspace-032,核心 API 的 Provider 配置、文件入库、网站入库、普通查询和流式查询分别是什么边界？,True,hard,0,,,,,,0,False,2,2,1,1,True,,8,True,1.0,0.25,0.3333333333333333,False,0,0.0,,1.0,1.0,True,,conflicting_evidence,42,34,0.8095238095238095,0.19047619047619047,0.0,0.16666666666666666,1.0,244966.569,33562,5,,"根据检索到的证据，核心 API 的 Provider 配置、文件入库、网站入库、普通查询和流式查询的边界如下。
+
+## 1. Provider 配置
+
+- Provider 配置接口是 `POST /set-provider-config/`，输入位于 JSON Body，当前作用是为当前受信租户构建并发布下一 runtime 版本 [E3]。
+- 关键边界是：旧请求继续使用旧租约；密钥不回显，且只能引用环境变量 [E3]。
+- Pydantic 会校验 `feature`、`provider`、`config` 三个字段是否存在以及基本类型；但 `feature` 是否受支持，要到 `set_provider_config()` 中才能判断 [E5]。
+- 配置发布使用 CAS 发布和请求租约延迟回收，多 worker 会在请求边界观察活动版本 [E1]。
+- 在线请求通过 `RuntimeRegistry` 获取当前租户的不可变 runtime 租约；导入 `main.py` 不连接外部依赖，lifespan 启动后才构建 LLM、Embedding、VectorDB、RAGRouter 等实例 [E7][E13]。
+
+## 2. 文件入库
+
+- 文件入库接口是 `POST /load-files/`，JSON Body 接收的是后端可见路径或路径列表，而不是文件字节 [E2]。
+- 执行顺序是：路径存在性检查 → 文件或目录解析为 Document → 按 1500/100 默认参数切 Chunk → 按 batch_size 批量生成 Embedding → 写入指定或默认 Collection [E2]。
+- 边界是：路径必须存在于 FastAPI 服务所在机器；浏览器用户电脑上的本地路径，对部署在另一台服务器上的后端没有意义 [E2]。
+- 当前入口没有暴露 `chunk_size`、`chunk_overlap`、`force_new_collection`，因此 API 入库固定使用底层函数默认的 1500/100，并且默认不删除 Collection [E2]。
+- 它不是浏览器二进制上传接口，默认 `batch_size=256` [E3]。
+- 核心文件接口仍读取服务端路径，因此必须使用服务令牌，不能直接暴露给浏览器或不受信调用方 [E5][E1]。
+- 浏览器上传由 BFF 校验并持久化后再调用 [E1]。旧 `/console` 兼容链路是：浏览器选择 PDF → Base64 JSON → `/api/ingest` 校验并写入临时目录 → 把临时服务端路径交给 `/load-files/` → 请求结束后清理 [E11]。
+- 涉及 multipart 的上传路由目前仍通过 `await file.read()` 将文件完整读入内存，`BackgroundTasks` 也运行在 Web 进程内，所以并没有解决大请求内存、恶意 PDF 隔离、进程崩溃恢复或多 Worker 调度问题 [E8]。
+
+## 3. 网站入库
+
+- 网站入库接口是 `POST /load-website/`，JSON Body，当前作用是抓取 URL、切 Chunk、Embedding 后写入 Milvus [E3]。
+- 关键边界是：依赖爬虫和外部网络；当前入口没有暴露抓取超时等治理参数 [E3]。
+
+## 4. 普通查询
+
+- 普通查询是 `POST /query`，JSON Body；问题不进入 URL，最长 4000 字，`max_iter` 为 1–10 [E5]。
+- 执行时 FastAPI 先从 JSON Body 解析字段，并检查问题长度与 `1 <= max_iter <= 10`；`perform_query()` 根据 `include_trace` 决定是否调用 `query_with_trace()` [E4]。
+- 请求依赖从 `RuntimeRegistry` 获得当前租户的不可变 runtime 租约，`query_with_trace()` 使用租约里的 `RAGRouter` 创建安全 `TraceCollector` [E4]。
+- Pydantic 对 `max_iter` 设置 `ge=1, le=10`，传入 0 会在进入业务函数之前被 FastAPI/Pydantic 拒绝，并返回 422 错误信封 [E5]。
+- 同步 `POST /query` 与流式 `POST /query/stream` 都使用请求作用域 `Searcher`，由 `RAGRouter` 在 DeepSearch 与 ChainOfRAG 之间选择，再返回答案、Token、可选 Trace 或增量阶段 [E13]。
+- 当前是同步阻塞依赖加线程池承载，不是端到端异步架构；同步模型和向量 SDK 仍占用线程资源，每进程限流只是保护层 [E1][E13]。
+- “并发调度多个子查询”是准确说法，而不是“全链路已经实现高并发异步” [E6]。
+- 互联网检索仍是 TODO，当前只查向量数据库 [E9]。
+
+## 5. 流式查询
+
+- 流式查询是 `POST /query/stream`，JSON Body + SSE，增量返回受控执行阶段与最终结果 [E5]。
+- 边界是：阶段不是思维链；断连协作取消并释放 runtime 租约 [E5]。
+- 需要说明的是，E12 在描述生产化升级路线时提出“客户端断线不等于任务取消，持久化会话可让任务继续，刷新后按 Last-Event-ID 恢复；用户点击停止才发送取消请求” [E12]。这与 E5 所述当前“断连协作取消”行为不一致 [CONFLICT:E5,E12]。按上下文，E5 是当前接口边界，E12 是未来生产系统设计 [E5][E12]。
+
+## 总结
+
+核心 API 的边界可以概括为：
+
+- Provider 配置：面向受信租户的运行时版本发布，密钥不落回显，旧请求继续使用旧租约 [E3][E1]。
+- 文件入库：面向服务端可见路径，不是浏览器文件上传；路径必须在后端机器上存在，且必须使用服务令牌 [E2][E5][E1]。
+- 网站入库：面向 URL 抓取，依赖外部网络和爬虫，缺少抓取超时等治理参数 [E3]。
+- 普通查询：同步请求，问题不进入 URL，长度和迭代数受限，当前是阻塞式线程池模型，且只查向量数据库 [E5][E1][E9]。
+- 流式查询：SSE 增量返回，阶段不等于思维链，当前断连协作取消并释放租约 [E5]。",Provider 接口发布受信租户的新 runtime 且不回显密钥；load-files 接受后端路径；load-website 依赖外网爬虫；query 用 POST JSON 返回结果/可选 Trace；query/stream 用 SSE 返回安全阶段和终态。
+deep_search,workspace-038,Trace 为什么不是模型思维链，它如何从 Agent 到产品引用？,True,medium,0,,,,,,0,False,1,1,1,1,True,,8,True,1.0,0.375,0.3333333333333333,False,0,0.0,,1.0,1.0,True,,partially_grounded,33,23,0.696969696969697,0.30303030303030304,0.0,0.16666666666666666,1.0,58277.265,13746,5,,"## 一、Trace 为什么不是模型思维链
+
+Trace 是应用主动记录的“执行事件”，例如 Agent、Collection、检索文档、迭代、延迟和 Token，而不是模型内部不可见的推理过程 [E1]。它帮助观察流程，但不能被说成“展示了模型完整思维链”；准确说法是“执行 Trace”或“阶段日志” [E1]。
+
+Trace 记录的是程序显式可见的输入、输出和阶段事件，不读取、也不声称暴露模型隐藏的思维链 [E3]。有价值的 Trace 通常包括请求 ID 和阶段时间、被选择的 Agent 和 Collection、生成的子查询、检索数量和支持文档数量及来源摘要、各阶段 Token 与最终状态 [E2]。这些都属于应用层或执行层信息，而非模型内部的隐藏推理链。
+
+当前 NaiveRAG、ChainOfRAG 和 DeepSearch 都已接入 Trace v2 安全阶段事件；产品问答通过 SSE 增量展示允许公开的路由、检索、支持和反思统计，旧版 /console 的 /api/query 则在查询完成后用 build() 返回完整 JSON Trace。两条链路都只展示应用事件，不是模型隐藏思维链 [E3]。
+
+## 二、Trace 如何从 Agent 到产品引用
+
+### 1. 请求入口与 TraceCollector 创建
+
+客户端请求 `POST /query`，JSON Body 中包含 `original_query`、`max_iter` 和 `include_trace` 等字段 [E6]。`perform_query()` 看到 `include_trace=True` 后，调用 `query_with_trace(original_query, max_iter)` [E6]。`query_with_trace()` 会创建请求级 TraceCollector，并由 RAGRouter 记录 Agent [E3][E6]。
+
+### 2. Agent 执行过程中的 Trace 记录
+
+被选中的 Agent 会执行 Collection 路由、Embedding、Milvus 检索和答案生成，并把受控应用事件写入 Collector [E4]。ChainOfRAG 或其他 Agent 会逐轮记录子问题、Collection、检索文档、中间答案、支持文档、反思和 Token [E3]。`query_with_trace()` 最终返回 `(answer, retrieval_results, consume_tokens, trace)` [E4]。`perform_query()` 会丢弃第二项 retrieval_results，只向客户端返回 `result`、`consume_token` 和 `trace` [E4]。
+
+### 3. 安全化与版本化输出
+
+`build()` 会生成版本化的安全 JSON Trace [E3]。当前脱敏策略包括：最多展示 5 条文档、每条 600 字；不返回 Embedding 和原始 metadata；本地路径只保留文件名，URL 删除查询参数；引用 metadata 使用白名单 [E3]。
+
+### 4. 从 Trace 到产品引用展示
+
+Trace 有两条主要产品链路：
+
+- 学习控制台：FastAPI → `/api/query` → `api.js` → `/console` 的 TracePanel [E3]。
+- 产品工作台：Trace → Citation 持久化 → `product-api.ts` → 引用抽屉 [E3]。
+
+也就是说，产品层的“引用”来源于 Trace 中记录的检索文档、支持文档和来源摘要等受控应用事件，再通过 Citation 持久化和产品 API 暴露给前端展示 [E3]。
+
+### 5. 生产环境的事件化与 SSE 机制
+
+生产系统设计建议先定义事件协议，再改造传输：例如 `POST /query-runs` 创建 run/message/outbox，Query Worker 执行 Agent，事件先写 Event Store 再发布，并通过 `GET /query-runs/{id}/events` 使用 SSE 推送 [E5]。
+
+建议事件包括：`run.started`、`routing.completed`、`iteration.started`、`subquery.generated`、`retrieval.completed`、`support_filter.completed`、可选的 `reflection.completed`、`final_answer.completed`，以及唯一终态 `run.completed/run.failed/run.cancelled` [E5]。每个事件携带 `schema_version/run_id/trace_id/event_id/timestamp/payload` [E5]。SSE 重连可能重放事件，前端必须按 `event_id` 幂等归并；答案 Delta 需要 `chunk_index` 或 `offset`，不能盲目做字符串追加 [E5]。客户端断线不等于任务取消；持久化会话通常让任务继续，刷新后按 `Last-Event-ID` 恢复，用户点击停止才发送取消请求 [E5]。
+
+因此，Trace 是 Agent 执行过程中显式记录的应用事件流，经过安全脱敏、版本化 JSON 和产品 API / SSE 机制后，最终以“引用”等可展示形式呈现给用户；它始终不是模型内部隐藏的思维链 [E1][E3][E5]。",TraceCollector 记录路由、检索、支持、反思和 Token 等显式应用事件，并做截断脱敏；核心 API 返回安全 Trace/SSE 阶段，产品层将支持文档持久化为 Citation。它不读取模型隐藏推理。
+deep_search,workspace-048,自动化、真实浏览器和 SSE 闭环通过后，仍不能宣称哪些能力？,True,medium,0,,,,,,0,False,2,1,1,1,False,,8,True,0.5,0.125,0.2,False,0,0.0,,0.8,0.2,True,,partially_grounded,41,26,0.6341463414634146,0.36585365853658536,0.0,0.08333333333333333,0.5,223048.318,32050,5,,"自动化测试、真实浏览器测试和 SSE 闭环通过后，仍不能宣称以下能力。
+
+**1. 生产级性能、容量与 SLA**  
+没有负载测试数据，不能宣称接口已达到生产级吞吐、可用性或安全性 [E3]。容量上限尚未验证 [E5]。高并发稳定性和生产可用 SLA 无法由当前样例级测试证明 [E9]。长时间资源泄漏和多个真实 worker 的限流一致性仍需压测与故障注入 [E2]。
+
+**2. 真实外部依赖的可靠性与集成**  
+API 测试通过 Stub runtime 隔离外部依赖，未连接真实供应商 [E2]。真实浏览器测试不能证明真实 LLM 与 Milvus 在整体系统中的表现 [E8]。真实 Milvus/模型与 SSE 闭环已验证 [E5]。但这只能说明在当前环境和样例中运行成功 [E9]。
+
+**3. 模型质量、检索效果与评测**  
+没有评测最终答案正确性、Faithfulness、引用正确性和拒答能力 [E6]。没有固定评测集证明 DeepSearch 一定优于 NaiveRAG [E13]。索引评估不能只看延迟，还要同时看 Recall@K [E10]。单片段 Token 下降可能伴随召回更多片段，不足以作为质量提升证据 [E14]。因此，不能宣称检索召回率或回答准确率达到目标 [E9]。此外，不能宣称模型质量 SLO [E5]。
+
+**4. 无障碍与浏览器兼容性**  
+不能证明所有浏览器均可正常工作 [E8]。不能证明屏幕阅读器矩阵或完整 WCAG 合规 [E8][E5]。
+
+**5. 并发与竞态**  
+不能证明并发竞态下的正确性 [E8]。不能宣称并发配置切换与查询同时发生时的版本隔离和资源回收能力，因为该场景需要并发测试覆盖 [E7]。
+
+**6. SSE 生产级语义**  
+要宣称 SSE 重连能力，必须处理事件重放并按 event_id 幂等归并 [E4]。答案 Delta 应使用 chunk_index 或 offset 进行拼接，不能盲目追加 [E4]。客户端断线不等于任务取消，持久化会话应按 Last-Event-ID 恢复 [E4]。同步 LLM 调用不一定能立即取消，因此不能宣称支持用户点击停止后的即时取消 [E4]。
+
+**7. 安全认证与数据隔离**  
+生产安全认证未验证 [E5]。API 测试覆盖租户隔离 [E1]。但仍不能宣称多租户数据隔离已完成 [E9]。
+
+综上，现有通过项只能证明功能链路在当前环境与样例中可用，不能延伸为生产级能力宣称 [E9]。",不能外推为模型质量 SLO、容量上限、完整无障碍合规、生产安全认证、高并发或所有回答声明都 grounded。
+deep_search,workspace-049,Milvus 官方三种部署形态与 DeepSearcher 当前本地选择之间是什么关系？,True,hard,0,,,,,,0,True,2,2,2,2,True,True,8,True,1.0,0.375,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,8,8,1.0,0.0,0.0,0.75,1.0,52485.825,12153,5,,"Milvus 官方提供三种部署形态：**Milvus Lite**、**Milvus Standalone** 和 **Milvus Distributed** [E1]。其中 Milvus Lite 是轻量级 Python 库，适合 Jupyter Notebook 快速原型或资源受限的边缘设备 [E1]；Milvus Standalone 是单机服务器部署，所有组件打包进一个 Docker 镜像 [E1][E4]；Milvus Distributed 是基于 Kubernetes 的云原生架构，面向十亿级及以上规模场景 [E1]。
+
+DeepSearcher 当前本地选择的是 **Docker Milvus**，并用它验证了建表、插入、L2 排序和维度不匹配等操作 [E2]。其本地环境缺少 `milvus_lite` 依赖，因此不能声称所有 Lite 测试均通过 [E2]。
+
+Docker Milvus 与 Milvus 官方三种形态中的 **Milvus Standalone** 对应，因为 Standalone 正是以单个 Docker 镜像形式提供的单机服务器部署 [E1][E4]。因此，DeepSearcher 的本地选择实际上是落在 Milvus Standalone 这一形态上，而不是 Milvus Lite 或 Milvus Distributed [E2][E1]。
+
+从适用场景看，Docker/服务化 Milvus 适合“向量检索作为独立能力、数据和并发持续增长”的情况，代价是需要单独部署、监控和容量治理 [E3]。同时，Docker Milvus 也能帮助学习真实服务连接、资源限制和故障表现，而 Milvus Lite 不能代表独立网络服务的故障和扩展能力 [E2][E3]。",官方形态包括 Lite、Standalone 和 Distributed；DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+deep_search,workspace-050,Milvus 支持的混合与关键词检索能力，是否意味着 DeepSearcher 当前生产配置已经启用 Hybrid？,True,hard,0,,,,,,0,True,3,3,2,2,True,True,8,True,1.0,0.375,1.0,False,0,0.0,,0.75,0.5,True,,partially_grounded,11,8,0.7272727272727273,0.2727272727272727,0.0,0.5,0.6666666666666666,62143.324,12150,5,,"基于现有证据，不能得出“Milvus 支持混合检索，所以 DeepSearcher 当前生产配置已启用 Hybrid”的结论。
+
+- Milvus 本身确实支持 ANN、过滤、范围、混合、关键词（BM25）等多种检索能力 [E1]。（Milvus 支持混合检索与关键词检索，但这是产品能力层面的说明 [E1]。）
+- DeepSearcher 当前生产配置并没有显示出已启用 Hybrid 的迹象：其 Collection 缺少稀疏字段、Function 和相应索引，不能只靠开关升级，需要新建 Schema 并重新入库 [E6]。（这表明生产环境当前不具备直接启用混合检索的前提 [E6]。）
+- 当前流程描述仍是“把问题生成 query vector，从 Milvus 取 top-k Chunk”的向量检索流程，没有提到 Hybrid 或 BM25 步骤 [E5]。
+- 相关讲义也强调，不能因为源码存在就声称“混合检索效果更好”，需要比较 dense、BM25、hybrid 的 Recall@K、延迟、存储和资源开销 [E2]；同时生产响应应携带 retrieval_mode 等字段，而当前 RetrievalResult.score 仍默认承接 L2 distance [E6]。
+
+因此，Milvus 的混合检索能力仅代表其支持该功能，不等同于 DeepSearcher 生产环境默认或已经启用 Hybrid [E1][E6]。证据中没有直接写明“DeepSearcher 当前生产配置已禁用 Hybrid”，但从 Collection 结构、流程描述和评分语义来看，当前配置不具备已启用 Hybrid 的条件 [E5][E6]。",不意味着。Milvus 支持多向量 Hybrid 和 BM25 Keyword Search，DeepSearcher 代码也有混合路径，但当前 YAML 仍为 Dense-only；已有 Collection 若要启用还需新 Schema 和重新入库。
+deep_search,workspace-053,为什么产品中存在 Citation 仍不能证明回答的每个事实都有依据？,True,hard,0,,,,,,0,True,3,1,2,1,False,False,8,True,0.3333333333333333,0.125,1.0,False,0,0.0,,0.5,0.5,True,,fully_grounded,7,7,1.0,0.0,0.0,0.1111111111111111,0.3333333333333333,119467.527,20571,5,,引用存在并不等于每个事实都有依据，原因包括：当前引用只能到文件级，未稳定保存页码、章节和字符偏移，因此很难准确回答“证据在第几页”，而且引用存在也不等于答案一定受证据支持，还需验证引用片段是否真的包含答案事实[E1]。此外，支持文档选择不等于事实验证，例如检索到多篇文档各包含部分信息，但中间答案可能建立在错误前提上，形成错误传播[E2][E8]。中间答案一旦错误，后续追问可能建立在错误事实之上，即使最终答案看起来逻辑连贯，也可能只是为错误答案挑选看似相关的文档，因此证据筛选不是可靠的逻辑证明器[E3][E6][E8]。最终 Prompt 虽提醒模型中间答案不一定准确，但提醒并不能自动纠错；如果支持文档为空，当前流程仍可能根据中间上下文生成答案[E4]。要判断错误来源，需要拆开链路查看原文是否包含事实、Loader 是否正确提取、Chunk 是否完整、检索排名等，仅凭引用无法确认事实依据[E5]。完整评测应区分检索层、生成层和系统层，并专门评估答案正确性、忠实性、引用正确性和拒答能力，而不仅仅是看有没有引用[E7][E9]。因此，有引用和“每个事实都经过验证”之间存在明显区别；如果没有支持文档或每个关键事实无法映射到引用，生产上应定义拒答或最低证据要求[E4]。,引用只说明系统保存了某些支持文档或来源位置；还必须逐条验证回答声明是否真正被对应片段支持。当前产品引用基础不能证明所有声明都 grounded。
+deep_search,workspace-070,那这个项目本地选的是哪一种，为什么？,True,hard,2,True,True,True,False,False,964,True,2,2,2,2,True,True,4,True,1.0,0.375,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,24,16,0.6666666666666666,0.3333333333333333,0.0,0.75,1.0,46352.496,10494,6,,"### 总结报告：Milvus 本地部署应如何选择 Lite、Standalone 还是 Distributed
+
+针对“Milvus 项目本地部署选择 Lite、Standalone 还是 Distributed，为什么？”这一问题，基于现有检索到的证据，可形成以下具体结论。
+
+#### 1. 三种模式的定位与适用场景
+
+Milvus 提供三种部署模式，覆盖从本地原型到超大规模集群的不同数据规模 [E1]。  
+- **Milvus Lite**：是一个 Python 库，适合在 Jupyter Notebook 中快速原型验证，或部署在资源受限的边缘设备上 [E1][E4]。  
+- **Milvus Standalone**：是单机服务器部署，所有组件打包进单个 Docker 镜像，部署便捷 [E1][E4]。  
+- **Milvus Distributed**：可部署在 Kubernetes 集群上，采用云原生架构，面向十亿级甚至更大规模，并保证关键组件冗余 [E1][E4]。
+
+#### 2. 本地部署时各模式的优劣对比
+
+在本地环境选择部署模式时，需要结合项目阶段和实际需求考虑 [E3]。  
+- **Milvus Lite** 适合个人学习、原型开发和小数据测试，但它不能代表独立网络服务的故障与扩展能力 [E2][E3]。也就是说，Lite 无法模拟真实服务在连接、资源限制、故障处理等方面的行为 [E2]。  
+- **Docker Milvus（即 Standalone）** 更适合学习真实服务的连接方式、资源限制和故障处理，代价是部署和资源成本更高 [E2]。  
+- 若向量检索是项目中的独立能力，且数据量和并发持续增长，则应选择 Docker/服务化 Milvus（Standalone），但需要额外承担部署、监控和容量治理 [E3]。  
+- 反过来，小规模项目未必需要承担独立服务的运维成本 [E3]。因此，选择并没有唯一答案，需要权衡场景与代价 [E3]。
+
+#### 3. 本地部署为何更推荐 Standalone
+
+从证据来看，本地部署若目标是“体验/验证 Milvus 作为独立网络服务的真实特性”，Standalone 是比 Lite 更合适的选择：  
+- Standalone 以 Docker 单机服务方式运行，能够模拟真实服务的连接、资源限制和故障场景 [E2][E3]；  
+- 它保留了 Collection、向量索引、metadata 和独立客户端接口等完整能力，适合作为后续数据和并发增长的基础 [E3]；  
+- 而 Lite 更多局限于个人学习、原型和小数据测试，不能代表独立网络服务的能力 [E2][E3]。  
+- Distributed 则面向 Kubernetes 集群和十亿级以上规模，在普通本地部署中通常不是首选 [E1][E4]。
+
+综上，本地部署若只是轻量原型或学习基本流程，可以选择 Lite；但如果要验证真实服务行为、资源限制或为数据增长做准备，则应选择 Standalone（Docker Milvus）。Distributed 在本地场景下一般没有必要。 [E1][E2][E3][E4]",DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+deep_search,workspace-061,那三种分别适合什么场景？,True,medium,2,True,True,True,False,False,383,False,1,1,1,1,True,,5,True,1.0,0.25,0.3333333333333333,False,0,0.0,,1.0,1.0,True,,partially_grounded,11,10,0.9090909090909091,0.09090909090909091,0.0,0.4,1.0,38667.223,9773,6,,"根据检索到的资料，Milvus Lite、Standalone、Distributed 三种部署形态的适用场景可总结如下：
+
+- **Milvus Lite**：适合个人学习、原型开发、小数据测试，以及在 Jupyter Notebook 中进行快速原型验证，或运行在资源受限的边缘设备上 [E1][E2][E4]。它是一个可轻松集成到应用中的 Python 库，是 Milvus 的轻量级版本 [E4]。其主要限制是“不能代表独立网络服务的故障和扩展能力”，因此不适合模拟真实服务连接或集群故障场景 [E1][E2]。
+
+- **Milvus Standalone**：适合学习真实服务连接、资源限制和故障场景，也适合向量检索作为独立能力、数据和并发持续增长的情况 [E1][E2]。它是单机服务器部署，所有组件打包在一个 Docker 镜像中，便于部署 [E3][E4]。相比之下，它的部署和资源成本比 Milvus Lite 更高 [E1][E2]。
+
+- **Milvus Distributed**：适合部署在 Kubernetes 集群上，面向十亿级甚至更大规模的向量检索场景 [E3][E4]。它采用云原生架构，关键组件具有冗余性，能够支撑大规模数据场景 [E3][E4]。该架构支持系统随数据增长持续扩展，搜索、数据插入、索引/压缩等关键任务可独立扩缩容，已被超过 300 家大型企业用于大规模场景 [E5]。其典型用户包括 Salesforce、PayPal、Shopee、Airbnb、eBay、NVIDIA、IBM 等 [E5]。",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+deep_search,workspace-063,那是越大越相似吗？,True,easy,2,True,True,True,False,False,378,False,1,1,1,1,True,,8,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,11,11,1.0,0.0,0.0,0.2,1.0,38568.49,11372,6,,"L2 distance（欧氏距离）不是越大越相似，而是**越小越近、越小越相似**。[E1] 在 Milvus 等向量检索系统中，L2 表示的是绝对几何距离，排序时按距离从小到大排列，距离最小的项排在前面。[E1][E3] 例如二维例子中，问题 Q 到文档 A、B、C 的 L2 距离分别是 0.1、0.9、2.1，A 距离最小，所以最相似、排在最前。[E3] 虽然有些系统把结果字段命名为 `score`，但如果它实际保存的是 L2 的 `distance`，就不能说“score 越大越相似”。[E1]
+
+距离和相似度在概念上是相反的：距离越小，相似度越高；距离越大，相似度越低。[E1] 这一点与 Cosine 相似度不同：Cosine 比较的是向量方向是否一致，方向一致时相似度为 1，哪怕向量长度相差很大。[E2] 例如向量 `[1, 0, 0]` 和 `[9, 0, 0]` 方向完全一致，Cosine 相似度为 1，但 L2 距离并不小。[E2]
+
+因此，L2 距离作为相似度度量时，必须注意“越大越相似”是错误直觉。[E1] 在项目中使用 L2 时，生产响应应同时携带 metric、score_type、higher_is_better 等信息，以避免把距离误称为“相似度”。[E6] 此外，L2 和 BM25 等不同度量的分数方向、范围和量纲不同，不能直接比较大小。[E8] 如果混合使用 Dense 和 BM25，通常用 RRF 按名次融合，而不是比较 L2 原始分数。[E8]",不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+deep_search,workspace-066,默认关掉它具体意味着什么，又有什么误判风险？,True,hard,2,True,True,True,False,False,492,False,2,2,1,1,True,,7,True,1.0,0.25,0.16666666666666666,False,0,0.0,,1.0,0.8,True,,partially_grounded,19,15,0.7894736842105263,0.21052631578947367,0.0,0.2857142857142857,1.0,118551.326,20836,6,,"## ChainOfRAG 默认关闭 early stopping 的含义与风险
+
+### 一、默认关闭 early stopping 具体意味着什么
+
+- 在 ChainOfRAG 中，只有当 `early_stopping=True` 时，系统才会在每一轮判断当前信息是否足够；如果模型返回 `Yes`，则提前停止，否则继续执行直到 `max_iter` [E5]。
+- 当前默认值是 `early_stopping=False` [E5][E7]。
+- 关闭 early stopping 后，每一轮结束不会调用“信息充分性判断”，也不会记录反思结果，系统会一直执行到 `max_iter` 轮 [E7]。
+- 这不是“反思返回空值”，而是“反思分支根本没有运行” [E5]。
+- 因此，如果在 Trace 中看不到反思内容，应当先检查开关是否开启，而不是认为模型返回内容丢失 [E7]。
+- 关闭 early stopping 的优点是行为更确定，不会被模型过早停止；代价是即使第一轮已经找到完整答案，也会继续执行后续轮次 [E7]。
+- ChainOfRAG 本身是串行检索链：每轮根据原问题和历史中间问答生成一个简单追问，再做路由、向量检索和中间答案生成；如果启用 early stopping，每轮还会判断信息是否足够，否则最多执行 `max_iter` 轮 [E2]。
+- 当前默认关闭 early stopping，因此默认没有充分性反思 [E1][E2]。
+- 关闭时，成本会随着串行轮数累积 [E3]。
+
+### 二、相关的误判风险
+
+- 默认关闭 early stopping 本身不会产生“过早停止”或“过晚停止”的误判，因为根本没有运行充分性判断分支 [E5][E7]。
+- 但该默认设置仍存在其他风险：中间答案可能出错并向后传播，导致错误累积 [E2][E4]。
+- 当前 ChainOfRAG 只是受 CoRAG 思想启发，不是论文训练方法的完整复现，文档索引校验也不完整 [E2]。
+- 如果启用 early stopping，则可能产生两类误判：
+  - **过早停止**：已有部分证据时，模型误判为足够并返回 `Yes`，最终答案缺少关键事实 [E6]。
+  - **过晚停止**：证据已经充分时，模型仍返回 `No`，继续无意义检索，增加 Token 和延迟 [E6]。
+- 因此，停止条件不应只依赖一次主观判断；可以结合是否找到新支持文档、新一轮是否增加新事实、追问是否与历史重复、支持证据是否覆盖原问题各要点、是否达到 Token/时间/轮数预算等 [E6]。",过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。
+deep_search,workspace-069,所以现在默认已经用上两路融合了吗？,True,medium,2,True,True,True,False,False,570,False,2,2,1,1,True,,3,True,1.0,0.25,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,9,9,1.0,0.0,0.0,0.6666666666666666,1.0,79590.346,12764,5,,"当前默认实现**并未启用** Dense + BM25 双路检索 + RRF 融合 [E1]。Milvus 后端已具备 Analyzer、sparse_vector、BM25 Function、稀疏倒排索引、双路 AnnSearchRequest 和 RRFRanker() 等能力，但当前 YAML 配置中没有启用 hybrid，实际仍是 **Dense-only** [E1]。也就是说，默认只做稠密向量检索，不并行执行 BM25 稀疏检索，也不使用 RRF 融合排名 [E1]。
+
+不过，当前 Milvus 适配层确实存在 `hybrid=True` 的代码路径：稠密向量检索与 BM25 稀疏检索并行，再用 RRF 合并排名 [E2]。这属于可实现的可选路径，而不是默认配置 [E1][E2]。
+
+如果启用 hybrid，它可以同时覆盖两类问题：语义表达不同但含义相近的问题靠稠密向量；产品编号、专有名词、日期等精确字面匹配靠 BM25 [E2]。RRF 使用 Σ 1/(k + rank) 按排名融合，避免直接比较 L2 与 BM25 这两种方向、范围和量纲都不同的分数 [E1]。
+
+需要注意，当前 collection 不能只靠开关升级：它缺少稀疏字段、Function 和索引，需要新建 Schema 并重新入库 [E3]。另外，当前 `RetrievalResult.score` 承接的是 Milvus 的 distance，默认 L2 越小越近，但前端笼统标为“相似度”不够严谨；生产响应应同时携带 metric/score_type/higher_is_better/retrieval_mode [E3]。",没有。Dense 用 Embedding 找语义近似，BM25 找字面匹配，Hybrid 同时召回两路，RRF 按排名融合；当前 YAML 仍是 Dense-only。
+deep_search,workspace-056,资料规定 DeepSearcher 生产环境每秒必须支持多少个查询？,False,easy,0,,,,,,0,False,0,0,0,0,,,0,,,,,True,0,0.0,False,,,,True,insufficient_evidence,2,0,0.0,1.0,0.0,,,33670.951,7104,6,,No relevant information found for query '资料规定 DeepSearcher 生产环境每秒必须支持多少个查询？'.,资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。
+deep_search,workspace-058,当前业务评测证明 DeepSearch 比 NaiveRAG 的答案准确率高多少个百分点？,False,medium,0,,,,,,0,False,0,0,0,0,,,8,,,,,False,0,0.0,True,,,,False,partially_grounded,6,4,0.6666666666666666,0.3333333333333333,0.0,,,186797.283,36914,8,,"根据检索到的证据，**无法给出“DeepSearch 比 NaiveRAG 答案准确率高多少个百分点”的具体数字**，因为证据明确表明不存在支持该结论的正式评测结果：
+
+- 没有固定评测集证明 DeepSearch 一定优于 NaiveRAG [E4]。
+- 当前也没有评测证明它一定优于 NaiveRAG [E12]。
+- 仓库自带的 evaluate.py 仅用 2WikiMultiHopQA 对比 Recall@2/Recall@5，且主要做标题级检索评测，**没有**利用标准答案字段评估最终答案正确性、Faithfulness、引用正确性或拒答能力 [E2]。
+- 当前业务语料没有正式、完整的评测 [E9]。
+
+因此，证据中不存在“DeepSearch 比 NaiveRAG 准确率高 X 个百分点”的业务评测结论，无法给出具体百分点。",资料没有给出这一业务准确率提升结论，不能编造提升比例。
+deep_search,workspace-060,Milvus 文档承诺所有向量检索在任何数据规模下都能达到多少毫秒延迟？,False,medium,0,,,,,,0,False,0,0,0,0,,,0,,,,,True,0,0.0,False,,,,True,insufficient_evidence,2,0,0.0,1.0,0.0,,,43335.117,12687,9,,No relevant information found for query 'Milvus 文档承诺所有向量检索在任何数据规模下都能达到多少毫秒延迟？'.,资料没有给出适用于所有数据规模和环境的固定毫秒延迟承诺。
+deep_search,workspace-072,另一个问题：当前最终用户登录明确采用了哪一家 OIDC 身份提供商？,False,easy,2,False,False,True,True,False,526,False,0,0,0,0,,,2,,,,,False,0,0.0,True,,,,False,partially_grounded,4,3,0.75,0.25,0.0,,,23503.734,7294,5,,根据现有证据，当前项目尚未实现最终用户登录/RBAC，因此没有明确采用任何一家 OIDC 身份提供商用于最终用户登录。[E1] 证据明确指出“尚无最终用户登录/RBAC”，且当前完成的是服务到服务的租户令牌、Collection 授权和每进程查询限流，而非最终用户身份体系。[E1][E2] 同时，证据也说明“产品用户级身份体系仍需继续建设”，默认本地接口仍未形成最终用户登录与角色体系。[E2] 因此，关于“采用了哪一家 OIDC 身份提供商”的问题，现有材料中没有给出任何具体的 OIDC 提供商信息，因为最终用户登录本身尚不存在。,资料没有确定 OIDC 身份提供商，当前也没有最终用户登录与 RBAC。
+chain_of_rag,workspace-001,Milvus 是什么，它以哪两种形态提供？,True,easy,0,,,,,,0,False,1,1,1,1,True,,3,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,2,2,1.0,0.0,0.0,0.5,1.0,41473.977,12425,7,,Milvus 是一种高性能、可扩展的向量数据库，专门用于向量相似度搜索 [E1][E2]。它以开源软件和云服务两种形态提供 [E1]。,Milvus 是高性能、可扩展的向量数据库，同时提供开源软件和云服务。
+chain_of_rag,workspace-002,Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？,True,medium,0,,,,,,0,False,1,1,1,1,True,,2,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,3,3,1.0,0.0,0.0,0.5,1.0,127045.239,19507,4,,"Milvus Lite is suitable for personal learning, prototyping, quick prototyping in Jupyter Notebooks, and edge devices with limited resources [E1][E2]. Milvus Standalone is a single-machine server deployment that bundles all components into one Docker image, suitable for serving as an independent vector retrieval capability when data and concurrency continue to grow [E1][E2]. Milvus Distributed is deployed on Kubernetes clusters and is designed for billion-scale or larger scenarios, ensuring redundancy in critical components [E1].",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+chain_of_rag,workspace-006,Milvus 官方列出了哪些 API 或 SDK？,True,easy,0,,,,,,0,False,1,1,1,1,True,,1,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,1,1,1.0,0.0,0.0,1.0,1.0,26060.913,11778,9,,Milvus 官方列出的 API/SDK 包括：RESTful API、PyMilvus（Python SDK）、Go SDK、Java SDK、Node.js (JavaScript) SDK，以及由 Microsoft 贡献的 C# SDK。 [E1],包括 RESTful API、PyMilvus、Go SDK、Java SDK 和 Node.js SDK；文档还列出微软贡献的 C# SDK。
+chain_of_rag,workspace-013,为什么不能说 1500/100 是最优分块参数，应如何验证？,True,medium,0,,,,,,0,False,1,1,1,1,True,,1,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.8,True,,fully_grounded,2,2,1.0,0.0,0.0,1.0,1.0,36161.586,13036,9,,"当前不能将 `chunk_size=1500, chunk_overlap=100` 说成最优分块参数，因为同一份 WhatisMilvus.pdf 的本地实验中，1500/100 产生 10 个 Chunk，改成 500/50 后产生 25 个 Chunk；该实验只证明参数会改变片段数量，不能证明默认值最优 [E1]。正确评测方法是准备带标准证据片段的问题集，对不同参数比较：Recall@K、回答正确率和忠实度、重复片段比例、入库时间与存储量、查询延迟和 Token [E1]。",它只是工程默认值。应在带标准证据的问题集上比较 Recall@K、回答正确率和忠实度、重复片段比例、入库时间、存储、查询延迟与 Token。
+chain_of_rag,workspace-015,当前项目应如何解释 L2 和 score 字段？,True,easy,0,,,,,,0,False,1,1,1,1,True,,2,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,3,3,1.0,0.0,0.0,0.5,1.0,15439.726,7266,4,,当前项目默认使用 L2（欧氏距离），L2 是距离，越小越近 [E1]。当前 `score` 字段实际保存的是 Milvus 返回的 `distance`，不能说“score 越大越相似” [E1][E2]。生产响应应同时携带 `metric`、`score_type`、`higher_is_better`、`retrieval_mode` 等字段来说明分数含义 [E2]。,L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+chain_of_rag,workspace-019,为什么生产环境不能滥用 force_new_collection？,True,easy,0,,,,,,0,False,1,1,1,1,True,,2,True,1.0,0.125,1.0,False,0,0.0,,1.0,0.25,True,,fully_grounded,3,3,1.0,0.0,0.0,0.5,1.0,23245.411,6540,4,,生产环境不能滥用 force_new_collection，因为 `force_new_collection=True` 可能删除已有 Collection 后重建，从而造成数据丢失。[E1] 更安全的做法是创建版本化 Collection、验证后切换流量，并保留旧版本用于回滚。[E1] 同时，不能在缺少备份和评测的情况下直接删除旧 Collection，而应保留旧 Collection、创建新版本 Collection、用新模型重新生成向量、运行检索回归评测、切换查询流量，并保留回滚能力。[E2],它可能删除已有 Collection 并造成数据丢失。更安全的做法是创建版本化 Collection、验证后切流并保留旧版本回滚。
+chain_of_rag,workspace-021,Hybrid 检索为什么可能有帮助，又为什么不能仅凭代码存在就启用？,True,hard,0,,,,,,0,False,2,2,1,1,True,,3,True,1.0,0.25,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,4,4,1.0,0.0,0.0,0.6666666666666666,1.0,70364.395,10623,4,,"Hybrid 检索可能有帮助，因为它同时利用 Dense 的语义理解与 BM25 的精确字面匹配，从而兼顾同义词/自然语言改写和稀有精确字符串等不同情况 [E3]。具体实现中，Hybrid 会同时执行两路召回，并使用 RRF 按名次而不是原始分数融合，避免直接比较 Dense 与 BM25 这两类方向、范围和量纲不同的分数 [E3]。
+
+但不能仅凭代码存在就启用，因为已有代码不等于已经证明 hybrid 效果更好 [E1]。必须要在同一问题集上比较 Dense、BM25 和 Hybrid 的 Recall@K、延迟、存储和资源开销，才能判断 hybrid 是否真的更优 [E2]。",Dense 有利于语义改写，BM25 对编号、日期和专有词更稳，RRF 可融合两路；但是否提升必须在同一问题集比较 Recall、延迟、存储和资源开销。
+chain_of_rag,workspace-024,DeepSearch 从原问题到最终答案要经过哪些主要阶段？,True,hard,0,,,,,,0,False,2,0,1,0,False,,0,False,0.0,0.0,0.0,True,0,0.0,,0.0,0.0,False,,insufficient_evidence,1,0,0.0,1.0,0.0,,0.0,23549.639,3436,6,,No relevant information found,先生成最多四个子查询并发检索，对候选 Chunk 做 YES/NO 支持性过滤，合并去重；非最后一轮反思并生成补充查询，达到停止条件后汇总证据生成答案。
+chain_of_rag,workspace-027,ChainOfRAG 如何沿事实线索完成多跳查询？,True,hard,0,,,,,,0,False,2,2,1,1,True,,2,True,1.0,0.25,1.0,False,0,0.0,,1.0,0.6,True,,fully_grounded,3,3,1.0,0.0,0.0,1.0,1.0,74820.63,12080,4,,ChainOfRAG 每轮根据原始问题和历史中间问答生成一个简单追问，然后进行 Collection 路由、检索并生成中间答案，再选择支持该问答对的文档，形成串行检索链[E1][E2]。每轮会将“追问+中间答案”保存，并进入下一轮继续追问，最终汇总支持文档和中间问答生成最终答案[E1][E2]。如果启用 early stopping，每轮还会判断当前信息是否足够，否则最多执行 max_iter 轮；当前默认关闭 early stopping[E1]。,每轮根据原问题和历史中间问答生成一个简单追问，完成 Collection 路由、检索和中间答案，再选择支持文档；后续轮次依赖已得到的事实，最后汇总。
+chain_of_rag,workspace-032,核心 API 的 Provider 配置、文件入库、网站入库、普通查询和流式查询分别是什么边界？,True,hard,0,,,,,,0,False,2,2,1,1,True,,2,True,1.0,0.25,1.0,False,0,0.0,,1.0,1.0,True,,partially_grounded,11,10,0.9090909090909091,0.09090909090909091,0.0,1.0,1.0,33525.6,10548,4,,"五个核心业务接口的边界如下：
+
+- **Provider 配置（POST /set-provider-config/）**：输入位于 JSON Body；作用是为当前受信租户构建并发布下一 runtime 版本；旧请求继续使用旧租约；密钥不回显且只能引用环境变量 [E1]。Pydantic 模型 ProviderConfigRequest 会校验 feature、provider 和 config 三个字段是否存在及基本类型，但 feature 只是普通 str，是否受支持要到 set_provider_config() 才判断 [E2]。
+
+- **文件入库（POST /load-files/）**：输入位于 JSON Body；作用是读取后端机器上的文件路径，切 Chunk、Embedding 后写入 Milvus；不是浏览器二进制上传接口；默认 batch_size=256 [E1]。paths 是服务端路径，因此入口必须使用服务令牌，不能直接暴露给浏览器或不受信调用方 [E2]。
+
+- **网站入库（POST /load-website/）**：输入位于 JSON Body；作用是抓取 URL、切 Chunk、Embedding 后写入 Milvus；依赖爬虫和外部网络；当前入口没有暴露抓取超时等治理参数 [E1]。
+
+- **普通查询（POST /query）**：输入位于 JSON Body；作用是调用当前租户 RAGRouter 查询，可选返回 Trace；问题不进入 URL；最长 4000 字，max_iter 为 1–10 [E2]。max_iter 设置了 ge=1、le=10，传入 0 时请求会在进入业务函数之前被 FastAPI/Pydantic 拒绝，并返回安全的 422 错误信封 [E2]。original_query 最长 4000 字、max_iter 最多 10 只是请求预算，不等于完整成本治理 [E2]。
+
+- **流式查询（POST /query/stream）**：输入位于 JSON Body + SSE；作用是增量返回受控执行阶段与最终结果；阶段不是思维链；断连协作取消并释放 runtime 租约 [E2]。
+
+此外，Collection 名、产品 Collection 范围和精确确认头在 API 层校验，租户上下文还会再次检查白名单 [E2]。",Provider 接口发布受信租户的新 runtime 且不回显密钥；load-files 接受后端路径；load-website 依赖外网爬虫；query 用 POST JSON 返回结果/可选 Trace；query/stream 用 SSE 返回安全阶段和终态。
+chain_of_rag,workspace-038,Trace 为什么不是模型思维链，它如何从 Agent 到产品引用？,True,medium,0,,,,,,0,False,1,1,1,1,True,,2,True,1.0,0.125,0.5,False,0,0.0,,0.8,1.0,True,,fully_grounded,4,4,1.0,0.0,0.0,0.5,1.0,19864.932,6932,4,,"Trace 不是模型思维链，因为它只记录应用层显式可见的执行事件（如 Agent、Collection、检索文档、迭代、延迟和 Token），帮助观察流程，但不读取也不声称暴露模型内部的隐藏推理过程，准确说法是“执行 Trace”或“阶段日志”。[E1][E2]
+
+数据流动流程为：`query_with_trace()` 创建请求级 TraceCollector → RAGRouter 记录 Agent → ChainOfRAG 逐轮记录子问题、Collection、检索文档、中间答案、支持文档、反思和 Token → `build()` 生成版本化安全 JSON。[E2]
+
+从 Agent 到产品引用：产品工作台经 Trace → Citation 持久化 → product-api.ts → 引用抽屉展示。[E2]
+
+脱敏策略包括：最多展示 5 条文档、每条 600 字，不返回 Embedding 和原始 metadata；本地路径只保留文件名，URL 删除查询参数，引用 metadata 使用白名单。[E2]",TraceCollector 记录路由、检索、支持、反思和 Token 等显式应用事件，并做截断脱敏；核心 API 返回安全 Trace/SSE 阶段，产品层将支持文档持久化为 Citation。它不读取模型隐藏推理。
+chain_of_rag,workspace-048,自动化、真实浏览器和 SSE 闭环通过后，仍不能宣称哪些能力？,True,medium,0,,,,,,0,False,2,1,1,1,False,,2,True,0.5,0.125,1.0,False,0,0.0,,0.8,0.2,True,,fully_grounded,1,1,1.0,0.0,0.0,0.5,0.5,11345.537,6347,4,,仍不能宣称模型质量 SLO、容量上限、完整无障碍合规或生产安全认证 [E1]；也不能证明真实 LLM、Milvus、所有浏览器、并发竞态、屏幕阅读器矩阵或完整 WCAG 合规 [E2]。,不能外推为模型质量 SLO、容量上限、完整无障碍合规、生产安全认证、高并发或所有回答声明都 grounded。
+chain_of_rag,workspace-049,Milvus 官方三种部署形态与 DeepSearcher 当前本地选择之间是什么关系？,True,hard,0,,,,,,0,True,2,2,2,2,True,True,3,True,1.0,0.375,1.0,False,0,0.0,,0.0,1.0,True,,insufficient_evidence,1,0,0.0,1.0,0.0,,0.0,43485.812,14458,10,,No relevant information found,官方形态包括 Lite、Standalone 和 Distributed；DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+chain_of_rag,workspace-050,Milvus 支持的混合与关键词检索能力，是否意味着 DeepSearcher 当前生产配置已经启用 Hybrid？,True,hard,0,,,,,,0,True,3,0,2,0,False,False,0,False,0.0,0.0,0.0,True,0,0.0,,0.0,0.0,False,,insufficient_evidence,1,0,0.0,1.0,0.0,,0.0,17567.099,3647,6,,No relevant information found,不意味着。Milvus 支持多向量 Hybrid 和 BM25 Keyword Search，DeepSearcher 代码也有混合路径，但当前 YAML 仍为 Dense-only；已有 Collection 若要启用还需新 Schema 和重新入库。
+chain_of_rag,workspace-053,为什么产品中存在 Citation 仍不能证明回答的每个事实都有依据？,True,hard,0,,,,,,0,True,3,1,2,1,False,False,2,True,0.3333333333333333,0.125,0.5,False,0,0.0,,1.0,0.5,True,,partially_grounded,6,5,0.8333333333333334,0.16666666666666666,0.0,0.5,0.3333333333333333,18552.022,6008,4,,"产品中存在 Citation 仍不能证明回答的每个事实都有依据，原因如下：
+
+当前引用只能定位到文件级，不能稳定保存页码、章节和字符偏移，因此一个引用只表示“出处在该文件”，并不精确到具体片段 [E2]。“存在引用”不等于“引用片段真的包含答案事实”，仍然需要验证引用片段是否真的包含答案事实 [E2]。
+
+最终生成答案时，Prompt 同时包含原始问题、所有中间问题和答案、累积的支持文档；模型仅被提醒“中间答案不一定准确”，但提醒并不能自动纠错 [E1]。如果支持文档为空，当前流程仍可能根据中间上下文生成答案，所以答案可能来自未经支持文档验证的中间上下文 [E1]。
+
+因此，引用存在不等于答案一定受证据支持；要证明每个事实都有依据，必须逐条验证引用内容是否实际支撑对应事实 [E1][E2]。",引用只说明系统保存了某些支持文档或来源位置；还必须逐条验证回答声明是否真正被对应片段支持。当前产品引用基础不能证明所有声明都 grounded。
+chain_of_rag,workspace-070,那这个项目本地选的是哪一种，为什么？,True,hard,2,True,True,True,False,False,823,True,2,2,2,2,True,True,2,True,1.0,0.25,1.0,False,0,0.0,,0.8,1.0,True,,fully_grounded,2,2,1.0,0.0,0.0,1.0,1.0,27523.394,7651,5,,项目本地选的是 Docker Milvus（即 Milvus Standalone 部署形态）[E1][E2]。选择原因是当前环境缺少 milvus_lite 依赖，无法使用 Milvus Lite，而已用 Docker Milvus 验证建表、插入、L2 排序和维度不匹配等真实服务场景[E1]。,DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。
+chain_of_rag,workspace-061,那三种分别适合什么场景？,True,medium,2,True,True,True,False,False,465,False,1,1,1,1,True,,2,True,1.0,0.125,0.5,False,0,0.0,,1.0,1.0,True,,fully_grounded,3,3,1.0,0.0,0.0,0.5,1.0,29094.738,8017,5,,"Milvus Lite is a lightweight Python library suitable for personal learning, prototyping, and small data testing [E1], and is ideal for quick prototyping in Jupyter Notebooks or on edge devices with limited resources [E2].  
+Milvus Standalone is a single-machine server deployment with all components bundled into a single Docker image [E2]; the Docker-based Milvus deployment is suitable for learning real service connections, resource limits, and failures [E1].  
+Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture designed for billion-scale or larger scenarios and ensuring redundancy in critical components [E2].",Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。
+chain_of_rag,workspace-063,那是越大越相似吗？,True,easy,2,True,True,True,False,False,805,False,1,1,1,1,True,,3,True,1.0,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,1,1,1.0,0.0,0.0,0.5,1.0,13310.106,6267,5,,当前项目的向量检索距离 L2 distance 不是越大越相似；L2 是距离，越小越近。[E1][E2],不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。
+chain_of_rag,workspace-066,默认关掉它具体意味着什么，又有什么误判风险？,True,hard,2,True,True,True,False,False,390,False,2,1,1,1,False,,2,True,0.5,0.125,0.5,False,0,0.0,,1.0,0.8,True,,fully_grounded,3,3,1.0,0.0,0.0,0.5,0.5,36672.696,9352,5,,默认关闭 early stopping 意味着系统不会运行充分性反思分支，不判断当前信息是否足够，而是直接执行完整最大轮数 max_iter；这不是反思返回空值，而是反思分支根本没有运行 [E1]。因此，在默认关闭情况下，不存在因 early stopping 的充分性判断而导致的过早或过晚停止误判 [E2]。若开启 early stopping，则可能出现过早停止或过晚停止的误判风险：证据不足时模型误判为足够并返回 Yes，导致最终答案缺少关键事实；或证据已充分仍返回 No，继续无意义检索，增加 Token 和延迟 [E2]。,过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。
+chain_of_rag,workspace-069,所以现在默认已经用上两路融合了吗？,True,medium,2,True,True,True,False,False,454,False,2,1,1,1,False,,3,True,0.5,0.125,1.0,False,0,0.0,,1.0,1.0,True,,fully_grounded,1,1,1.0,0.0,0.0,1.0,0.5,49819.865,16806,11,,当前代码默认不是使用 Dense 和 BM25 两路融合（RRF）；当前 YAML 未启用 hybrid，实际仍是 Dense-only。[E1],没有。Dense 用 Embedding 找语义近似，BM25 找字面匹配，Hybrid 同时召回两路，RRF 按排名融合；当前 YAML 仍是 Dense-only。
+chain_of_rag,workspace-056,资料规定 DeepSearcher 生产环境每秒必须支持多少个查询？,False,easy,0,,,,,,0,False,0,0,0,0,,,0,,,,,True,0,0.0,False,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,15220.107,5210,6,,No relevant information found,资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。
+chain_of_rag,workspace-058,当前业务评测证明 DeepSearch 比 NaiveRAG 的答案准确率高多少个百分点？,False,medium,0,,,,,,0,False,0,0,0,0,,,2,,,,,False,0,0.0,True,,,,False,fully_grounded,1,1,1.0,0.0,0.0,,,11124.317,5503,4,,当前没有评测证明 DeepSearch 一定优于 NaiveRAG，因此无法给出准确率高多少个百分点 [E1][E2]。,资料没有给出这一业务准确率提升结论，不能编造提升比例。
+chain_of_rag,workspace-060,Milvus 文档承诺所有向量检索在任何数据规模下都能达到多少毫秒延迟？,False,medium,0,,,,,,0,False,0,0,0,0,,,0,,,,,True,0,0.0,False,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,21330.012,7647,6,,No relevant information found,资料没有给出适用于所有数据规模和环境的固定毫秒延迟承诺。
+chain_of_rag,workspace-072,另一个问题：当前最终用户登录明确采用了哪一家 OIDC 身份提供商？,False,easy,2,False,False,True,True,False,507,False,0,0,0,0,,,0,,,,,True,0,0.0,False,,,,True,insufficient_evidence,1,0,0.0,1.0,0.0,,,23698.464,8839,7,,No relevant information found,资料没有确定 OIDC 身份提供商，当前也没有最终用户登录与 RBAC。

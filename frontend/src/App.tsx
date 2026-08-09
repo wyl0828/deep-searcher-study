@@ -1,5 +1,6 @@
 import {
   ArrowPathIcon,
+  ArrowRightStartOnRectangleIcon,
   ArrowTopRightOnSquareIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
@@ -18,6 +19,7 @@ import {
   PaperClipIcon,
   PlusIcon,
   RectangleGroupIcon,
+  ShieldCheckIcon,
   TrashIcon,
   UserCircleIcon,
   XMarkIcon,
@@ -62,21 +64,28 @@ import {
   type KnowledgeBase,
   type Message,
   type ProductDocument,
+  type ProductUser,
   type QueryStageEvent,
   ProductApiError,
   createConversation,
   createKnowledgeBase,
+  createUser,
   deleteConversation,
   deleteDocument,
   deleteKnowledgeBase,
   getConversation,
+  getAuthStatus,
   getKnowledgeBase,
   listConversations,
   listDocuments,
   listKnowledgeBases,
+  listUsers,
+  loginWorkspace,
+  logoutWorkspace,
   reindexKnowledgeBase,
   retryDocument,
   setCurrentKnowledgeBase,
+  setupWorkspace,
   streamMessage,
   uploadDocument,
 } from "./product-api";
@@ -118,6 +127,26 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function displayAnswerContent(content: string) {
+  let insideCodeFence = false;
+  return content
+    .split("\n")
+    .map((line) => {
+      if (line.trimStart().startsWith("```")) {
+        insideCodeFence = !insideCodeFence;
+        return line;
+      }
+      if (insideCodeFence) return line;
+      return line
+        .replace(
+          /\[\s*(?:E[1-9]\d{0,2}|CONFLICT\s*:\s*E[1-9]\d{0,2}(?:\s*,\s*E[1-9]\d{0,2})+)\s*\]/gi,
+          "",
+        )
+        .replace(/[ \t]+([。！？!?.,])/g, "$1");
+    })
+    .join("\n");
+}
+
 function LoadingState({ label = "正在加载…" }: { label?: string }) {
   return (
     <div className="product-state product-state--loading" role="status">
@@ -139,6 +168,12 @@ function stageLabel(stage: QueryStageEvent) {
   switch (stage.event) {
     case "started":
       return "已开始处理问题";
+    case "contextualization":
+      if (stage.data.fallback_used) return "上下文理解失败，已直接检索当前问题";
+      if (stage.data.depends_on_history) {
+        return `已结合 ${stage.data.history_turn_count} 条历史消息理解追问`;
+      }
+      return "当前问题可独立检索";
     case "routing":
       return `已选择 ${stage.data.agent} 检索流程`;
     case "iteration":
@@ -312,7 +347,120 @@ function CreateKnowledgeBaseDialog({
   );
 }
 
-function WorkspaceLayout() {
+function AuthScreen({ setupRequired }: { setupRequired: boolean }) {
+  const queryClient = useQueryClient();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const mutation = useMutation({
+    mutationFn: () =>
+      setupRequired
+        ? setupWorkspace({
+            username,
+            password,
+            display_name: displayName,
+          })
+        : loginWorkspace({ username, password }),
+    onSuccess: (user) => {
+      queryClient.setQueryData(["auth-status"], {
+        setup_required: false,
+        authenticated: true,
+        user,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-bases"] });
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    mutation.mutate();
+  }
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-card" aria-labelledby="auth-title">
+        <img src="/deepsearcher-logo.png" alt="DeepSearcher" />
+        <div className="auth-heading">
+          <span>{setupRequired ? "首次使用" : "欢迎回来"}</span>
+          <h1 id="auth-title">
+            {setupRequired ? "创建工作台管理员" : "登录学习工作台"}
+          </h1>
+          <p>
+            {setupRequired
+              ? "首位用户将成为管理员，并接管升级前已有的知识库与对话。"
+              : "登录后只会看到属于你的知识库、文档与对话。"}
+          </p>
+        </div>
+        <form onSubmit={submit}>
+          {setupRequired ? (
+            <label>
+              <span>显示名称</span>
+              <input
+                autoComplete="name"
+                maxLength={50}
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="例如：小林"
+                required
+              />
+            </label>
+          ) : null}
+          <label>
+            <span>用户名</span>
+            <input
+              autoCapitalize="none"
+              autoComplete="username"
+              maxLength={32}
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="3–32 位字母、数字或 ._-"
+              required
+            />
+          </label>
+          <label>
+            <span>密码</span>
+            <input
+              autoComplete={setupRequired ? "new-password" : "current-password"}
+              minLength={setupRequired ? 10 : 1}
+              maxLength={128}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={setupRequired ? "至少 10 个字符" : "输入密码"}
+              required
+            />
+          </label>
+          {mutation.error ? <ErrorState message={mutation.error.message} /> : null}
+          <button
+            className="product-primary-button auth-submit"
+            type="submit"
+            disabled={
+              mutation.isPending ||
+              !username.trim() ||
+              !password ||
+              (setupRequired && !displayName.trim())
+            }
+          >
+            {mutation.isPending
+              ? "正在提交…"
+              : setupRequired
+                ? "创建管理员并进入"
+                : "登录"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function WorkspaceLayout({
+  user,
+  onLogout,
+}: {
+  user: ProductUser;
+  onLogout: () => void;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -388,6 +536,21 @@ function WorkspaceLayout() {
             <CircleStackIcon aria-hidden="true" />
             知识库
           </NavLink>
+          {user.role === "admin" ? (
+            <NavLink className="admin-users-link" to="/users">
+              <ShieldCheckIcon aria-hidden="true" />
+              用户管理
+            </NavLink>
+          ) : null}
+          <button
+            className="mobile-logout"
+            type="button"
+            aria-label="退出登录"
+            onClick={onLogout}
+          >
+            <ArrowRightStartOnRectangleIcon aria-hidden="true" />
+            <span>退出登录</span>
+          </button>
         </nav>
 
         <section className="sidebar-section">
@@ -445,10 +608,17 @@ function WorkspaceLayout() {
 
         <div className="sidebar-footer">
           <UserCircleIcon aria-hidden="true" />
-          <span>本地用户</span>
-          <Link to="/console" aria-label="打开学习控制台">
-            <Cog6ToothIcon aria-hidden="true" />
-          </Link>
+          <span title={user.username}>{user.display_name}</span>
+          {user.role === "admin" ? (
+            <Link to="/console" aria-label="打开学习控制台">
+              <Cog6ToothIcon aria-hidden="true" />
+            </Link>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+          <button type="button" aria-label="退出登录" onClick={onLogout}>
+            <ArrowRightStartOnRectangleIcon aria-hidden="true" />
+          </button>
         </div>
       </aside>
 
@@ -909,6 +1079,7 @@ function AssistantMessage({
 }) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<"helpful" | "unhelpful" | null>(null);
+  const displayedContent = displayAnswerContent(message.content);
   return (
     <article className="assistant-message">
       <div className="assistant-avatar">
@@ -920,14 +1091,71 @@ function AssistantMessage({
             当前资料中没有找到足够依据。你可以换一种问法，或上传更相关的资料。
           </div>
         ) : null}
+        {message.answer_state === "partially_grounded" ? (
+          <div className="grounding-notice grounding-notice--partial">
+            回答中只有部分声明找到了可核对依据，未支持内容已单独标记。
+          </div>
+        ) : null}
+        {message.answer_state === "conflicting_evidence" ? (
+          <div className="grounding-notice grounding-notice--conflict">
+            检索到的来源存在冲突，请结合对应引用判断。
+          </div>
+        ) : null}
         {message.answer_state === "failed" ? (
           <div className="query-failure-inline">
             系统没有完成本次检索，这不代表知识库中没有相关资料。
           </div>
         ) : null}
         <div className="markdown-answer">
-          <ReactMarkdown>{message.content}</ReactMarkdown>
+          <ReactMarkdown>{displayedContent}</ReactMarkdown>
         </div>
+        {message.claims?.length ? (
+          <details className="claim-grounding">
+            <summary>逐条证据核验（{message.claims.length} 条）</summary>
+            <div className="claim-grounding-list" aria-label="回答声明与证据">
+              {message.claims.map((claim) => {
+                const claimCitations = claim.citation_indices
+                  .map((index) =>
+                    message.citations.find((citation) => citation.index === index),
+                  )
+                  .filter((citation): citation is Citation => Boolean(citation));
+                const statusLabel =
+                  claim.support_status === "supported"
+                    ? "已有依据"
+                    : claim.support_status === "conflicting"
+                      ? "来源冲突"
+                      : claim.support_status === "invalid_citation"
+                        ? "引用无效"
+                        : "缺少依据";
+                return (
+                  <div
+                    key={claim.id}
+                    className={`answer-claim answer-claim--${claim.support_status}`}
+                  >
+                    <div className="markdown-answer">
+                      <ReactMarkdown>{claim.text}</ReactMarkdown>
+                    </div>
+                    <div className="claim-evidence">
+                      <span>{statusLabel}</span>
+                      {claimCitations.map((citation) => (
+                        <button
+                          type="button"
+                          key={citation.id}
+                          aria-label={`查看声明 ${claim.index} 的引用 ${citation.index}：${citation.display_name}${
+                            citation.page_number ? `，第 ${citation.page_number} 页` : ""
+                          }`}
+                          onClick={(event) => onCitation(citation, event.currentTarget)}
+                        >
+                          [{citation.index}]
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        ) : null}
         {message.citations.length ? (
           <div className="inline-citations" aria-label="回答引用">
             <span>参考来源</span>
@@ -950,7 +1178,7 @@ function AssistantMessage({
             <button
               type="button"
               onClick={async () => {
-                await navigator.clipboard.writeText(message.content);
+                await navigator.clipboard.writeText(displayedContent);
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1200);
               }}
@@ -1802,30 +2030,186 @@ function KnowledgeDetailRoute() {
   return <KnowledgeDetailPage key={knowledgeBaseId} />;
 }
 
+function AdminUsersPage() {
+  const queryClient = useQueryClient();
+  const users = useQuery({ queryKey: ["admin-users"], queryFn: listUsers });
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"admin" | "member">("member");
+  const mutation = useMutation({
+    mutationFn: () =>
+      createUser({ username, display_name: displayName, password, role }),
+    onSuccess: () => {
+      setUsername("");
+      setDisplayName("");
+      setPassword("");
+      setRole("member");
+      void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+
+  return (
+    <div className="workspace-page admin-users-page">
+      <header className="page-heading">
+        <div>
+          <span className="eyebrow">管理员</span>
+          <h1>用户管理</h1>
+          <p>创建独立账号；每位用户只能访问自己的知识库、文档与对话。</p>
+        </div>
+      </header>
+      <div className="admin-users-grid">
+        <section className="workspace-card">
+          <h2>添加用户</h2>
+          <form
+            className="admin-user-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              mutation.mutate();
+            }}
+          >
+            <label>
+              <span>显示名称</span>
+              <input
+                value={displayName}
+                maxLength={50}
+                onChange={(event) => setDisplayName(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>用户名</span>
+              <input
+                value={username}
+                maxLength={32}
+                autoCapitalize="none"
+                onChange={(event) => setUsername(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>初始密码</span>
+              <input
+                value={password}
+                type="password"
+                minLength={10}
+                maxLength={128}
+                autoComplete="new-password"
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>角色</span>
+              <select
+                value={role}
+                onChange={(event) => setRole(event.target.value as "admin" | "member")}
+              >
+                <option value="member">普通成员</option>
+                <option value="admin">管理员</option>
+              </select>
+            </label>
+            {mutation.error ? <ErrorState message={mutation.error.message} /> : null}
+            <button
+              className="product-primary-button"
+              type="submit"
+              disabled={
+                mutation.isPending ||
+                !username.trim() ||
+                !displayName.trim() ||
+                password.length < 10
+              }
+            >
+              {mutation.isPending ? "正在创建…" : "创建用户"}
+            </button>
+          </form>
+        </section>
+        <section className="workspace-card">
+          <h2>现有用户</h2>
+          {users.isLoading ? <LoadingState /> : null}
+          {users.error ? <ErrorState message={users.error.message} /> : null}
+          <ul className="admin-user-list">
+            {users.data?.map((item) => (
+              <li key={item.id}>
+                <UserCircleIcon aria-hidden="true" />
+                <span>
+                  <strong>{item.display_name}</strong>
+                  <small>@{item.username}</small>
+                </span>
+                <i>{item.role === "admin" ? "管理员" : "成员"}</i>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function ConsoleRoute() {
   return <ConsoleApp />;
 }
 
-function ProductRouter() {
+function ProductRouter({
+  user,
+  onLogout,
+}: {
+  user: ProductUser;
+  onLogout: () => void;
+}) {
   return (
     <Routes>
-      <Route element={<WorkspaceLayout />}>
+      <Route element={<WorkspaceLayout user={user} onLogout={onLogout} />}>
         <Route index element={<NewChatPage />} />
         <Route path="chat/:conversationId" element={<ChatPage />} />
         <Route path="knowledge" element={<KnowledgeListPage />} />
         <Route path="knowledge/:knowledgeBaseId" element={<KnowledgeDetailRoute />} />
+        {user.role === "admin" ? (
+          <Route path="users" element={<AdminUsersPage />} />
+        ) : null}
       </Route>
-      <Route path="console" element={<ConsoleRoute />} />
+      {user.role === "admin" ? (
+        <Route path="console" element={<ConsoleRoute />} />
+      ) : null}
     </Routes>
+  );
+}
+
+function AuthenticatedWorkspace() {
+  const queryClient = useQueryClient();
+  const auth = useQuery({
+    queryKey: ["auth-status"],
+    queryFn: getAuthStatus,
+    retry: false,
+  });
+  const logout = useMutation({
+    mutationFn: logoutWorkspace,
+    onSuccess: () => {
+      queryClient.clear();
+      queryClient.setQueryData(["auth-status"], {
+        setup_required: false,
+        authenticated: false,
+        user: null,
+      });
+    },
+  });
+
+  if (auth.isLoading) return <LoadingState label="正在检查登录状态…" />;
+  if (auth.error) return <ErrorState message={auth.error.message} />;
+  if (!auth.data?.authenticated || !auth.data.user) {
+    return <AuthScreen setupRequired={Boolean(auth.data?.setup_required)} />;
+  }
+  return (
+    <BrowserRouter>
+      <ProductRouter user={auth.data.user} onLogout={() => logout.mutate()} />
+    </BrowserRouter>
   );
 }
 
 export function App() {
   return (
     <QueryClientProvider client={workspaceQueryClient}>
-      <BrowserRouter>
-        <ProductRouter />
-      </BrowserRouter>
+      <AuthenticatedWorkspace />
     </QueryClientProvider>
   );
 }

@@ -11,11 +11,12 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from deepsearcher.grounding import MAX_GROUNDING_EVIDENCE_TEXT
 from deepsearcher.trace import redact_sensitive_text
 from deepsearcher.web_search.tavily import canonical_public_url
 from frontend.product.backend import backend_request_headers
 from frontend.product.errors import ProductError
-from frontend.product.models import Citation, Conversation, Document, Message
+from frontend.product.models import AnswerClaim, Citation, Conversation, Document, Message
 from frontend.product.schemas import MessageResponse
 
 BACKEND_URL = os.environ.get("DEEPSEARCHER_API_URL", "http://127.0.0.1:8500").rstrip("/")
@@ -84,6 +85,7 @@ QUERY_ERROR_MESSAGES = {
 }
 SAFE_STAGE_EVENTS = {
     "started",
+    "contextualization",
     "routing",
     "iteration",
     "retrieval",
@@ -269,12 +271,39 @@ def _finish_assistant_message(
     payload: dict,
 ) -> Message:
     assistant_message.content = str(payload.get("result") or "")
-    citations = collect_supported_citations(
+    trace = payload.get("trace") or {}
+    grounding = trace.get("grounding") if isinstance(trace, dict) else None
+    has_structured_grounding = (
+        isinstance(grounding, dict) and grounding.get("version") == 1
+    )
+    citations, evidence_to_citation = _collect_supported_citations(
         session,
         message=assistant_message,
-        trace=payload.get("trace") or {},
+        trace=trace,
     )
-    assistant_message.answer_state = "grounded" if citations else "insufficient_evidence"
+    claims = collect_answer_claims(
+        session,
+        message=assistant_message,
+        trace=trace,
+        evidence_to_citation=evidence_to_citation,
+    )
+    if claims:
+        statuses = {claim.support_status for claim in claims}
+        supported_count = sum(
+            claim.support_status in {"supported", "conflicting"} for claim in claims
+        )
+        if "conflicting" in statuses:
+            assistant_message.answer_state = "conflicting_evidence"
+        elif supported_count == len(claims):
+            assistant_message.answer_state = "fully_grounded"
+        elif supported_count:
+            assistant_message.answer_state = "partially_grounded"
+        else:
+            assistant_message.answer_state = "insufficient_evidence"
+    elif has_structured_grounding:
+        assistant_message.answer_state = "insufficient_evidence"
+    else:
+        assistant_message.answer_state = "grounded" if citations else "insufficient_evidence"
     assistant_message.status = "succeeded"
     session.commit()
     session.refresh(assistant_message)
@@ -340,6 +369,24 @@ def _safe_stage_envelope(event_name: str, envelope: dict) -> dict | None:
     data: dict = {}
     if event_name == "started":
         data["stage"] = "query_started"
+    elif event_name == "contextualization":
+        data["depends_on_history"] = bool(raw_data.get("depends_on_history", False))
+        data["history_turn_count"] = min(
+            _safe_nonnegative_int(raw_data.get("history_turn_count")),
+            8,
+        )
+        data["fallback_used"] = bool(raw_data.get("fallback_used", False))
+        reason = str(raw_data.get("reason") or "unknown")
+        data["reason"] = (
+            reason
+            if reason in {
+                "rewritten",
+                "standalone",
+                "invalid_output",
+                "contextualizer_failed",
+            }
+            else "unknown"
+        )
     elif event_name == "routing":
         agent = str(raw_data.get("agent") or "RAGAgent")
         data["agent"] = agent if re.fullmatch(r"[A-Za-z0-9_]{1,64}", agent) else "RAGAgent"
@@ -380,28 +427,151 @@ def _safe_stage_envelope(event_name: str, envelope: dict) -> dict | None:
     }
 
 
-def build_contextual_query(
-    conversation: Conversation,
-    current_question: str,
+def build_conversation_history(conversation: Conversation) -> list[dict]:
+    """Build bounded history without trusting failed or weakly grounded answers."""
+    history: list[dict] = []
+    for message in conversation.messages:
+        content = message.content.strip()
+        if message.status != "succeeded" or not content:
+            continue
+        if message.role == "assistant":
+            if message.answer_state not in {"grounded", "fully_grounded"}:
+                continue
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": content[:1200],
+                    "grounded": True,
+                }
+            )
+        elif message.role == "user":
+            history.append(
+                {
+                    "role": "user",
+                    "content": content[:1200],
+                    "grounded": False,
+                }
+            )
+    return history[-12:]
+
+
+def _grounding_evidence(trace: dict) -> list[tuple[dict, str | None]]:
+    grounding = trace.get("grounding") if isinstance(trace, dict) else None
+    if isinstance(grounding, dict) and grounding.get("version") == 1:
+        evidence = grounding.get("evidence")
+        if isinstance(evidence, list):
+            return [
+                (item, _safe_identifier(item.get("evidence_id"), max_length=16))
+                for item in evidence[:MAX_PERSISTED_CITATIONS]
+                if isinstance(item, dict) and item.get("supported")
+            ]
+    documents: list[tuple[dict, str | None]] = []
+    iterations = trace.get("iterations", []) if isinstance(trace, dict) else []
+    if not isinstance(iterations, list):
+        return documents
+    for iteration in iterations[:10]:
+        if not isinstance(iteration, dict):
+            continue
+        retrieved = iteration.get("retrieved_documents", [])
+        if not isinstance(retrieved, list):
+            continue
+        for item in retrieved[:5]:
+            if isinstance(item, dict) and item.get("supported"):
+                documents.append((item, None))
+    return documents
+
+
+def _collect_supported_citations(
+    session: Session,
     *,
-    use_web_search: bool = False,
-) -> str:
-    previous_messages = [
-        message
-        for message in conversation.messages
-        if message.status == "succeeded" and message.content.strip()
-    ][-6:]
-    if not previous_messages:
-        return current_question
-    context = "\n".join(
-        f"{'用户' if message.role == 'user' else '助手'}：{message.content[:1200]}"
-        for message in previous_messages
-    )
-    return (
-        "请结合以下同一对话中的历史内容理解当前问题，并仅依据知识库资料"
-        f"{'和可核对的 Web 来源' if use_web_search else ''}回答。\n\n"
-        f"历史对话：\n{context}\n\n当前问题：{current_question}"
-    )
+    message: Message,
+    trace: dict,
+) -> tuple[list[Citation], dict[str, int]]:
+    citations: list[Citation] = []
+    evidence_to_citation: dict[str, int] = {}
+    seen: dict[tuple, Citation] = {}
+    for item, evidence_id in _grounding_evidence(trace):
+        if len(citations) >= MAX_PERSISTED_CITATIONS:
+            break
+        if not isinstance(item, dict):
+            continue
+        if not item.get("supported"):
+            continue
+        source_type = "web" if item.get("source_type") == "web" else "knowledge_base"
+        web_source = canonical_public_url(item.get("source_url")) if source_type == "web" else None
+        source_identifier = _safe_identifier(item.get("document_id"))
+        page_number = _safe_optional_int(item.get("page_number"), minimum=1)
+        chunk_index = _safe_optional_int(item.get("chunk_index"))
+        location_id = _safe_identifier(item.get("location_id"))
+        evidence_text = (
+            _safe_text(item.get("text"), max_length=MAX_GROUNDING_EVIDENCE_TEXT) or ""
+        )
+        key = (
+            web_source[0] if web_source else None,
+            location_id,
+            source_identifier,
+            page_number,
+            chunk_index,
+            evidence_text,
+        )
+        if key in seen:
+            if evidence_id:
+                evidence_to_citation[evidence_id] = seen[key].index
+            continue
+        source_document = None
+        if source_identifier:
+            source_document = session.scalar(
+                select(Document).where(
+                    Document.knowledge_base_id == message.conversation.knowledge_base_id,
+                    (Document.id == source_identifier) | (Document.sha256 == source_identifier),
+                )
+            )
+        display_name = _safe_text(
+            (
+                source_document.display_name
+                if source_document
+                else item.get("display_name") or item.get("reference") or "未知来源"
+            ),
+            max_length=255,
+        )
+        char_start = _safe_optional_int(item.get("char_start"))
+        char_end = _safe_optional_int(item.get("char_end"))
+        if char_start is not None and char_end is not None and char_end < char_start:
+            char_start = None
+            char_end = None
+        citation = Citation(
+            message_id=message.id,
+            document_id=source_document.id if source_document else None,
+            index=len(citations) + 1,
+            display_name=display_name or "未知来源",
+            page_number=page_number,
+            chunk_index=chunk_index,
+            section_title=_safe_text(item.get("section_title"), max_length=255),
+            section_path=_safe_string_list(item.get("section_path")),
+            char_start=char_start,
+            char_end=char_end,
+            bbox=_safe_bbox(item.get("bbox")),
+            location_id=location_id,
+            source_locator=_safe_text(item.get("source_locator"), max_length=128),
+            parser_version=_safe_text(item.get("parser_version"), max_length=128),
+            extraction_method=_safe_text(item.get("extraction_method"), max_length=32),
+            source_type=source_type,
+            source_url=web_source[0] if web_source else None,
+            source_domain=web_source[1] if web_source else None,
+            trusted=(
+                bool(item.get("trusted", False))
+                if source_type == "web" and web_source
+                else source_type != "web"
+            ),
+            text=evidence_text,
+            supported=True,
+        )
+        session.add(citation)
+        citations.append(citation)
+        seen[key] = citation
+        if evidence_id:
+            evidence_to_citation[evidence_id] = citation.index
+    return citations, evidence_to_citation
 
 
 def collect_supported_citations(
@@ -410,95 +580,57 @@ def collect_supported_citations(
     message: Message,
     trace: dict,
 ) -> list[Citation]:
-    citations: list[Citation] = []
-    seen: set[tuple] = set()
-    iterations = trace.get("iterations", []) if isinstance(trace, dict) else []
-    if not isinstance(iterations, list):
-        return citations
-    for iteration in iterations[:10]:
-        if not isinstance(iteration, dict):
-            continue
-        documents = iteration.get("retrieved_documents", [])
-        if not isinstance(documents, list):
-            continue
-        for item in documents[:5]:
-            if len(citations) >= MAX_PERSISTED_CITATIONS:
-                return citations
-            if not isinstance(item, dict):
-                continue
-            if not item.get("supported"):
-                continue
-            source_type = "web" if item.get("source_type") == "web" else "knowledge_base"
-            web_source = (
-                canonical_public_url(item.get("source_url")) if source_type == "web" else None
-            )
-            source_identifier = _safe_identifier(item.get("document_id"))
-            page_number = _safe_optional_int(item.get("page_number"), minimum=1)
-            chunk_index = _safe_optional_int(item.get("chunk_index"))
-            location_id = _safe_identifier(item.get("location_id"))
-            evidence_text = _safe_text(item.get("text"), max_length=600) or ""
-            key = (
-                web_source[0] if web_source else None,
-                location_id,
-                source_identifier,
-                page_number,
-                chunk_index,
-                evidence_text,
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            source_document = None
-            if source_identifier:
-                source_document = session.scalar(
-                    select(Document).where(
-                        Document.knowledge_base_id == message.conversation.knowledge_base_id,
-                        (Document.id == source_identifier) | (Document.sha256 == source_identifier),
-                    )
-                )
-            display_name = _safe_text(
-                (
-                    source_document.display_name
-                    if source_document
-                    else item.get("display_name") or item.get("reference") or "未知来源"
-                ),
-                max_length=255,
-            )
-            char_start = _safe_optional_int(item.get("char_start"))
-            char_end = _safe_optional_int(item.get("char_end"))
-            if char_start is not None and char_end is not None and char_end < char_start:
-                char_start = None
-                char_end = None
-            citation = Citation(
-                message_id=message.id,
-                document_id=source_document.id if source_document else None,
-                index=len(citations) + 1,
-                display_name=display_name or "未知来源",
-                page_number=page_number,
-                chunk_index=chunk_index,
-                section_title=_safe_text(item.get("section_title"), max_length=255),
-                section_path=_safe_string_list(item.get("section_path")),
-                char_start=char_start,
-                char_end=char_end,
-                bbox=_safe_bbox(item.get("bbox")),
-                location_id=location_id,
-                source_locator=_safe_text(item.get("source_locator"), max_length=128),
-                parser_version=_safe_text(item.get("parser_version"), max_length=128),
-                extraction_method=_safe_text(item.get("extraction_method"), max_length=32),
-                source_type=source_type,
-                source_url=web_source[0] if web_source else None,
-                source_domain=web_source[1] if web_source else None,
-                trusted=(
-                    bool(item.get("trusted", False))
-                    if source_type == "web" and web_source
-                    else source_type != "web"
-                ),
-                text=evidence_text,
-                supported=True,
-            )
-            session.add(citation)
-            citations.append(citation)
+    citations, _ = _collect_supported_citations(
+        session,
+        message=message,
+        trace=trace,
+    )
     return citations
+
+
+def collect_answer_claims(
+    session: Session,
+    *,
+    message: Message,
+    trace: dict,
+    evidence_to_citation: dict[str, int],
+) -> list[AnswerClaim]:
+    grounding = trace.get("grounding") if isinstance(trace, dict) else None
+    raw_claims = grounding.get("claims") if isinstance(grounding, dict) else None
+    if not isinstance(raw_claims, list):
+        return []
+    claims: list[AnswerClaim] = []
+    allowed_statuses = {"supported", "unsupported", "invalid_citation", "conflicting"}
+    for item in raw_claims[:64]:
+        if not isinstance(item, dict):
+            continue
+        text = _safe_text(item.get("text"), max_length=600)
+        status = str(item.get("status") or "unsupported")
+        if not text or status not in allowed_statuses:
+            continue
+        raw_evidence_ids = item.get("evidence_ids")
+        evidence_ids = raw_evidence_ids if isinstance(raw_evidence_ids, list) else []
+        citation_indices = list(
+            dict.fromkeys(
+                evidence_to_citation[evidence_id]
+                for raw_evidence_id in evidence_ids[:20]
+                if (evidence_id := _safe_identifier(raw_evidence_id, max_length=16))
+                in evidence_to_citation
+            )
+        )
+        required_citations = 2 if status == "conflicting" else 1
+        if status in {"supported", "conflicting"} and len(citation_indices) < required_citations:
+            status = "invalid_citation"
+        claim = AnswerClaim(
+            message_id=message.id,
+            index=len(claims) + 1,
+            text=text,
+            support_status=status,
+            citation_indices=citation_indices,
+        )
+        session.add(claim)
+        claims.append(claim)
+    return claims
 
 
 async def submit_message(
@@ -513,11 +645,7 @@ async def submit_message(
     if not question:
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
 
-    contextual_query = build_contextual_query(
-        conversation,
-        question,
-        use_web_search=use_web_search,
-    )
+    conversation_history = build_conversation_history(conversation)
     user_message, assistant_message = _create_pending_messages(
         session,
         conversation=conversation,
@@ -533,7 +661,8 @@ async def submit_message(
             response = await client.post(
                 f"{BACKEND_URL}/query",
                 json={
-                    "original_query": contextual_query,
+                    "original_query": question,
+                    "conversation_history": conversation_history,
                     "max_iter": 3,
                     "include_trace": True,
                     "collection_names": [conversation.knowledge_base.collection_name],
@@ -580,11 +709,7 @@ async def stream_message_events(
     if not question:
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
 
-    contextual_query = build_contextual_query(
-        conversation,
-        question,
-        use_web_search=use_web_search,
-    )
+    conversation_history = build_conversation_history(conversation)
     user_message, assistant_message = _create_pending_messages(
         session,
         conversation=conversation,
@@ -603,7 +728,8 @@ async def stream_message_events(
                 "POST",
                 f"{BACKEND_URL}/query/stream",
                 json={
-                    "original_query": contextual_query,
+                    "original_query": question,
+                    "conversation_history": conversation_history,
                     "max_iter": 3,
                     "collection_names": [conversation.knowledge_base.collection_name],
                     "use_web_search": use_web_search,

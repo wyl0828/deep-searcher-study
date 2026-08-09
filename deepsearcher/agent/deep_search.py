@@ -14,6 +14,7 @@ from deepsearcher.agent.selection import (
 )
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
+from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
 from deepsearcher.llm.base import BaseLLM
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
@@ -85,6 +86,7 @@ Previous Sub Queries: {mini_questions}
 Related Chunks: 
 {mini_chunk_str}
 
+{grounding_instructions}
 """
 
 
@@ -182,9 +184,7 @@ class DeepSearch(RAGAgent):
 
     @last_selection_decision.setter
     def last_selection_decision(self, decision: dict | None) -> None:
-        self._last_selection_decision.set(
-            dict(decision) if isinstance(decision, dict) else None
-        )
+        self._last_selection_decision.set(dict(decision) if isinstance(decision, dict) else None)
 
     @property
     def _selection_events(self) -> List[dict]:
@@ -685,7 +685,21 @@ class DeepSearch(RAGAgent):
                 - The token usage for the retrieval operation
                 - Additional information about the retrieval process
         """
-        return asyncio.run(self.async_retrieve(original_query, **kwargs))
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(self.async_retrieve(original_query, **kwargs))
+        finally:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            asyncio.set_event_loop(None)
+            # loop.close() shuts its executor down with wait=False. This preserves the
+            # caller-visible timeout even when a timed-out SDK call is still unwinding.
+            loop.close()
 
     async def async_retrieve(
         self, original_query: str, **kwargs
@@ -908,22 +922,21 @@ class DeepSearch(RAGAgent):
         if not all_retrieved_results or len(all_retrieved_results) == 0:
             return f"No relevant information found for query '{query}'.", [], n_token_retrieval
         all_sub_queries = additional_info["all_sub_queries"]
-        chunk_texts = []
-        for chunk in all_retrieved_results:
-            if self.text_window_splitter and "wider_text" in chunk.metadata:
-                chunk_texts.append(chunk.metadata["wider_text"])
-            else:
-                chunk_texts.append(chunk.text)
+        trace_collector = kwargs.get("trace_collector")
         log.color_print(
             f"<think> Summarize answer from all {len(all_retrieved_results)} retrieved chunks... </think>\n"
         )
         summary_prompt = SUMMARY_PROMPT.format(
             question=query,
             mini_questions=all_sub_queries,
-            mini_chunk_str=self._format_chunk_texts(chunk_texts),
+            mini_chunk_str=format_grounding_evidence(
+                all_retrieved_results,
+                use_wider_text=self.text_window_splitter,
+                trace_collector=trace_collector,
+            ),
+            grounding_instructions=GROUNDING_PROMPT,
         )
         chat_response = self.llm.chat([{"role": "user", "content": summary_prompt}])
-        trace_collector = kwargs.get("trace_collector")
         if trace_collector is not None:
             trace_collector.record_final_answer(chat_response.total_tokens)
         log.color_print(

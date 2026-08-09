@@ -11,13 +11,14 @@ from uuid import uuid4
 import httpx
 import yaml
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from frontend.product.auth import require_admin
 from frontend.product.backend import backend_request_headers
 from frontend.product.db import SessionLocal, init_database, worker_is_ready
 from frontend.product.errors import ProductError
@@ -456,7 +457,10 @@ async def health(request: Request) -> JSONResponse:
 
 
 @app.post("/api/health/diagnostics")
-async def health_diagnostics(request: Request) -> JSONResponse:
+async def health_diagnostics(
+    request: Request,
+    _admin=Depends(require_admin),
+) -> JSONResponse:
     return await _workspace_health(request, deep=True)
 
 
@@ -508,6 +512,7 @@ async def ingest(
     request: Request,
     file: UploadFile = File(...),
     collection_name: str = Form(default="deepsearcher"),
+    _admin=Depends(require_admin),
 ) -> dict:
     try:
         normalized_collection = validate_collection_name(collection_name)
@@ -543,7 +548,11 @@ async def ingest(
 
 
 @app.post("/api/query")
-async def query(payload: QueryRequest, request: Request) -> dict:
+async def query(
+    payload: QueryRequest,
+    request: Request,
+    _admin=Depends(require_admin),
+) -> dict:
     question = payload.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="请输入问题")

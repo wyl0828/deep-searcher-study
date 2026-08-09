@@ -1,8 +1,27 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class AuthSetup(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=10, max_length=128)
+    display_name: str = Field(min_length=1, max_length=50)
+
+
+class AuthLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=10, max_length=128)
+    display_name: str = Field(min_length=1, max_length=50)
+    role: Literal["admin", "member"] = "member"
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -47,6 +66,14 @@ class CitationResponse(ProductModel):
     supported: bool
 
 
+class AnswerClaimResponse(ProductModel):
+    id: str
+    index: int
+    text: str
+    support_status: str
+    citation_indices: list[int] = Field(default_factory=list)
+
+
 class MessageResponse(ProductModel):
     id: str
     role: str
@@ -55,3 +82,4 @@ class MessageResponse(ProductModel):
     answer_state: str | None
     created_at: datetime
     citations: list[CitationResponse] = Field(default_factory=list)
+    claims: list[AnswerClaimResponse] = Field(default_factory=list)

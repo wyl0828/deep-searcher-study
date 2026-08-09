@@ -92,11 +92,25 @@ def test_build_runtime_returns_isolated_components_without_publishing_globals(
     assert runtime.web_search is components["web_search"]
     assert runtime.vector_db is components["vector_db"]
     assert runtime.default_searcher.kind == "router"
+    routed_agents = runtime.default_searcher.kwargs["rag_agents"]
+    assert [agent.kind for agent in routed_agents] == ["deep", "chain", "naive"]
+    assert runtime.default_searcher.kwargs["fallback_agent_index"] == 2
     chain = runtime.default_searcher.kwargs["rag_agents"][1]
     assert chain.kwargs["early_stopping"] is True
     assert chain.kwargs["min_evidence_for_stop"] == 2
     assert runtime.naive_rag.kind == "naive"
+    assert runtime.naive_rag is routed_agents[2]
     assert configuration.vector_db is previous_vector_db
+
+
+def test_build_runtime_allows_an_explicit_default_answer_agent(monkeypatch):
+    install_fake_components(monkeypatch)
+    config = FakeConfig()
+    config.query_settings = {"max_iter": 3, "default_agent": "chain_of_rag"}
+
+    runtime = configuration.build_runtime(config)
+
+    assert runtime.default_searcher.kwargs["fallback_agent_index"] == 1
 
 
 def test_init_config_keeps_legacy_global_api_compatible(monkeypatch):

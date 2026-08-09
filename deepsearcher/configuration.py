@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG_YAML_PATH = os.path.join(current_dir, "config.yaml")
+DEFAULT_ANSWER_AGENT = "naive"
+ANSWER_AGENT_ORDER = ("deep_search", "chain_of_rag", "naive")
 
 FeatureType = Literal[
     "llm",
@@ -270,41 +272,6 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
     def create_searchers():
         chain_settings = config.query_settings.get("chain_of_rag", {})
         deep_search_settings = config.query_settings.get("deep_search", {})
-        default = router_class(
-            llm=llm_instance,
-            rag_agents=[
-                deep_search_class(
-                    llm=llm_instance,
-                    embedding_model=embedding_instance,
-                    vector_db=vector_db_instance,
-                    max_iter=config.query_settings["max_iter"],
-                    route_collection=True,
-                    text_window_splitter=True,
-                    web_search=web_search_instance,
-                    web_search_queries_per_iteration=max(
-                        int(deep_search_settings.get("web_search_queries_per_iteration", 2)),
-                        1,
-                    ),
-                    web_search_results_per_query=max(
-                        int(deep_search_settings.get("web_search_results_per_query", 5)),
-                        1,
-                    ),
-                ),
-                chain_of_rag_class(
-                    llm=llm_instance,
-                    embedding_model=embedding_instance,
-                    vector_db=vector_db_instance,
-                    max_iter=config.query_settings["max_iter"],
-                    early_stopping=bool(chain_settings.get("early_stopping", True)),
-                    min_evidence_for_stop=max(
-                        int(chain_settings.get("min_evidence_for_stop", 2)),
-                        1,
-                    ),
-                    route_collection=True,
-                    text_window_splitter=True,
-                ),
-            ],
-        )
         naive = naive_rag_class(
             llm=llm_instance,
             embedding_model=embedding_instance,
@@ -312,6 +279,49 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
             top_k=10,
             route_collection=True,
             text_window_splitter=True,
+        )
+        agents = {
+            "deep_search": deep_search_class(
+                llm=llm_instance,
+                embedding_model=embedding_instance,
+                vector_db=vector_db_instance,
+                max_iter=config.query_settings["max_iter"],
+                route_collection=True,
+                text_window_splitter=True,
+                web_search=web_search_instance,
+                web_search_queries_per_iteration=max(
+                    int(deep_search_settings.get("web_search_queries_per_iteration", 2)),
+                    1,
+                ),
+                web_search_results_per_query=max(
+                    int(deep_search_settings.get("web_search_results_per_query", 5)),
+                    1,
+                ),
+            ),
+            "chain_of_rag": chain_of_rag_class(
+                llm=llm_instance,
+                embedding_model=embedding_instance,
+                vector_db=vector_db_instance,
+                max_iter=config.query_settings["max_iter"],
+                early_stopping=bool(chain_settings.get("early_stopping", True)),
+                min_evidence_for_stop=max(
+                    int(chain_settings.get("min_evidence_for_stop", 2)),
+                    1,
+                ),
+                route_collection=True,
+                text_window_splitter=True,
+            ),
+            "naive": naive,
+        }
+        default_agent = str(
+            config.query_settings.get("default_agent", DEFAULT_ANSWER_AGENT)
+        ).strip()
+        if default_agent not in agents:
+            raise ValueError(f"Unsupported default answer agent: {default_agent}")
+        default = router_class(
+            llm=llm_instance,
+            rag_agents=[agents[name] for name in ANSWER_AGENT_ORDER],
+            fallback_agent_index=ANSWER_AGENT_ORDER.index(default_agent),
         )
         return default, naive
 

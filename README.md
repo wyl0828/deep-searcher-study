@@ -125,7 +125,7 @@ result = query("Write a report about xxx.") # Your question here
 <details>
   <summary>Example (DeepSeek from official)</summary>
     <p> Make sure you have prepared your DEEPSEEK API KEY as an env variable <code>DEEPSEEK_API_KEY</code>.</p>
-    <pre><code>config.set_provider_config("llm", "DeepSeek", {"model": "deepseek-reasoner"})</code></pre>
+    <pre><code>config.set_provider_config("llm", "DeepSeek", {"model": "deepseek-v4-flash"})</code></pre>
     <p> More details about DeepSeek: https://api-docs.deepseek.com/ </p>
 </details>
 
@@ -596,10 +596,50 @@ nest_asyncio.apply()
 ## 📊 Evaluation 
 See the [Evaluation](./evaluation) directory for more details.
 
-除三类 Agent 的固定质量基线外，`python -m evaluation.retrieval_compare` 可在同一份 Milvus
-混合索引上重复比较 Dense、BM25 与 Hybrid/RRF，并保存逐题 JSON/CSV、分标签质量、检索延迟、
-排序稳定率、RRF 参数和索引资源结构。当前 30 题真实结果没有证明 Hybrid 优于 Dense，因此
-`deepsearcher/config.yaml` 明确保持 `hybrid: false`；任何策略切换都必须先重建索引并重新过门禁。
+`evaluation/datasets/workspace_v2.json` 当前版本为 `2.2.0`，固定仓库内 3 份 PDF 的 SHA-256，
+包含 72 道中文业务题：65 道可回答、7 道无答案，其中 8 道要求跨文档证据、12 道带历史消息，
+覆盖声明级引用、指代、省略和话题切换。
+`python -m evaluation.retrieval_compare` 可在同一份 Milvus 混合索引上重复比较 Dense、BM25 与
+Hybrid，并保存逐题 JSON/CSV、分标签质量、检索延迟、排序稳定率、融合权重、候选倍率、Dense
+锚点和索引资源结构；
+`python -m evaluation.benchmark` 继续比较三类 Agent 的回答要点、声明支持、引用精确率/召回率、
+拒答、上下文改写、延迟和 Token。
+
+2026-08-09 的 `2.2.0` 三重复真实检索报告中，加权 RRF 使用 Dense:BM25=`1.5:1`、`k=5`、
+候选倍率 `1`，并保留 Dense 前两名。相对 Dense，Hybrid 的 MRR 从 71.16% 升至 71.53%、
+Recall@8 从 83.85% 升至 87.44%、召回答案要点覆盖率从 80.66% 升至 81.84%，8 道跨文档题的
+完整文档覆盖率从 25% 升至 37.5%；综合增益为 1.7133 个百分点且 P95 检索延迟满足门禁，
+因此 `deepsearcher/config.yaml` 已切换为 Hybrid。旧 Dense-only 知识库必须重建后使用，且不能把
+本次小型业务集外推为生产 SLO。
+
+同日 `answer_stratified_v1` 的 24×3 真实回答报告中，三类 Agent 均零错误。NaiveRAG、
+DeepSearch、ChainOfRAG 的质量分为 `0.785600/0.761980/0.774910`，平均 Tokens 为
+`2987.54/15139.17/9163.46`，P95 延迟为 `27.7/223.0/74.8` 秒。DeepSearch 的无答案拒答
+准确率只有 50%，未达到 75% 准入线；最终推荐 NaiveRAG 作为路由解析失败时的默认 Agent。
+显式要求联网时仍由路由器选择支持 Web Search 的 DeepSearch，不受该兜底选择影响。
+
+### 一键质量门禁
+
+日常开发使用不依赖模型密钥或 Milvus 的快速档：
+
+```powershell
+.\scripts\run-quality-gate.ps1 -Mode Fast
+```
+
+它会顺序记录 Ruff 格式差异并执行阻断式 lint、Python 全量测试、前端测试/类型检查/生产构建、
+真实 Chromium E2E、全新 SQLite 迁移、业务数据集与
+三份基线报告的一致性和阈值校验、MkDocs 构建以及 `git diff --check`。结果和逐阶段日志写入
+`tmp/quality-gate/latest/`。首次运行或 CI 使用 `-InstallDependencies`。
+
+需要真实重建评测 Collection 并重跑检索、多轮和回答报告时使用：
+
+```powershell
+.\scripts\run-quality-gate.ps1 -Mode Full -OutputDir tmp/quality-gate/full
+```
+
+完整档先通过快速档，再使用 `evaluation/quality_gate.json` 中的固定样本与门槛校验新报告；
+它需要本机 Milvus 和 `.env` 中的真实 Provider 配置。GitHub Actions 默认执行快速档，并上传
+14 天可下载的质量日志与 JSON 结果。
 
 ---
 ## 🧭 用户学习工作台
@@ -624,11 +664,23 @@ PDF 结构与页数检查后再原子落盘；最终文件名不使用用户输�
 
 问答链路会区分“检索成功但没有命中”和“向量检索服务故障”。Milvus 离线时，工作台会显示可恢复的系统故障并提供重试；Collection 不存在或向量维度不匹配时，会引导用户检查知识库索引，不会把这些失败伪装成“知识库没有相关资料”。
 
-产品问答使用 POST + SSE 实时返回受控阶段：开始、路由、检索轮次、候选片段数、证据核验、
-充分性检查和完成/错误。页面会自动滚到进度卡片并允许停止生成；这些是程序显式记录的执行阶段，
-不是模型思维链。阶段事件不落库，浏览器只收到字段白名单后的统计，最终仅保存回答和可核对引用。
+产品问答使用 POST + SSE 实时返回受控阶段：开始、上下文理解、路由、检索轮次、候选片段数、
+证据核验、充分性检查和完成/错误。页面会自动滚到进度卡片并允许停止生成；这些是程序显式记录的
+执行阶段，不是模型思维链。阶段事件不落库，浏览器只收到字段白名单后的统计。
 
-检索结果不会再用含义不明的统一“分数”描述所有向量库返回值。Trace v3 显式携带
+连续追问不会再把最近消息拼成一大段查询。产品层分别发送当前问题和结构化历史；只有成功的用户
+消息与 `grounded`/`fully_grounded` 助手回答可进入历史。核心用有界上下文判断指代或省略并生成
+独立检索问题，话题切换保持原问题，模型失败或格式非法时也回退原问题。历史内容不能改变当前
+Collection 范围或联网搜索开关，Trace/SSE 只暴露是否改写、历史条数和回退原因，不暴露对话正文。
+
+最终回答要求每个事实声明使用本次证据编号（如 `[E1]`）；Trace v4 确定性校验证据编号并输出
+`fully_grounded`、`partially_grounded`、`conflicting_evidence` 或 `insufficient_evidence`。
+产品数据库持久化 `AnswerClaim` 与 Citation 映射；页面始终保留原始 Markdown 与代码块，并在可展开的
+逐条核验区显示“已有依据/未找到依据/引用无效/证据冲突”。生成模型看到的 `wider_text` 证据窗口
+会以同一编号和同一有界文本写入 Grounding，避免引用抽屉退化为不含目标事实的窄 Chunk。这能拒绝
+伪造或过期证据编号，但不是语义蕴含模型，引用是否真正支持声明仍需用金标引用指标和人工抽查持续评估。
+
+检索结果不会再用含义不明的统一“分数”描述所有向量库返回值。Trace v4 显式携带
 `metric_type`，并将数值区分为距离、相似度或排序分；页面会同时说明“越小越近”或“越大越近”。
 L2 等距离值、COSINE/IP 等相似度和 RRF 等排序分保持原生语义，不做跨指标换算或比较。
 
@@ -742,11 +794,23 @@ uv run --frozen uvicorn frontend.server:app --host 127.0.0.1 --port $WorkspacePo
 浏览器打开 `http://127.0.0.1:8700`。可通过环境变量 `DEEPSEARCHER_API_URL` 修改被代理的 FastAPI 地址。
 核心 API、Worker 和工作台三个窗口中的 `DEEPSEARCHER_SERVICE_TOKEN` 必须填写完全相同的值。
 
+首次打开工作台时会要求创建管理员账号。首位管理员会自动接管升级前已有的知识库和对话；
+之后可在“用户管理”中创建管理员或普通成员。知识库、文档、入库任务和对话按用户隔离，跨用户
+资源统一返回 404；学习控制台、直接 Collection 查询/入库和深度诊断仅管理员可用。会话 Cookie
+为 HttpOnly、SameSite=Lax，默认有效 7 天。可用 `DEEPSEARCHER_SESSION_DAYS` 设置 1–30 天，
+经 HTTPS 反向代理提供服务时应设置 `DEEPSEARCHER_SECURE_COOKIES=true`。本地旧数据库会在工作台
+启动时执行兼容升级；从一开始就由 Alembic 管理、且含有 `alembic_version` 的部署可执行：
+
+```powershell
+uv run --frozen alembic upgrade head
+```
+
 工作台默认只接受 `localhost`、`127.0.0.1` 和 `::1` Host，并拒绝带有跨站 Origin 或
 `Sec-Fetch-Site: cross-site` 的 POST/PUT/PATCH/DELETE 请求。若由可信反向代理提供 HTTPS，需同时
 配置 `DEEPSEARCHER_WORKSPACE_ALLOWED_HOSTS`（逗号分隔主机名）和单一的
 `DEEPSEARCHER_WORKSPACE_PUBLIC_ORIGIN`（例如 `https://workspace.example.com`）。这只负责本地请求
-边界；最终用户认证和 RBAC 落地前仍不能直接开放为多用户服务。
+边界；用户认证、所有权过滤和管理员 RBAC 仍应与 HTTPS、主机白名单和服务令牌一起启用，不能
+用其中任意一项替代其他边界。
 
 手动调用同步查询：
 

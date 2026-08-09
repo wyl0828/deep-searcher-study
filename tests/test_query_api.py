@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 import main
 from deepsearcher.collection_manifest import CollectionManifest, EmbeddingProfile
 from deepsearcher.configuration import RuntimeInitializationError
+from deepsearcher.llm.base import ChatResponse
 from deepsearcher.runtime_registry import RuntimeControlStore
 from deepsearcher.vector_db.base import RetrievalResult
 from deepsearcher.vector_db.exceptions import (
@@ -347,6 +348,72 @@ def test_query_api_returns_trace_when_requested(monkeypatch):
     }
 
 
+def test_query_api_contextualizes_follow_up_without_changing_scope(monkeypatch):
+    captured = {}
+
+    class ContextLLM:
+        def chat(self, messages):
+            captured["prompt"] = messages[0]["content"]
+            return ChatResponse(
+                content=(
+                    '{"depends_on_history": true, '
+                    '"standalone_query": "Milvus 的单机部署和集群部署有什么区别？"}'
+                ),
+                total_tokens=9,
+            )
+
+        @staticmethod
+        def remove_think(content):
+            return content
+
+    def traced_query(question, max_iter, **kwargs):
+        captured["question"] = question
+        captured["max_iter"] = max_iter
+        captured.update(kwargs)
+        collector = kwargs["trace_collector"]
+        return (
+            "答案",
+            [],
+            21,
+            collector.build(total_tokens=21, final_results=[], answer="答案"),
+        )
+
+    monkeypatch.setattr(main, "query_with_trace", traced_query)
+    with runtime_client(make_runtime(llm=ContextLLM())) as client:
+        response = client.post(
+            "/query",
+            json={
+                "original_query": "它们有什么区别？",
+                "conversation_history": [
+                    {"role": "user", "content": "Milvus 有哪些部署方式？"},
+                    {
+                        "role": "assistant",
+                        "content": "包括单机部署和集群部署。",
+                        "grounded": True,
+                    },
+                ],
+                "collection_names": ["kb_selected"],
+                "use_web_search": True,
+                "include_trace": True,
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured["question"] == "Milvus 的单机部署和集群部署有什么区别？"
+    assert captured["collection_names"] == ["kb_selected"]
+    assert captured["use_web_search"] is True
+    assert captured["initial_tokens"] == 9
+    contextualization = response.json()["trace"]["contextualization"]
+    assert contextualization == {
+        "depends_on_history": True,
+        "history_turn_count": 2,
+        "fallback_used": False,
+        "reason": "rewritten",
+        "token_usage": 9,
+    }
+    assert "Milvus 有哪些部署方式" not in str(response.json()["trace"])
+
+
 def test_query_api_forwards_explicit_collection_scope(monkeypatch):
     captured = {}
 
@@ -466,7 +533,7 @@ def test_query_stream_emits_safe_incremental_stage_events():
     completed = events[-1]["data"]
     assert completed["result"] == "Safe final answer."
     assert completed["consume_token"] == 12
-    assert completed["trace"]["version"] == 3
+    assert completed["trace"]["version"] == 4
     document = completed["trace"]["iterations"][0]["retrieved_documents"][0]
     assert document["metric_type"] == "L2"
     assert document["distance"] == 0.9

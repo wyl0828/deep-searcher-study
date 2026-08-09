@@ -8,14 +8,24 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+from frontend.product.auth import require_user
 from frontend.product.db import Base, create_database_engine, get_session
 from frontend.product.errors import ProductError
-from frontend.product.models import Citation, Conversation, Document, KnowledgeBase, Message
+from frontend.product.models import (
+    Citation,
+    Conversation,
+    Document,
+    KnowledgeBase,
+    Message,
+    User,
+)
 from frontend.product.repositories import get_conversation
 from frontend.product.services import conversations as conversation_service
 from frontend.product.services.conversations import (
+    _finish_assistant_message,
     _iter_sse_events,
     _validate_stream_envelope,
+    build_conversation_history,
     collect_supported_citations,
     query_error_from_response,
     stream_message_events,
@@ -39,12 +49,22 @@ def product_client(tmp_path):
     engine = create_database_engine(f"sqlite:///{(tmp_path / 'api.db').as_posix()}")
     Base.metadata.create_all(engine)
     test_session = sessionmaker(bind=engine, expire_on_commit=False)
+    with test_session() as session:
+        test_user = User(
+            username="test-user",
+            display_name="测试用户",
+            password_hash="disabled",
+            role="admin",
+        )
+        session.add(test_user)
+        session.commit()
 
     def override_session():
         with test_session() as session:
             yield session
 
     app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[require_user] = lambda: test_user
     try:
         client = TestClient(app)
         client.product_session_factory = test_session
@@ -168,6 +188,146 @@ def test_citations_never_bind_to_a_document_from_another_knowledge_base(tmp_path
             assert citations[0].document_id is None
             assert citations[0].display_name == "safe-fallback.pdf"
             assert "foreign-secret" not in citations[0].display_name
+
+
+def test_claim_grounding_persists_partial_support_and_rejects_fake_evidence_ids(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "声明引用库", "description": ""},
+        ).json()
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        ).json()
+
+        with client.product_session_factory() as session:
+            document = Document(
+                knowledge_base_id=knowledge_base["id"],
+                display_name="grounding.pdf",
+                storage_path=str(tmp_path / "grounding.pdf"),
+                size_bytes=10,
+                sha256="e" * 64,
+                status="ready",
+            )
+            assistant = Message(
+                conversation_id=conversation["id"],
+                role="assistant",
+                content="",
+                status="pending",
+            )
+            session.add_all([document, assistant])
+            session.commit()
+            _finish_assistant_message(
+                session,
+                assistant_message=assistant,
+                payload={
+                    "result": "Milvus 是向量数据库。[E1] 它支持任意 SQL。[E9]",
+                    "trace": {
+                        "grounding": {
+                            "version": 1,
+                            "state": "partially_grounded",
+                            "evidence": [
+                                {
+                                    "evidence_id": "E1",
+                                    "document_id": document.id,
+                                    "display_name": "grounding.pdf",
+                                    "page_number": 2,
+                                    "location_id": "loc-grounding-1",
+                                    "text": "Milvus 是向量数据库。",
+                                    "supported": True,
+                                }
+                            ],
+                            "claims": [
+                                {
+                                    "index": 1,
+                                    "text": "Milvus 是向量数据库。",
+                                    "status": "supported",
+                                    "evidence_ids": ["E1"],
+                                },
+                                {
+                                    "index": 2,
+                                    "text": "它支持任意 SQL。",
+                                    "status": "invalid_citation",
+                                    "evidence_ids": [],
+                                    "invalid_evidence_ids": ["E9"],
+                                },
+                            ],
+                        }
+                    },
+                },
+            )
+
+        detail = client.get(f"/api/conversations/{conversation['id']}").json()
+        persisted = detail["messages"][0]
+        assert persisted["answer_state"] == "partially_grounded"
+        assert len(persisted["citations"]) == 1
+        assert persisted["claims"] == [
+            {
+                "id": persisted["claims"][0]["id"],
+                "index": 1,
+                "text": "Milvus 是向量数据库。",
+                "support_status": "supported",
+                "citation_indices": [1],
+            },
+            {
+                "id": persisted["claims"][1]["id"],
+                "index": 2,
+                "text": "它支持任意 SQL。",
+                "support_status": "invalid_citation",
+                "citation_indices": [],
+            },
+        ]
+
+
+def test_structured_grounding_without_claims_never_falls_back_to_grounded(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "空声明引用库", "description": ""},
+        ).json()
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        ).json()
+
+        with client.product_session_factory() as session:
+            assistant = Message(
+                conversation_id=conversation["id"],
+                role="assistant",
+                content="",
+                status="pending",
+            )
+            session.add(assistant)
+            session.commit()
+            _finish_assistant_message(
+                session,
+                assistant_message=assistant,
+                payload={
+                    "result": "```python\nprint(42)\n```",
+                    "trace": {
+                        "grounding": {
+                            "version": 1,
+                            "state": "insufficient_evidence",
+                            "evidence": [
+                                {
+                                    "evidence_id": "E1",
+                                    "display_name": "code.pdf",
+                                    "page_number": 1,
+                                    "text": "print(42)",
+                                    "supported": True,
+                                }
+                            ],
+                            "claims": [],
+                        }
+                    },
+                },
+            )
+
+        persisted = client.get(f"/api/conversations/{conversation['id']}").json()["messages"][0]
+        assert persisted["answer_state"] == "insufficient_evidence"
+        assert len(persisted["citations"]) == 1
+        assert persisted["claims"] == []
 
 
 def test_create_list_and_select_knowledge_bases(tmp_path):
@@ -721,6 +881,48 @@ def test_delete_conversation_cascades_messages_and_citations_only(tmp_path):
             assert session.get(Citation, citation_id) is None
 
 
+def test_conversation_history_excludes_failed_and_weakly_grounded_answers():
+    conversation = Conversation(knowledge_base_id="kb_test", title="上下文测试")
+    conversation.messages = [
+        Message(role="user", content="Milvus 有哪些部署方式？", status="succeeded"),
+        Message(
+            role="assistant",
+            content="包括单机部署和集群部署。",
+            status="succeeded",
+            answer_state="fully_grounded",
+        ),
+        Message(role="user", content="它们有什么区别？", status="succeeded"),
+        Message(
+            role="assistant",
+            content="这是一条只有部分依据的回答。",
+            status="succeeded",
+            answer_state="partially_grounded",
+        ),
+        Message(role="user", content="再说说扩缩容。", status="succeeded"),
+        Message(
+            role="assistant",
+            content="调用失败的错误文字。",
+            status="failed",
+            answer_state="failed",
+        ),
+    ]
+
+    assert build_conversation_history(conversation) == [
+        {
+            "role": "user",
+            "content": "Milvus 有哪些部署方式？",
+            "grounded": False,
+        },
+        {
+            "role": "assistant",
+            "content": "包括单机部署和集群部署。",
+            "grounded": True,
+        },
+        {"role": "user", "content": "它们有什么区别？", "grounded": False},
+        {"role": "user", "content": "再说说扩缩容。", "grounded": False},
+    ]
+
+
 def test_upload_query_and_citation_flow_uses_internal_collection_scope(
     tmp_path,
     monkeypatch,
@@ -861,6 +1063,8 @@ def test_upload_query_and_citation_flow_uses_internal_collection_scope(
 
     assert captured["url"].endswith("/query")
     assert captured["json"]["collection_names"][0].startswith("kb_")
+    assert captured["json"]["original_query"] == "DeepSearcher 的查询流程是什么？"
+    assert captured["json"]["conversation_history"] == []
     assert captured["json"]["include_trace"] is True
     assert captured["client_kwargs"]["trust_env"] is False
     assert captured["client_kwargs"]["headers"]["X-Request-ID"] == "product-query-test-1"
@@ -887,6 +1091,20 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
             "version": 1,
             "request_id": "product-stream-test-1",
             "sequence": 2,
+            "event": "contextualization",
+            "data": {
+                "depends_on_history": True,
+                "history_turn_count": 4,
+                "fallback_used": False,
+                "reason": "rewritten",
+                "token_usage": 19,
+                "standalone_query": "private rewritten query",
+            },
+        },
+        {
+            "version": 1,
+            "request_id": "product-stream-test-1",
+            "sequence": 3,
             "event": "routing",
             "data": {
                 "agent": "DeepSearch",
@@ -897,7 +1115,7 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
         {
             "version": 1,
             "request_id": "product-stream-test-1",
-            "sequence": 3,
+            "sequence": 4,
             "event": "retrieval",
             "data": {
                 "iteration": 1,
@@ -908,7 +1126,7 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
         {
             "version": 1,
             "request_id": "product-stream-test-1",
-            "sequence": 4,
+            "sequence": 5,
             "event": "web_search",
             "data": {
                 "iteration": 1,
@@ -923,21 +1141,21 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
         {
             "version": 1,
             "request_id": "product-stream-test-1",
-            "sequence": 5,
+            "sequence": 6,
             "event": "support",
             "data": {"iteration": 1, "supported_count": 1},
         },
         {
             "version": 1,
             "request_id": "product-stream-test-1",
-            "sequence": 6,
+            "sequence": 7,
             "event": "reflection",
             "data": {"iteration": 1, "has_enough_information": True},
         },
         {
             "version": 1,
             "request_id": "product-stream-test-1",
-            "sequence": 7,
+            "sequence": 8,
             "event": "completed",
             "data": {
                 "result": "这是基于资料生成的安全回答。",
@@ -1032,6 +1250,7 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
         events = parse_sse_events(response.text)
         assert [event["event"] for event in events] == [
             "started",
+            "contextualization",
             "routing",
             "retrieval",
             "web_search",
@@ -1039,8 +1258,14 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
             "reflection",
             "completed",
         ]
-        assert events[2]["data"] == {"iteration": 1, "retrieved_count": 4}
-        assert events[3]["data"] == {
+        assert events[1]["data"] == {
+            "depends_on_history": True,
+            "history_turn_count": 4,
+            "fallback_used": False,
+            "reason": "rewritten",
+        }
+        assert events[3]["data"] == {"iteration": 1, "retrieved_count": 4}
+        assert events[4]["data"] == {
             "iteration": 1,
             "status": "completed",
             "provider": "tavily",
@@ -1059,6 +1284,7 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
             "should-not-reach-browser",
             r"C:\Users\private\notes.pdf",
             "private intermediate query",
+            "private rewritten query",
             "must-not-reach-browser",
             "private_debug",
         ):

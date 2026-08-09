@@ -9,9 +9,30 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from frontend.product.auth import (
+    acquire_setup_lock,
+    authenticate,
+    claim_legacy_data,
+    create_login_session,
+    create_user,
+    delete_login_session,
+    optional_user,
+    require_admin,
+    require_user,
+    setup_required,
+    user_response,
+)
 from frontend.product.db import get_session
 from frontend.product.errors import ProductError
-from frontend.product.models import Conversation, Document, IngestJob, KnowledgeBase, Message
+from frontend.product.models import (
+    LEGACY_OWNER_ID,
+    Conversation,
+    Document,
+    IngestJob,
+    KnowledgeBase,
+    Message,
+    User,
+)
 from frontend.product.repositories import (
     create_knowledge_base,
     get_conversation,
@@ -19,10 +40,13 @@ from frontend.product.repositories import (
     set_current_knowledge_base,
 )
 from frontend.product.schemas import (
+    AuthLogin,
+    AuthSetup,
     ConversationCreate,
     KnowledgeBaseCreate,
     MessageCreate,
     MessageResponse,
+    UserCreate,
 )
 from frontend.product.services import documents as document_service
 from frontend.product.services.conversations import stream_message_events, submit_message
@@ -37,6 +61,174 @@ from frontend.product.services.knowledge_bases import (
 )
 
 router = APIRouter(prefix="/api")
+
+
+def _owned_knowledge_base(
+    session: Session,
+    knowledge_base_id: str,
+    owner_id: str,
+) -> KnowledgeBase:
+    knowledge_base = session.scalar(
+        select(KnowledgeBase).where(
+            KnowledgeBase.id == knowledge_base_id,
+            KnowledgeBase.owner_id == owner_id,
+        )
+    )
+    if knowledge_base is None:
+        raise ProductError(
+            "KNOWLEDGE_BASE_NOT_FOUND",
+            "没有找到这个知识库。",
+            status_code=404,
+        )
+    return knowledge_base
+
+
+def _owned_document(session: Session, document_id: str, owner_id: str) -> Document:
+    document = session.scalar(
+        select(Document)
+        .join(Document.knowledge_base)
+        .where(
+            Document.id == document_id,
+            KnowledgeBase.owner_id == owner_id,
+        )
+    )
+    if document is None:
+        raise ProductError("DOCUMENT_NOT_FOUND", "没有找到这个文档。", status_code=404)
+    return document
+
+
+def _owned_ingest_job(session: Session, job_id: str, owner_id: str) -> IngestJob:
+    job = session.scalar(
+        select(IngestJob)
+        .join(IngestJob.document)
+        .join(Document.knowledge_base)
+        .where(
+            IngestJob.id == job_id,
+            KnowledgeBase.owner_id == owner_id,
+        )
+    )
+    if job is None:
+        raise ProductError(
+            "INGEST_JOB_NOT_FOUND",
+            "没有找到这个文档处理任务。",
+            status_code=404,
+        )
+    return job
+
+
+@router.get("/auth/status")
+def auth_status(
+    user: User | None = Depends(optional_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {
+        "setup_required": setup_required(session),
+        "authenticated": user is not None,
+        "user": user_response(user) if user is not None else None,
+    }
+
+
+@router.post("/auth/setup", status_code=201)
+def setup_workspace(
+    payload: AuthSetup,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    if not setup_required(session):
+        raise ProductError(
+            "SETUP_ALREADY_COMPLETED",
+            "工作台已经完成初始化，请直接登录。",
+            status_code=409,
+        )
+    try:
+        acquire_setup_lock(session)
+        user = create_user(
+            session,
+            username=payload.username,
+            password=payload.password,
+            display_name=payload.display_name,
+            role="admin",
+        )
+        claim_legacy_data(session, user.id)
+        create_login_session(session, user, response)
+    except IntegrityError as exc:
+        session.rollback()
+        raise ProductError(
+            "SETUP_ALREADY_COMPLETED",
+            "工作台已经完成初始化，请直接登录。",
+            status_code=409,
+        ) from exc
+    session.refresh(user)
+    return {"user": user_response(user)}
+
+
+@router.post("/auth/login")
+def login(
+    payload: AuthLogin,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    user = authenticate(session, payload.username, payload.password)
+    if user is None:
+        raise ProductError(
+            "INVALID_CREDENTIALS",
+            "用户名或密码不正确。",
+            status_code=401,
+        )
+    create_login_session(session, user, response)
+    return {"user": user_response(user)}
+
+
+@router.post("/auth/logout")
+def logout(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    delete_login_session(session, request, response)
+    return {"logged_out": True}
+
+
+@router.get("/auth/me")
+def current_user(user: User = Depends(require_user)) -> dict:
+    return {"user": user_response(user)}
+
+
+@router.get("/admin/users")
+def list_users(
+    _admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    users = session.scalars(
+        select(User).where(User.id != LEGACY_OWNER_ID).order_by(User.created_at, User.username)
+    ).all()
+    return {"items": [user_response(user) for user in users]}
+
+
+@router.post("/admin/users", status_code=201)
+def add_user(
+    payload: UserCreate,
+    _admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        user = create_user(
+            session,
+            username=payload.username,
+            password=payload.password,
+            display_name=payload.display_name,
+            role=payload.role,
+        )
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ProductError(
+            "USERNAME_EXISTS",
+            "这个用户名已经存在。",
+            status_code=409,
+        ) from exc
+    session.refresh(user)
+    return {"user": user_response(user)}
 
 
 def knowledge_base_detail(session: Session, knowledge_base: KnowledgeBase) -> dict:
@@ -129,13 +321,17 @@ def _sse_message(envelope: dict) -> str:
 
 
 @router.get("/knowledge-bases")
-def knowledge_bases(session: Session = Depends(get_session)) -> dict:
-    return {"items": list_knowledge_bases(session)}
+def knowledge_bases(
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"items": list_knowledge_bases(session, user.id)}
 
 
 @router.post("/knowledge-bases", status_code=201)
 def add_knowledge_base(
     request: KnowledgeBaseCreate,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
     try:
@@ -143,6 +339,7 @@ def add_knowledge_base(
             session,
             name=request.name,
             description=request.description,
+            owner_id=user.id,
         )
     except IntegrityError as exc:
         session.rollback()
@@ -157,24 +354,20 @@ def add_knowledge_base(
 @router.get("/knowledge-bases/{knowledge_base_id}")
 def get_knowledge_base(
     knowledge_base_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = session.get(KnowledgeBase, knowledge_base_id)
-    if knowledge_base is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
     return knowledge_base_detail(session, knowledge_base)
 
 
 @router.put("/knowledge-bases/{knowledge_base_id}/current")
 def select_knowledge_base(
     knowledge_base_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = set_current_knowledge_base(session, knowledge_base_id)
+    knowledge_base = set_current_knowledge_base(session, knowledge_base_id, user.id)
     if knowledge_base is None:
         raise ProductError(
             "KNOWLEDGE_BASE_NOT_FOUND",
@@ -187,15 +380,10 @@ def select_knowledge_base(
 @router.delete("/knowledge-bases/{knowledge_base_id}")
 async def remove_knowledge_base(
     knowledge_base_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = session.get(KnowledgeBase, knowledge_base_id)
-    if knowledge_base is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
     next_current = await delete_knowledge_base(session, knowledge_base)
     return {
         "deleted_id": knowledge_base_id,
@@ -206,15 +394,10 @@ async def remove_knowledge_base(
 @router.post("/knowledge-bases/{knowledge_base_id}/reindex")
 async def reindex_knowledge_base_route(
     knowledge_base_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = session.get(KnowledgeBase, knowledge_base_id)
-    if knowledge_base is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
     await reindex_knowledge_base(session, knowledge_base)
     session.refresh(knowledge_base)
     return knowledge_base_detail(session, knowledge_base)
@@ -223,14 +406,10 @@ async def reindex_knowledge_base_route(
 @router.get("/knowledge-bases/{knowledge_base_id}/documents")
 def documents(
     knowledge_base_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    if session.get(KnowledgeBase, knowledge_base_id) is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
+    _owned_knowledge_base(session, knowledge_base_id, user.id)
     items = session.scalars(
         select(Document)
         .where(Document.knowledge_base_id == knowledge_base_id)
@@ -242,15 +421,10 @@ def documents(
 @router.get("/documents/{document_id}/content")
 def document_content(
     document_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> FileResponse:
-    document = session.get(Document, document_id)
-    if document is None:
-        raise ProductError(
-            "DOCUMENT_NOT_FOUND",
-            "没有找到这份文档。",
-            status_code=404,
-        )
+    document = _owned_document(session, document_id, user.id)
     upload_root = document_service.UPLOAD_DIR.resolve()
     source_path = Path(document.storage_path).resolve()
     if source_path != upload_root and upload_root not in source_path.parents:
@@ -281,15 +455,10 @@ def document_content(
 async def upload_document(
     knowledge_base_id: str,
     file: UploadFile = File(...),
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = session.get(KnowledgeBase, knowledge_base_id)
-    if knowledge_base is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
     try:
         document, job = await create_document_from_upload(
             session,
@@ -307,45 +476,30 @@ async def upload_document(
 @router.get("/documents/{document_id}")
 def get_document(
     document_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    document = session.get(Document, document_id)
-    if document is None:
-        raise ProductError(
-            "DOCUMENT_NOT_FOUND",
-            "没有找到这个文档。",
-            status_code=404,
-        )
+    document = _owned_document(session, document_id, user.id)
     return document_response(document)
 
 
 @router.get("/ingest-jobs/{job_id}")
 def get_ingest_job(
     job_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    job = session.get(IngestJob, job_id)
-    if job is None:
-        raise ProductError(
-            "INGEST_JOB_NOT_FOUND",
-            "没有找到这个文档处理任务。",
-            status_code=404,
-        )
+    job = _owned_ingest_job(session, job_id, user.id)
     return ingest_job_response(job)
 
 
 @router.delete("/documents/{document_id}", status_code=204)
 async def remove_document(
     document_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    document = session.get(Document, document_id)
-    if document is None:
-        raise ProductError(
-            "DOCUMENT_NOT_FOUND",
-            "没有找到这个文档。",
-            status_code=404,
-        )
+    document = _owned_document(session, document_id, user.id)
     await delete_document(session, document)
     return Response(status_code=204)
 
@@ -353,15 +507,10 @@ async def remove_document(
 @router.post("/documents/{document_id}/retry", status_code=202)
 def retry_failed_document(
     document_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    document = session.get(Document, document_id)
-    if document is None:
-        raise ProductError(
-            "DOCUMENT_NOT_FOUND",
-            "没有找到这个文档。",
-            status_code=404,
-        )
+    document = _owned_document(session, document_id, user.id)
     job = retry_document(session, document)
     return {"document": document_response(document), "job": ingest_job_response(job)}
 
@@ -369,10 +518,12 @@ def retry_failed_document(
 @router.get("/conversations")
 def conversations(
     limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
     items = session.scalars(
         select(Conversation)
+        .where(Conversation.owner_id == user.id)
         .options(selectinload(Conversation.knowledge_base))
         .order_by(Conversation.updated_at.desc())
         .limit(limit)
@@ -395,16 +546,14 @@ def conversations(
 @router.post("/conversations", status_code=201)
 def add_conversation(
     request: ConversationCreate,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = session.get(KnowledgeBase, request.knowledge_base_id)
-    if knowledge_base is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
-    conversation = Conversation(knowledge_base_id=knowledge_base.id)
+    knowledge_base = _owned_knowledge_base(session, request.knowledge_base_id, user.id)
+    conversation = Conversation(
+        owner_id=user.id,
+        knowledge_base_id=knowledge_base.id,
+    )
     session.add(conversation)
     session.commit()
     session.refresh(conversation)
@@ -420,9 +569,10 @@ def add_conversation(
 @router.get("/conversations/{conversation_id}")
 def conversation_detail(
     conversation_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    conversation = get_conversation(session, conversation_id)
+    conversation = get_conversation(session, conversation_id, user.id)
     if conversation is None:
         raise ProductError(
             "CONVERSATION_NOT_FOUND",
@@ -442,9 +592,10 @@ def conversation_detail(
 @router.delete("/conversations/{conversation_id}", status_code=204)
 def remove_conversation(
     conversation_id: str,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    conversation = session.get(Conversation, conversation_id)
+    conversation = get_conversation(session, conversation_id, user.id)
     if conversation is None:
         raise ProductError(
             "CONVERSATION_NOT_FOUND",
@@ -461,9 +612,10 @@ async def add_message(
     conversation_id: str,
     payload: MessageCreate,
     request: Request,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    conversation = get_conversation(session, conversation_id)
+    conversation = get_conversation(session, conversation_id, user.id)
     if conversation is None:
         raise ProductError(
             "CONVERSATION_NOT_FOUND",
@@ -478,7 +630,7 @@ async def add_message(
         request_id=getattr(request.state, "request_id", None),
     )
     session.expire_all()
-    refreshed = get_conversation(session, conversation_id)
+    refreshed = get_conversation(session, conversation_id, user.id)
     assert refreshed is not None
     messages_by_id = {message.id: message for message in refreshed.messages}
     return {
@@ -492,9 +644,10 @@ async def stream_message(
     conversation_id: str,
     payload: MessageCreate,
     request: Request,
+    user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
-    conversation = get_conversation(session, conversation_id)
+    conversation = get_conversation(session, conversation_id, user.id)
     if conversation is None:
         raise ProductError(
             "CONVERSATION_NOT_FOUND",

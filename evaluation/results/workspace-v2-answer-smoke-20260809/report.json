@@ -1,0 +1,2487 @@
+{
+  "report_schema_version": 2,
+  "metric_version": "2.1.0",
+  "created_at": "2026-08-09T02:44:01.790160+00:00",
+  "dataset": {
+    "id": "deepsearcher-workspace-v2",
+    "version": "2.2.0",
+    "sha256": "4ea1d7cd1b3ca1136be2cd32362a7a9066d5a73d3ffd1eacdb747ec2e65e6c0d",
+    "sources": [
+      {
+        "document": "WhatisMilvus.pdf",
+        "path": "examples/data/WhatisMilvus.pdf",
+        "sha256": "00cac5d6ca84077ed81380becc06cde379be11db37fcef59ec4b041a4f39acc1"
+      },
+      {
+        "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+        "path": "output/pdf/DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+        "sha256": "96e82d991e27a309931695f05300338c6ecd07cfcbcc46efee9b5ede511067d2"
+      },
+      {
+        "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+        "path": "output/pdf/DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+        "sha256": "288eb9cc7e7dc9940eca3def97144886f5d5a38e97e7025d98069f8d8744b9a3"
+      }
+    ],
+    "sample_count": 6
+  },
+  "run": {
+    "mode": "answer",
+    "collection": "eval_workspace_v2",
+    "top_k": 8,
+    "max_iter": 2,
+    "deep_search_concurrency": 4,
+    "external_call_timeout_seconds": 30.0,
+    "request_timeout_seconds": 300.0,
+    "chain_early_stopping": true,
+    "chain_min_evidence_for_stop": 2,
+    "agents": [
+      "naive",
+      "deep_search",
+      "chain_of_rag"
+    ],
+    "source_aliases": {
+      "WhatisMilvus.pdf": [],
+      "DeepSearcher第一阶段学习讲义-手机阅读版.pdf": [],
+      "DeepSearcher第二阶段学习讲义-手机阅读版.pdf": []
+    },
+    "config_path": "D:\\code\\deep-searcher-study\\deepsearcher\\config.yaml",
+    "config_sha256": "e58e6d221a34199a3c6c76799c8a8c328f98fbd1f25176dc5754eda43d50175d"
+  },
+  "environment": {
+    "python": "3.10.20",
+    "providers": {
+      "llm": {
+        "provider": "OpenAI",
+        "model": "qwen-plus"
+      },
+      "embedding": {
+        "provider": "OpenAIEmbedding",
+        "model": "text-embedding-v4"
+      },
+      "vector_db": {
+        "provider": "Milvus"
+      }
+    },
+    "git": {
+      "commit": "9278d03d295af758468d39424e5d8553f19f77c0",
+      "dirty": true
+    }
+  },
+  "metrics": {
+    "naive": {
+      "sample_count": 6,
+      "successful_count": 6,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.275,
+      "mrr": 0.8,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 1,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.8533,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 1,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.8151,
+      "ungrounded_claim_rate": 0.1849,
+      "invalid_claim_citation_rate": 0.0556,
+      "claim_citation_precision": 0.36,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0.1667,
+      "context_fallback_rate": 0.1667,
+      "latency_ms": {
+        "average": 12090.598,
+        "p50": 12247.117,
+        "p95": 13473.952
+      },
+      "tokens": {
+        "total": 15443,
+        "average": 2573.83
+      },
+      "llm_calls": {
+        "total": 12,
+        "average": 2
+      }
+    },
+    "deep_search": {
+      "sample_count": 6,
+      "successful_count": 6,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.225,
+      "mrr": 0.9,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 1,
+      "answer_criteria_coverage": 0.92,
+      "grounded_criteria_coverage": 0.92,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 1,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.7176,
+      "ungrounded_claim_rate": 0.2824,
+      "invalid_claim_citation_rate": 0.0333,
+      "claim_citation_precision": 0.3697,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0.1667,
+      "context_fallback_rate": 0.1667,
+      "latency_ms": {
+        "average": 16180.037,
+        "p50": 15289.611,
+        "p95": 19743.209
+      },
+      "tokens": {
+        "total": 42831,
+        "average": 7138.5
+      },
+      "llm_calls": {
+        "total": 35,
+        "average": 5.83
+      }
+    },
+    "chain_of_rag": {
+      "sample_count": 6,
+      "successful_count": 6,
+      "error_rate": 0,
+      "retrieval_hit_rate": 0.8,
+      "retrieval_recall_at_k": 0.8,
+      "retrieval_precision_at_k": 0.175,
+      "mrr": 0.7,
+      "empty_result_rate": 0.1667,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0,
+      "answer_criteria_coverage": 0.52,
+      "grounded_criteria_coverage": 0.7733,
+      "evidence_source_accuracy": 0.8,
+      "full_evidence_retrieval_rate": 0.8,
+      "multi_document_sample_count": 1,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.8333,
+      "ungrounded_claim_rate": 0.1667,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.4667,
+      "claim_citation_recall": 0.8,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0.1667,
+      "context_fallback_rate": 0.1667,
+      "latency_ms": {
+        "average": 9346.954,
+        "p50": 8993.241,
+        "p95": 11505.267
+      },
+      "tokens": {
+        "total": 34253,
+        "average": 5708.83
+      },
+      "llm_calls": {
+        "total": 31,
+        "average": 5.17
+      }
+    }
+  },
+  "metrics_by_tag": {
+    "ChainOfRAG": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 0.6667,
+      "retrieval_recall_at_k": 0.6667,
+      "retrieval_precision_at_k": 0.1667,
+      "mrr": 0.5,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.9333,
+      "grounded_criteria_coverage": 0.6667,
+      "evidence_source_accuracy": 0.6667,
+      "full_evidence_retrieval_rate": 0.6667,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.7889,
+      "ungrounded_claim_rate": 0.2111,
+      "invalid_claim_citation_rate": 0.1778,
+      "claim_citation_precision": 0.2074,
+      "claim_citation_recall": 0.6667,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 14194.618,
+        "p50": 12228.633,
+        "p95": 19743.209
+      },
+      "tokens": {
+        "total": 18783,
+        "average": 6261
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "Embedding": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.125,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.6667,
+      "grounded_criteria_coverage": 0.7778,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.2254,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 11394.604,
+        "p50": 8853.25,
+        "p95": 18937.959
+      },
+      "tokens": {
+        "total": 15657,
+        "average": 5219
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "FastAPI": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.125,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.8667,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.963,
+      "ungrounded_claim_rate": 0.037,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.5111,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 1,
+      "context_fallback_rate": 1,
+      "latency_ms": {
+        "average": 13037.085,
+        "p50": 12332.815,
+        "p95": 15273.173
+      },
+      "tokens": {
+        "total": 18502,
+        "average": 6167.33
+      },
+      "llm_calls": {
+        "total": 14,
+        "average": 4.67
+      }
+    },
+    "单文档": {
+      "sample_count": 6,
+      "successful_count": 6,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.2083,
+      "mrr": 0.75,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.9333,
+      "grounded_criteria_coverage": 0.9,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.9438,
+      "ungrounded_claim_rate": 0.0562,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.4556,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0.5,
+      "context_fallback_rate": 0.5,
+      "latency_ms": {
+        "average": 13003.819,
+        "p50": 12332.815,
+        "p95": 15289.611
+      },
+      "tokens": {
+        "total": 32511,
+        "average": 5418.5
+      },
+      "llm_calls": {
+        "total": 26,
+        "average": 4.33
+      }
+    },
+    "多证据": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 0.6667,
+      "retrieval_recall_at_k": 0.6667,
+      "retrieval_precision_at_k": 0.1667,
+      "mrr": 0.5,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.9333,
+      "grounded_criteria_coverage": 0.6667,
+      "evidence_source_accuracy": 0.6667,
+      "full_evidence_retrieval_rate": 0.6667,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.7889,
+      "ungrounded_claim_rate": 0.2111,
+      "invalid_claim_citation_rate": 0.1778,
+      "claim_citation_precision": 0.2074,
+      "claim_citation_recall": 0.6667,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 14194.618,
+        "p50": 12228.633,
+        "p95": 19743.209
+      },
+      "tokens": {
+        "total": 18783,
+        "average": 6261
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "多轮": {
+      "sample_count": 18,
+      "successful_count": 18,
+      "error_rate": 0,
+      "retrieval_hit_rate": 0.9333,
+      "retrieval_recall_at_k": 0.9333,
+      "retrieval_precision_at_k": 0.225,
+      "mrr": 0.8,
+      "empty_result_rate": 0.0556,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0.6667,
+      "answer_criteria_coverage": 0.8133,
+      "grounded_criteria_coverage": 0.8489,
+      "evidence_source_accuracy": 0.9333,
+      "full_evidence_retrieval_rate": 0.9333,
+      "multi_document_sample_count": 3,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.7887,
+      "ungrounded_claim_rate": 0.2113,
+      "invalid_claim_citation_rate": 0.0296,
+      "claim_citation_precision": 0.3988,
+      "claim_citation_recall": 0.9333,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0.1667,
+      "context_fallback_rate": 0.1667,
+      "latency_ms": {
+        "average": 12539.196,
+        "p50": 12228.633,
+        "p95": 19743.209
+      },
+      "tokens": {
+        "total": 92527,
+        "average": 5140.39
+      },
+      "llm_calls": {
+        "total": 78,
+        "average": 4.33
+      }
+    },
+    "容量": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": null,
+      "retrieval_recall_at_k": null,
+      "retrieval_precision_at_k": null,
+      "mrr": null,
+      "empty_result_rate": 0.3333,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0.6667,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_accuracy": null,
+      "full_evidence_retrieval_rate": null,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.2333,
+      "ungrounded_claim_rate": 0.7667,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": null,
+      "claim_citation_recall": null,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 10571.862,
+        "p50": 11037.961,
+        "p95": 12247.117
+      },
+      "tokens": {
+        "total": 11815,
+        "average": 3938.33
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "指代": {
+      "sample_count": 12,
+      "successful_count": 12,
+      "error_rate": 0,
+      "retrieval_hit_rate": 0.9167,
+      "retrieval_recall_at_k": 0.9167,
+      "retrieval_precision_at_k": 0.25,
+      "mrr": 0.75,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.8,
+      "grounded_criteria_coverage": 0.8611,
+      "evidence_source_accuracy": 0.9167,
+      "full_evidence_retrieval_rate": 0.9167,
+      "multi_document_sample_count": 3,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.8839,
+      "ungrounded_claim_rate": 0.1161,
+      "invalid_claim_citation_rate": 0.0444,
+      "claim_citation_precision": 0.3707,
+      "claim_citation_recall": 0.9167,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 12906.558,
+        "p50": 12228.633,
+        "p95": 19743.209
+      },
+      "tokens": {
+        "total": 62210,
+        "average": 5184.17
+      },
+      "llm_calls": {
+        "total": 51,
+        "average": 4.25
+      }
+    },
+    "无答案": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": null,
+      "retrieval_recall_at_k": null,
+      "retrieval_precision_at_k": null,
+      "mrr": null,
+      "empty_result_rate": 0.3333,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0.6667,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_accuracy": null,
+      "full_evidence_retrieval_rate": null,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.2333,
+      "ungrounded_claim_rate": 0.7667,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": null,
+      "claim_citation_recall": null,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 10571.862,
+        "p50": 11037.961,
+        "p95": 12247.117
+      },
+      "tokens": {
+        "total": 11815,
+        "average": 3938.33
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "易错点": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.125,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.6667,
+      "grounded_criteria_coverage": 0.7778,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.2254,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 11394.604,
+        "p50": 8853.25,
+        "p95": 18937.959
+      },
+      "tokens": {
+        "total": 15657,
+        "average": 5219
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "省略": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": null,
+      "retrieval_recall_at_k": null,
+      "retrieval_precision_at_k": null,
+      "mrr": null,
+      "empty_result_rate": 0.3333,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0.6667,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_accuracy": null,
+      "full_evidence_retrieval_rate": null,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.2333,
+      "ungrounded_claim_rate": 0.7667,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": null,
+      "claim_citation_recall": null,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 10571.862,
+        "p50": 11037.961,
+        "p95": 12247.117
+      },
+      "tokens": {
+        "total": 11815,
+        "average": 3938.33
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "话题切换": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.125,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.8667,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.963,
+      "ungrounded_claim_rate": 0.037,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.5111,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 1,
+      "context_fallback_rate": 1,
+      "latency_ms": {
+        "average": 13037.085,
+        "p50": 12332.815,
+        "p95": 15273.173
+      },
+      "tokens": {
+        "total": 18502,
+        "average": 6167.33
+      },
+      "llm_calls": {
+        "total": 14,
+        "average": 4.67
+      }
+    },
+    "跨文档": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.4167,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.6,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 3,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.8222,
+      "ungrounded_claim_rate": 0.1778,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.65,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 13066.458,
+        "p50": 13407.823,
+        "p95": 16798.309
+      },
+      "tokens": {
+        "total": 13761,
+        "average": 4587
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "部署": {
+      "sample_count": 6,
+      "successful_count": 6,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.3542,
+      "mrr": 0.75,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.8,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 3,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.8734,
+      "ungrounded_claim_rate": 0.1266,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.525,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 13018.505,
+        "p50": 13407.823,
+        "p95": 16798.309
+      },
+      "tokens": {
+        "total": 27770,
+        "average": 4628.33
+      },
+      "llm_calls": {
+        "total": 25,
+        "average": 4.17
+      }
+    }
+  },
+  "metrics_by_difficulty": {
+    "easy": {
+      "sample_count": 3,
+      "successful_count": 3,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.125,
+      "mrr": 1.0,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.6667,
+      "grounded_criteria_coverage": 0.7778,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": null,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.2254,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 11394.604,
+        "p50": 8853.25,
+        "p95": 18937.959
+      },
+      "tokens": {
+        "total": 15657,
+        "average": 5219
+      },
+      "llm_calls": {
+        "total": 13,
+        "average": 4.33
+      }
+    },
+    "hard": {
+      "sample_count": 9,
+      "successful_count": 9,
+      "error_rate": 0,
+      "retrieval_hit_rate": 0.8889,
+      "retrieval_recall_at_k": 0.8889,
+      "retrieval_precision_at_k": 0.2361,
+      "mrr": 0.8333,
+      "empty_result_rate": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": null,
+      "answer_criteria_coverage": 0.8,
+      "grounded_criteria_coverage": 0.8222,
+      "evidence_source_accuracy": 0.8889,
+      "full_evidence_retrieval_rate": 0.8889,
+      "multi_document_sample_count": 3,
+      "full_document_coverage_rate": 1,
+      "refusal_accuracy": null,
+      "claim_support_rate": 0.858,
+      "ungrounded_claim_rate": 0.142,
+      "invalid_claim_citation_rate": 0.0593,
+      "claim_citation_precision": 0.4562,
+      "claim_citation_recall": 0.8889,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0.3333,
+      "context_fallback_rate": 0.3333,
+      "latency_ms": {
+        "average": 13432.72,
+        "p50": 12332.815,
+        "p95": 19743.209
+      },
+      "tokens": {
+        "total": 51046,
+        "average": 5671.78
+      },
+      "llm_calls": {
+        "total": 40,
+        "average": 4.44
+      }
+    },
+    "medium": {
+      "sample_count": 6,
+      "successful_count": 6,
+      "error_rate": 0,
+      "retrieval_hit_rate": 1,
+      "retrieval_recall_at_k": 1.0,
+      "retrieval_precision_at_k": 0.2917,
+      "mrr": 0.5,
+      "empty_result_rate": 0.1667,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive_rate": 0.6667,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_accuracy": 1,
+      "full_evidence_retrieval_rate": 1,
+      "multi_document_sample_count": 0,
+      "full_document_coverage_rate": null,
+      "refusal_accuracy": 1,
+      "claim_support_rate": 0.579,
+      "ungrounded_claim_rate": 0.421,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.4,
+      "claim_citation_recall": 1.0,
+      "context_dependency_accuracy": 1,
+      "context_query_match_rate": 0,
+      "context_fallback_rate": 0,
+      "latency_ms": {
+        "average": 11771.207,
+        "p50": 11037.961,
+        "p95": 15289.611
+      },
+      "tokens": {
+        "total": 25824,
+        "average": 4304
+      },
+      "llm_calls": {
+        "total": 25,
+        "average": 4.17
+      }
+    }
+  },
+  "details": [
+    {
+      "sample_id": "workspace-061",
+      "question": "那三种分别适合什么场景？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "部署",
+        "单文档"
+      ],
+      "difficulty": "medium",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.375,
+      "reciprocal_rank": 0.5,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 7,
+      "supported_claim_count": 6,
+      "claim_support_rate": 0.8571428571428571,
+      "ungrounded_claim_rate": 0.14285714285714285,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.4,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 13473.952,
+      "tokens": 2328,
+      "llm_calls": 2,
+      "error": null,
+      "answer": "Milvus Lite、Standalone 和 Distributed 三种部署形态分别适用于以下具体场景，依据证据严格推导如下：\n\n**Milvus Lite** 适用于个人学习、快速原型开发（如在 Jupyter Notebook 中验证向量检索逻辑）、小规模数据测试（例如数百至数万条向量），以及资源受限的边缘设备运行场景；其本质是嵌入式 Python 库，无需独立服务进程，便于轻量集成与本地迭代 [E2][E4][E5]。但该模式无法模拟真实网络服务的故障行为、水平扩展能力或高可用性特征，因此不适用于生产级服务验证或性能压测 [E1][E5]。\n\n**Milvus Standalone**（即 Docker Milvus）适用于需验证真实服务连接性、资源隔离性及基础故障恢复能力的学习与中等规模开发场景，典型如单机环境下的建表、插入、L2 距离排序等完整 API 验证；它将所有组件（query node、data node、index node 等）打包为单一 Docker 镜像，部署便捷，适合向量检索作为独立能力且数据量与并发持续增长但尚未达到亿级规模的过渡阶段 [E1][E2][E4][E5]。然而其部署和资源成本高于 Lite 版本，且需承担独立服务的运维负担（如监控、容量治理）[E1][E5]。\n\n**Milvus Distributed** 专为超大规模生产环境设计，适用于处理十亿至数十亿级向量的场景，支持 Kubernetes 原生部署，具备云原生架构、关键组件冗余（如 query/data/index 节点独立扩缩容）、状态分离与硬件感知优化能力，已服务于 Salesforce、PayPal、Airbnb 等企业的大规模向量搜索需求 [E2][E4][E7]。该模式通过高度解耦的组件设计（搜索、写入、索引/压缩任务并行化）实现性能与成本效率的协同优化，是唯一支持持续线性扩展以应对数据与负载指数增长的部署形态 [E7]。",
+      "reference_answer": "Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "Unstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems.\nMilvus offers three deployment modes, covering a wide range of data scales—from local prototyping in\nJupyter Notebooks to massive Kubernetes clusters managing tens of billions of vectors:\nMilvus Lite is a Python library that can be easily integrated into your applications. As a lightweight\nversion of Milvus, it’s ideal for quick prototyping in Jupyter Notebooks or running on edge devices with\nlimited resources. Learn more.\nMilvus Standalone is a single-machine server deployment, with all components bundled into a single\nDocker image for convenient deployment. Learn more.\nMilvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 112,
+          "text": "原 始 问题：\nTEXT\n比较 Milvus 与 pgvector 的 架构 、 适 用 场景 和 运维 成本。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture\ndesigned for billion-scale or even larger scenarios. This architecture ensures redundancy in critical\ncomponents. Learn more."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 114,
+          "text": "DeepSearch 首 先可能生成：\nPYTHON\n[\n\"Milvus 的 架构 是什么？\",\n\"pgvector 的 架构 是什么？\",\n\"Milvus 和 pgvector 分 别适合 哪 些场景 ？\",\n\" 两者 的 部署 与 运维 成本有什么 差别 ？\"\n]"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 2,
+          "chunk": 5,
+          "text": "What Makes Milvus so Scalable\nIn 2022, Milvus supported billion-scale vectors, and in 2023, it scaled up to tens of billions with consistent\nstability, powering large-scale scenarios for over 300 major enterprises, including Salesforce, PayPal,\nShopee, Airbnb, eBay, NVIDIA, IBM, AT&T, LINE, ROBLOX, Inflection, etc.\nMilvus's cloud-native and highly decoupled system architecture ensures that the system can continuously\nexpand as data grows:\nMilvus itself is fully stateless so it can be easily scaled with the help of Kubernetes or public clouds. In\naddition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency."
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft."
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 241
+    },
+    {
+      "sample_id": "workspace-062",
+      "question": "换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "话题切换",
+        "FastAPI",
+        "单文档"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 9,
+      "supported_claim_count": 9,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.2,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 12332.815,
+      "tokens": 2905,
+      "llm_calls": 2,
+      "error": null,
+      "answer": "FastAPI 应用启动时通过 `lifespan` 事件管理外部组件的生命周期，而非在模块导入阶段初始化依赖 [E1][E3]。具体而言，应用启动后执行 `lifespan`，此时才读取配置、创建 `RuntimeRegistry`，并按需构建当前活动版本所需的全部外部组件实例，包括：LLM 客户端、Embedding 客户端、文件加载器与网页爬虫、VectorDB（如 Milvus）客户端、由 `DeepSearch` 和 `ChainOfRAG` 构成的默认 `RAGRouter`，以及保留的基础能力 `NaiveRAG` [E1]。\n\n所有外部组件均绑定至 `RuntimeRegistry` 的生命周期内，而非全局单例或模块级对象；`init_config()` 模块级对象仅保留给 CLI/库调用使用，而在线 HTTP 请求严格从 `lifespan` 中初始化的 `RuntimeRegistry` 获取请求作用域的不可变 runtime 租约 [E1][E3]。每个请求通过依赖注入 `Depends(get_runtime)` 获得租约，请求结束时自动释放；版本切换时，旧版本 runtime 实例不会立即销毁，而是等待最后一个使用该版本的请求完成后再关闭，确保无资源泄漏或竞态访问 [E1]。\n\n初始化失败（如 LLM 或 VectorDB 连接失败）不会导致进程崩溃，而是使 `/health` 与业务接口返回带具体故障组件名称的 HTTP 503 状态码，便于定位问题根源 [E1]。关闭阶段执行统一清理：先等待所有 Server-Sent Events（SSE）流任务自然结束，再释放向量数据库客户端等有状态资源 [E1]。\n\n值得注意的是，外部组件的线程/异步模型直接影响生命周期管理策略：同步客户端（如多数 LLM/Embedding SDK）运行于 Uvicorn 线程池中，其阻塞行为会持续占用工作线程，因此需配置并发上限与超时机制；若错误地将路由改为 `async def` 但内部仍调用同步方法，则反而会阻塞事件循环 [E5]。此外，多个 Uvicorn worker 进程间内存隔离，配置变更无法自动同步，必须通过外部协调机制（如配置中心）保障一致性 [E4]。\n\n测试层面，生命周期正确性需通过并发测试验证：在配置切换与查询请求同时发生时，确认版本隔离有效且旧 runtime 资源被彻底回收 [E8]。",
+      "reference_answer": "导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 4,
+          "chunk": 8,
+          "text": "1.2 应用启动时发生什么\nmain.py 导 入 时 只 定 义应用工 厂 与路 由 ，不 连 接模\n型 或向 量 库 。FastAPI lifespan 启动 后读取 配置 ， 创\n建 RuntimeRegistry ， 再 构 建 当前 活动 版本 需要 的\n：\n- LLM 客 户端。\n- Embedding 客 户端。\n- 文件 加载器 和 网页爬虫 。\n- VectorDB 客 户端。\n- 由 DeepSearch 和 ChainOfRAG 组 成的 默认\nRAGRouter。\n- 作 为 基础能 力保留 的 NaiveRAG。\n在线 请求 通过 Depends(get_runtime) 获得租约 ，\n退出时释放 ；版本 切换 后 旧 实 例会等最 后一 个旧 请\n求 结 束再关闭 。 初始 化 失败 不 会让 应用进程 消失\n， /health 与业务接口 会返回带 安全 组 件 名 的 503\n， 关闭 阶段统一 等待 SSE 清理任 务并 释放向 量 客\n户端。\n旧 版本 还有两个 容 易忽略 的事实；当前 FastAPI 已\n完成版本化 改造 ：\n1. init_config() 的模 块级对象仍为 CLI/ 库调 用 保\n留 ， 但 FastAPI 在线 请求 从 lifespan 中 的\nRuntimeRegistry 取请求 租约 。\n4"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 3,
+          "chunk": 4,
+          "text": "1. FastAPI 业务入口：把 HTTP"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 15,
+          "chunk": 29,
+          "text": "1.11 面试标准表达\nDeepSearcher 的 FastAPI 入口是 HTTP 适 配层 。\n导 入 main.py 不 连 接 外部依赖 ，lifespan 创建\nRuntimeRegistry ， 每个 请求 通过依赖注 入 获得\n当前 租 户的不可变 runtime 租约 。 同 步 POST\n/query 与 SSE POST /query/stream 都 使 用请求\n作用 域 Searcher， 由 RAGRouter 在 DeepSearch\n与 ChainOfRAG 之 间 选择 ， 再返回答案 、Token、\n可 选 安全 Trace 或增 量阶段。 同 步模型和 向 量\nSDK 仍 占 用 线 程 资源 ，因 此每 进程 限 流只是 保 护\n层 ；生产化 还需要外部 deadline、分 布 式 配 额 、\n可 靠 入 库 队 列 和 最终 用户 RBAC。"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 14,
+          "chunk": 27,
+          "text": "1.10 常见错误说法\n[Table 1]\n| 错误说法 | 正确说法 |\n| --- | --- |\n| FastAPI 接口是 def ，所以一定阻塞整 个服务 | 同步路由通常在线程池执行，不直接阻塞 事件循环，但会占用有限工作线程 |\n| 改成 async def 就 能提高并发 | 只有整条依赖链真正异步并正确 await 才 可能改善并发 |\n| /load-files/ 是文 件上传接口 | 它接收后端文件系统路径，不接收文件字 节 |\n| 配置接口修改了 YAML | 它只修改当前进程内存并重建全局对象 |\n| 所有错误返回 500 很统一 | 这会混淆客户端错误、依赖故障和服务 Bug，也不利于重试 |\n| 有两个 monkeypatc h 测试就证明 API 可 用 | 当前测试只覆盖函数返回形状，没有覆盖 真实 HTTP 和依赖生命周期 |\n| 使用多个 Uvicorn worker 就能共享新 配置 | 每个 worker 是独立进程，内存配置不会 自动同步 |\n14"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 10,
+          "chunk": 18,
+          "text": "1.6 def 与 async def 在这里有什么区别\n当前 四 个 路 由函 数 都 是 普通 def 。 在 本项目 锁定 的\nFastAPI 0.115.12 / Starlette 0.46.2 中 ，FastAPI 会在\n线 程 池 中执行同 步路 由 ，避 免它 们 直接 占住 主 事件\n循 环 。\n必须 区 分 三 句话 ：\n1. def 会被放入线程池 ： 其他 异 步 连 接 仍有 机 会被\n事件 循 环 处 理 。\n2. 线程池不等于无限并发 ：一 个长时 间 等待 LLM、\nEmbedding 或 Milvus 的请求 会持 续 占 用一 个 工\n作 线 程； 线 程 耗尽 后 新 请求 仍要 排队 。\n3. 把签名改成 async def 不会自动变快 ： 如 果 函 数\n内 部仍 直接 调 用 同 步 llm.chat() 、\nembed_query() 和 Milvus 客 户端， 反 而 会 直接 阻\n塞 事件 循 环 。\n正 确选择 取 决于依赖 ：\n- 依赖 只 有同 步 客 户端： 保留 def ， 或显 式 放 入容\n量 受 控的 线 程 池 ，并 配置超时 与并发上 限 。\n- 依赖 提供真正异 步 客 户端： 使 用 async def ， 每\n层 都 await ，并把取 消 和 deadline 向 下传 播 。\n- PDF 解 析等 CPU 密 集 任 务： 线 程 受 Python GIL\n和 CPU 竞争影 响 ， 更 适合 任 务 队 列或 进程 池 ，而\n不是 占 用 Web 请求 线 程。\n- 大批 量入 库 ： 更 适合 提交 后台 任 务并 返回 task ID\n， 由 Worker 完成解 析 、Embedding 和 写库 。\n10"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "第二阶段学习讲义\n手机阅读版 · AI 全栈工程化与系统设计\n[Table 1]\n| 学习范围 | FastAPI、React、评测、可观测性、并发、 安全与生产架构 |\n| --- | --- |\n| 学习状态 | 详细讲解已完成，进入第二遍模拟面试 |\n| 生成日期 | 2026-08-03 |\n适合手机竖屏阅读；目录与 PDF 书签可直接跳转章节。\n1"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 3,
+          "chunk": 6,
+          "text": "1.1 先记住一条中文链路\nTEXT\n客户端 HTTP 请求\n→ FastAPI 解析并校验参数\n→ main.py 选择配置、入库或查询函数\n→ RuntimeRegistry 按租户发放请求作用域 Searcher 租约\n→ RAGRouter 选择 DeepSearch 或 ChainOfRAG\n→ LLM、Embedding、Milvus 完成查询\n→ main.py 把结果或异常转换成 HTTP 响应\nFastAPI 解 决 的是“ 怎样 把 Python 业务能 力 安全、\n稳定地暴露 成 网络 接口”， 它 本 身 不 负责 RAG。\nmain.py 是 HTTP 适 配层 ， deepsearcher/online_q\nuery.py 是 很薄 的业务 门 面，Agent、Embedding\n和 Milvus 才 是 查询主体 。\n3"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 13,
+          "chunk": 23,
+          "text": "DeepSearcher 第二阶段学习讲义\n2. FastAPI TestClient /ASGI 测试： 覆盖 200、422、\n404、503、504 和 响 应 脱敏 。\n3. 集 成测试： 使 用可控的测试 Milvus 与模型 Stub\n，验证完 整调 用链。\n4. 并发测试： 配置切换 与 查询同时 发生 时 ，验证版\n本 隔离 和 资源 回收 。"
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": false,
+      "context_predicted_dependency": false,
+      "context_dependency_correct": true,
+      "context_query_match": true,
+      "context_fallback_used": true,
+      "context_tokens": 234
+    },
+    {
+      "sample_id": "workspace-063",
+      "question": "那是越大越相似吗？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "Embedding",
+        "易错点"
+      ],
+      "difficulty": "easy",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.6666666666666666,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 5,
+      "supported_claim_count": 5,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.2,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 8853.25,
+      "tokens": 2437,
+      "llm_calls": 2,
+      "error": null,
+      "answer": "L2距离（即欧氏距离）越大，表示向量越**不相似**，而非越相似；L2距离越小，才表示向量在几何空间中越接近、越相似 [E1][E3][E5][E7]。  \n例如，在二维示例中，查询向量 Q = [0, 0] 与文档 A = [0.1, 0]、B = [0.9, 0]、C = [2.1, 0] 的 L2 距离分别为 0.1、0.9、2.1；距离最小的 A 被判定为最相似并排在首位 [E3]。  \n同样，项目明确指出“L2 是距离，越小越近”，且当前 Milvus 实验中返回的 “score” 字段实际存储的是 distance 值，因此“score 越大越相似”的说法是错误的 [E1]。  \n进一步佐证：两个方向完全一致但模长差异大的向量（如 [1, 0, 0] 和 [9, 0, 0]）具有最大余弦相似度（1），但 L2 距离为 8，显著大于零，说明 L2 对模长敏感，距离大直接反映几何位置疏远 [E2]。  \n所有证据一致强调：L2 距离是绝对几何距离度量，其数值大小与相似性呈**负相关** [E1][E3][E5][E7]。",
+      "reference_answer": "不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 14,
+          "chunk": 47,
+          "text": "3.2 L2 距离怎样解释\n当前 项目 默 认 使 用 L2， 也就 是 欧氏距 离 。\n必须记 住 ：\nL2 是 距 离 ， 越小越 近 。\n项目的 2 维临 时 Collection 实 验 得 到 距 离 0.01 、\n0.81 、 4.81 ， 排序从小到大 。 虽然 结 果字段名 叫\nscore ， 当前 实 际 保存的是 Milvus 返 回 的 distance\n，不能说 “ score 越大越相 似 ” 。\n三种 常 见 度 量的人话 区别 ：\n[Table 1]\n| 度量 | 直观含义 |\n| --- | --- |\n| L2 | 比较绝对几何距离 |\n| Cosine | 比较向量方向是否一致 |\n| IP | 比较内积，同时受方向和模长影响 |\n选择 度 量 应参 考 Embedding 模 型建议 、向量是 否\n归 一化， 以 及 真 实 评测结 果。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 16,
+          "chunk": 53,
+          "text": "3.6 L2 与 Cosine 为什么可能给出不同直觉\n考虑 两个向量：\nTEXT\n[1, 0, 0]\n[9, 0, 0]\n它们 方向完 全 一 致 ， 所 以 Cosine 相 似 度 为 1； 但长\n度相 差 8， 所 以 L2 距 离 并不 小 。\n这说 明“ 哪个 更相 关 ” 不是 脱 离 模 型 和 metric 的 绝 对\n概念 。Embedding 模 型 在 训练 时通 常 对向量 空 间 和\n16"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 15,
+          "chunk": 50,
+          "text": "3.4 用一个二维例子理解向量\n真 实项目 使 用 1024 维 向量，人 脑很 难 直接 观察 。\n学习时可 以 先 看 二 维 坐标：\nTEXT\n问题 Q：[0, 0]\n文档 A：[0.1, 0]\n文档 B：[0.9, 0]\n文档 C：[2.1, 0]\n如 果 使 用 L2，Q 到 A、B、C 的 距 离 分 别 是 0.1 、\n0.9 、 2.1 。A 距 离最小 ， 应排 在 最前 。 真 实\nEmbedding 只是把二 维 扩 展到数 百 或数千维 ，基 本\n思 路不变。\n这 也 解 释 了维度 错 误 为什么不是 “小误 差 ” 。二 维 向\n量 [0.1, 0.8] 和三 维 向量 [0.1, 0.8, 0.3] 连 数\n据 结 构都 不一 致 ， 无 法逐坐标 计算 同 一种 距 离 。\n15"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 16,
+          "chunk": 52,
+          "text": "3.5 为什么同维模型也不能混用\n可 以 把两个 Embedding 模 型想 成两 张 不 同 坐标系\n的 地 图 。 即 使 两 张地 图都 有 1024 个坐标，模 型 A\n的第一个坐标 也 不 等 于模 型 B 的第一个坐标 含 义。\n因 此 文档向量 来自 模 型 A、问题向量 来自 模 型 B 时\n， 计算 出 的 距 离没有 可 靠 语义。 知 识库不 仅 应该记\n录 dimension， 还 应记 录：\nprovider 与模 型 名 称 。\n模 型 版 本 。\n文 本 预处 理方式。\n是 否 归 一化。\n使 用的 metric。\n文档与 Chunk 配 置 版 本 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 77,
+          "text": "4.12 这一部分的标准表达\nMilvus 在项目里保存 Chunk 向量、 原 文、 来 源\n和 metadata，并 按 问题向量 执 行 top-k 搜 索。\nCollection 固 定 数 据 结 构 和 维度 ，索 引负责 加 速\n近 邻 搜 索，metric 决定 距 离含 义。 当前默 认 L2\n越小越 近 。 本地 实 验验 证 了建表 、 插 入、 距 离排\n序 和 维度 不 匹 配；项目 当前主 要 短 板 是 部 分 异 常\n会被 转 换 成 空 结 果，生 产上必须区 分 真 实 无命中\n与系 统 故障 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 38,
+          "chunk": 134,
+          "text": "DeepSearcher 第一阶段学习讲义\nTEXT\nMilvus 是 专门 用于向量检索的数据库。\nMilvus 是 面 向向量相似度 搜 索的数据 系统 。\n普 通去 重 不一定能识 别 这种 近似 重 复。 更进 一步可\n以使 用文 本 哈希 、 来 源与 offset、语义 聚 类或\nReranker 控制 证据多 样性 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 18,
+          "chunk": 57,
+          "text": "3.8 这一部分的标准表达\nDeepSearcher 离 线阶段对 每 个 Chunk 生成 固 定\n维度 的 Embedding，在线阶段用 同 一个模 型 把用\n户 问题转 换 成查询向量，再由 Milvus 计算近 邻 。\n当前 配 置 使 用 1024 维 和 L2，因 此 距 离越小越 近 。\n维度 一 致 只是 Schema 的 必 要 条 件 ， 如 果 更换 模\n型 ， 即 使维度相同 ，语义 空 间也 可能不 同 ， 所 以\n通 常 要 创 建新 Collection、 重新 向量化并通 过评\n测后 再切 换 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 13,
+          "chunk": 45,
+          "text": "3.1 为什么维度必须一致\nMilvus 创 建 Collection 时 会 固 定向量字段 维度 ， 例\n如 ：\nTEXT\nembedding FLOAT_VECTOR(dim=1024)\n如 果文档 使 用 1024 维 向量入库，查询 却 换 成\n1536 维 向量，Milvus 无 法逐坐标 计算距 离 ， 会 报\n维度 不 匹 配。\n13"
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 227
+    },
+    {
+      "sample_id": "workspace-066",
+      "question": "默认关掉它具体意味着什么，又有什么误判风险？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "ChainOfRAG",
+        "多证据"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 2,
+      "matched_evidence_count": 2,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.25,
+      "reciprocal_rank": 0.5,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 6,
+      "supported_claim_count": 4,
+      "claim_support_rate": 0.6666666666666666,
+      "ungrounded_claim_rate": 0.3333333333333333,
+      "invalid_claim_citation_rate": 0.3333333333333333,
+      "claim_citation_precision": 0.4,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 12228.633,
+      "tokens": 2828,
+      "llm_calls": 2,
+      "error": null,
+      "answer": "ChainOfRAG 默认关闭 early stopping 的具体含义是：在 ChainOfRAG 的执行流程中，`early_stopping=False` 为构造函数默认参数，导致系统**每轮结束后均不调用信息充分性判断模块，也不生成或记录任何反思（reflection）结果，而是严格执行至预设的最大迭代轮数 `max_iter`** [E6][E8]。这意味着即使第一轮已检索并生成了完整、准确的中间答案，系统仍会继续执行后续轮次，不会因“信息已足够”而提前终止 [E8]。该设计使行为更确定、可预测，避免模型主观判断引发的过早终止，但代价是冗余计算和资源浪费 [E8]。\n\n该设置带来的核心误判风险并非源于 early stopping 本身的误判，而是**因缺失充分性反思所诱发的系统性风险链**：首先，关闭 early stopping 意味着完全放弃每轮对当前信息是否足以支撑最终答案的主动验证，从而丧失对多跳推理链中“事实完备性”的动态监控 [E13][E6]；其次，由于缺乏充分性校验，错误的中间答案无法被及时识别和阻断，将不可避免地传播至后续轮次，污染追问生成与文档筛选，最终导致最终答案缺失关键事实或引入幻觉 [E5][E7]；第三，该机制下系统不进行“是否找到新支持文档”“是否增加新事实”“是否重复历史追问”等多维度停止信号评估，仅依赖硬性轮数上限，因而无法规避无意义检索——例如当已有证据已覆盖原问题全部要点时，仍强制执行剩余轮次，造成 Token 消耗与延迟非必要增长 [E2][E5]。\n\n此外，需强调 ChainOfRAG 当前实现并非 CoRAG 论文的完整复现，其充分性判断模块未集成论文中所需的训练对齐与鲁棒校验机制，进一步放大了关闭 early stopping 后的可靠性缺陷 [E15][E5]。因此，默认关闭 early stopping 并非技术限制，而是权衡确定性与质量后的保守策略，其根本代价是**以可预测性换取推理链的自我纠错能力缺失** [E8][E5]。",
+      "reference_answer": "过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 51,
+          "chunk": 182,
+          "text": "9. 第一阶段不能说错的事 实\n1. DeepSearcher 是项目；DeepSearch 是一个查询\n策略。\n2. 默 认查询路 径 先由 RAGRouter 选择 DeepSearch\n或 ChainOfRAG，不是 默 认 走 NaiveRAG。\n3. Chunk 是实 际 向量化和检索单 元 。\n4. overlap 缓 解切分 边界 ； wider_text 补充 生成 上\n下 文。\n5. 当前 1500/100 是 默 认 值 ， 没有评测 证 明最 优。\n6. 向量 维度 一 致 只是 必 要 条 件 ， 相同维度 的不 同 模\n型仍 可能不 兼 容 。\n7. 当前默 认 L2 是 距 离 ， 越小越 近 。\n8. Milvus 的 score 字段 当前 实 际 承 载 distance。\n9. 空 结 果不一定 表示知 识库 没有 答 案 ， 也 可能是系\n统失败 。\n10. LLM 路由 输出必须校验 ，不能直接 相信 。\n11. DeepSearch 的 Rerank 更 接 近 逐 条 YES/NO 过\n滤 。\n12. max_iter=1 的 DeepSearch 不 执 行 反 思 。\n13. ChainOfRAG 默 认关 闭 early stopping，因 此默\n认 没有充 分 性 反 思 。\n14. Trace 是 执 行事 件 ，不是模 型思维链 。\n15. 当前 ChainOfRAG 不是 CoRAG 论 文的完整复 现 。\n51"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 45,
+          "chunk": 165,
+          "text": "7.9 early stopping 为什么可能 过早或过晚\n充 分 性判断 只要 求 模 型回 答 Yes 或 No 。\n过 早 停止 ：\nTEXT\n已 有 部 分证据\n→ 模 型误判 为 足够\n→ 返回 Yes\n→ 最终答案 缺少 关 键事实\n过 晚 停止 ：\nTEXT\n证据 已 经 充 分\n→ 模 型仍 返回 No\n→ 继续无意义 检索\n→ Token 和 延迟 增加\n因 此 停止条 件 不 应 只 依 赖 一 次主观判断 。可 以结 合\n：\n是 否找到新 支 持 文档。\n新 一轮是 否增加新 事实。\n追问是 否 与 历史 重 复。\n支 持 证据是 否 覆 盖原 问题 各 要 点 。\n是 否达到 Token、时 间或 轮 数 预算 。\n45"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 50,
+          "chunk": 178,
+          "text": "DeepSearcher 第一阶段学习讲义\nChainOfRAG ： 原 问题、 历史 中间 问答\n对 比项 ： 候选 过 滤\nNaiveRAG ：基 础 去 重\nDeepSearch ：Chunk 级 YES/NO 过 滤\nChainOfRAG ： 选择支 持 问答对的文档\n对 比项 ： 停止 方式\nNaiveRAG ：一轮 结 束\nDeepSearch ： 无补充 查询 或达到上限\nChainOfRAG ：可 选 充 分 性判断或达到上限\n对 比项 ：成 本 与 延迟\nNaiveRAG ：较 低 、较 稳 定\nDeepSearch ：较 高 ， 调 用量可能 很 大\nChainOfRAG ： 随串 行轮 数 累 积"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 59,
+          "text": "DeepSearcher 第二阶段学习讲义\n终回答 。 它没有 拆 分 input/output/cached/reasonin\ng Token， 也没有 统计 Embedding 使 用量， 所 以 只\n能 近似估 算 费 用。\nChainOfRAG 在单 Collection、 max_iter=3 的 常 见\n路 径中 大 约需要 一 次 Agent 路 由 、 每 轮 三次 LLM\n调 用和一 次最终回答 ， 即 约 11 次调 用。后续 轮 次\n还会 携 带 累积 上下文，因 此 Token 和延迟不 保 证 严\n格 线 性 增长 。 优 化目 标 应是 质 量、p95、Token、 失\n败 率 的 Pareto 折 中 ，而不是只 追 求 最 高正 确 率 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 49,
+          "chunk": 176,
+          "text": "7.15 这一部分的标准表达\nChainOfRAG 适合多跳事实问题。 它每 轮 根 据 原\n始 问题和 历史 中间 问答生成一个 简 单追问，再 做\nCollection 路由、向量检索和 中间 答 案 生成； 随\n后 由 LLM 选择支 持该 问答对的文档。 中间 问答\n进 入 下 一轮， 形 成 串 行检索 链 。 如 果 启 用 early\nstopping， 每 轮 还 会判断当前信息 是 否足 够 ， 否\n则最 多 执 行 max_iter 轮。 当前默 认关 闭 early\nstopping， 中间 答 案 还 可能 传 播 错 误 ，文档索 引\n校验也 不完整； 它 只是 受 CoRAG 思想 启 发 ，不\n是 论 文 训练 方法的完整复 现 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 41,
+          "chunk": 146,
+          "text": "7.3 early stopping\n只 有 early_stopping=True 时，系 统才会 在 每 轮 判\n断当前信息 是 否足 够 。 返 回 Yes 时 提前 停止 ， 否则\n继 续到 max_iter 。\n当前默 认 early_stopping=False 。关 闭后 不 会产\n生 充 分 性 反 思 ， 而 是 执 行完整 最大 轮 数 。这不是 反\n思 返 回 空 值 ， 而 是 反 思 分 支 根本没有运 行。\n41"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 50,
+          "chunk": 180,
+          "text": "ChainOfRAG ：多跳事实和线索追查\n对 比项 ： 主 要 风险\nNaiveRAG ：证据 覆 盖 不 足\nDeepSearch ：成 本高 、 输出 格 式 脆弱\nChainOfRAG ：错 误中间 答 案 向 后传 播\n50"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 46,
+          "chunk": 167,
+          "text": "7.10 默 认 关闭 early stopping 的 实际 含义\n构造 函 数默 认：\nPYTHON\nearly_stopping = False\n关 闭 时， 每 轮 结 束 后 不 会调 用 信息充 分 性判断 ， 也\n不 会记 录 反 思结 果，系 统会 一直 执 行 到 max_iter 。\n它 的优 点 是行为 更确 定，不 会被 模 型过 早 停止 ； 代\n价 是 即 使 第一轮 已经找到 完整答 案 ， 也会 继 续执 行\n后续 轮 次 。\n所 以看到“ Trace 没有 反 思” 时，要先检查 开 关， 而\n不是认为模 型 返 回内容 丢 失 。"
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 241
+    },
+    {
+      "sample_id": "workspace-070",
+      "question": "那这个项目本地选的是哪一种，为什么？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "跨文档",
+        "指代",
+        "部署"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": true,
+      "required_evidence_count": 2,
+      "matched_evidence_count": 2,
+      "required_document_count": 2,
+      "matched_document_count": 2,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": true,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.5,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 15,
+      "supported_claim_count": 10,
+      "claim_support_rate": 0.6666666666666666,
+      "ungrounded_claim_rate": 0.3333333333333333,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.6,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 13407.823,
+      "tokens": 2442,
+      "llm_calls": 2,
+      "error": null,
+      "answer": "根据提供的证据，Milvus 项目本地部署应选择 **Milvus Standalone** 形态，而非 Lite 或 Distributed。原因如下：\n\n1. **Milvus Lite 不适用当前环境**：  \n   当前本地已使用 Docker Milvus 成功验证建表、插入、L2 排序及维度匹配等核心功能，但环境中缺少 `milvus_lite` 依赖，因此无法运行或验证 Lite 版本；且证据明确指出“不能声称所有 Lite 测试均通过”[E1]。此外，Lite 被定义为纯 Python 库，适用于 Jupyter Notebook 快速原型或边缘设备，**不提供独立网络服务能力，也无法模拟服务故障与扩展行为**[E1][E2][E3][E5]。而项目已进入需验证服务连接、资源限制和故障响应的阶段，这超出了 Lite 的设计定位[E1]。\n\n2. **Milvus Distributed 过度复杂且不必要**：  \n   Distributed 模式面向“十亿级甚至更大规模”向量场景，需 Kubernetes 集群支持，具备云原生架构与关键组件冗余能力[E3][E5]。但证据强调：“小规模项目未必需要承担独立服务的运维成本”[E2]，且当前项目仅涉及 Chunk 向量、原文、来源及 metadata 的存储与 top-k 搜索，未体现分布式扩展需求[E6]。Distributed 的部署、监控与容量治理代价显著高于实际需要[E2]。\n\n3. **Milvus Standalone 是最优匹配形态**：  \n   Standalone 是“单机服务器部署，所有组件打包为单一 Docker 镜像，便于部署”[E3][E5]；它既提供了真实 Milvus 服务的完整能力（如 Collection 管理、向量索引、metadata 支持、独立客户端接口），又避免了 Distributed 的复杂性[E2][E3]。证据 E1 明确指出 Docker Milvus（即 Standalone 的典型实现方式）适用于“学习真实服务连接、资源限制和故障”，且本地已用其完成建表、插入、L2 排序等关键功能验证[E1]。同时，Standalone 可直接复用现有 Docker 环境，无需额外引入 Kubernetes 或轻量库依赖，符合“本地部署”与“已验证服务行为”的双重约束[E1][E3]。\n\n综上，Milvus Standalone 在功能完整性、部署便捷性、故障可测性及运维成本之间实现了最佳平衡，是当前项目本地部署的唯一合理选择[E1][E2][E3][E5]。",
+      "reference_answer": "DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "Unstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems.\nMilvus offers three deployment modes, covering a wide range of data scales—from local prototyping in\nJupyter Notebooks to massive Kubernetes clusters managing tens of billions of vectors:\nMilvus Lite is a Python library that can be easily integrated into your applications. As a lightweight\nversion of Milvus, it’s ideal for quick prototyping in Jupyter Notebooks or running on edge devices with\nlimited resources. Learn more.\nMilvus Standalone is a single-machine server deployment, with all components bundled into a single\nDocker image for convenient deployment. Learn more.\nMilvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 112,
+          "text": "原 始 问题：\nTEXT\n比较 Milvus 与 pgvector 的 架构 、 适 用 场景 和 运维 成本。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture\ndesigned for billion-scale or even larger scenarios. This architecture ensures redundancy in critical\ncomponents. Learn more."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 77,
+          "text": "4.12 这一部分的标准表达\nMilvus 在项目里保存 Chunk 向量、 原 文、 来 源\n和 metadata，并 按 问题向量 执 行 top-k 搜 索。\nCollection 固 定 数 据 结 构 和 维度 ，索 引负责 加 速\n近 邻 搜 索，metric 决定 距 离含 义。 当前默 认 L2\n越小越 近 。 本地 实 验验 证 了建表 、 插 入、 距 离排\n序 和 维度 不 匹 配；项目 当前主 要 短 板 是 部 分 异 常\n会被 转 换 成 空 结 果，生 产上必须区 分 真 实 无命中\n与系 统 故障 。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "What is Milvus?\nMilvus is a high-performance, highly scalable vector database that runs efficiently across a wide range of\nenvironments, from a laptop to large-scale distributed systems. It is available as both open-source software\nand a cloud service.\nMilvus is an open-source project under LF AI & Data Foundation distributed under the Apache 2.0 license.\nMost contributors are experts from the high-performance computing (HPC) community, specializing in\nbuilding large-scale systems and optimizing hardware-aware code. Core contributors include professionals\nfrom Zilliz, ARM, NVIDIA, AMD, Intel, Meta, IBM, Salesforce, Alibaba, and Microsoft."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 114,
+          "text": "DeepSearch 首 先可能生成：\nPYTHON\n[\n\"Milvus 的 架构 是什么？\",\n\"pgvector 的 架构 是什么？\",\n\"Milvus 和 pgvector 分 别适合 哪 些场景 ？\",\n\" 两者 的 部署 与 运维 成本有什么 差别 ？\"\n]"
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 244
+    },
+    {
+      "sample_id": "workspace-071",
+      "question": "那具体必须达到多少？",
+      "answerable": false,
+      "tags": [
+        "多轮",
+        "省略",
+        "无答案",
+        "容量"
+      ],
+      "difficulty": "medium",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 0,
+      "matched_evidence_count": 0,
+      "required_document_count": 0,
+      "matched_document_count": 0,
+      "full_evidence_retrieved": null,
+      "full_document_coverage": null,
+      "retrieved_count": 7,
+      "retrieval_hit": null,
+      "retrieval_recall": null,
+      "retrieval_precision": null,
+      "reciprocal_rank": null,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": true,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_correct": null,
+      "refusal_correct": true,
+      "grounding_state": "partially_grounded",
+      "claim_count": 10,
+      "supported_claim_count": 7,
+      "claim_support_rate": 0.7,
+      "ungrounded_claim_rate": 0.3,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": null,
+      "claim_citation_recall": null,
+      "latency_ms": 12247.117,
+      "tokens": 2503,
+      "llm_calls": 2,
+      "error": null,
+      "answer": "DeepSearcher 在生产环境中的并发和容量要求未给出具体数值（如 QPS、最大并发连接数、TPS 或内存/CPU 阈值等）[No relevant information found]。  \n\n证据明确指出：  \n- 系统当前仅实现“每进程查询限流”作为保护层，但该限流属于内部轻量级防护，并非面向生产环境的完整容量控制方案 [E5]；  \n- 生产化必需依赖“外部 deadline、分布式配额、可靠入库队列和最终用户 RBAC”，说明并发与容量管理需在服务网格或基础设施层（而非代码内）统一实施 [E5]；  \n- “十倍流量的改造顺序”将“入口鉴权限流和请求体上限”列为第一优先级，其次才是“有界并发与背压”，表明并发控制需结合请求准入（如 body size、租户令牌有效性）与资源调度协同设计，但未提供任何具体阈值 [E6]；  \n- 核心与代理均硬编码限制 `max_iter ≤ 10`，这是迭代深度约束，而非并发或吞吐量指标 [E6]；  \n- 明确警告“单纯增加 Uvicorn worker 不能提高模型限额，还会复制连接和进程内配置”，说明横向扩容无法线性提升模型调用容量，暗示模型网关或推理服务存在独立配额瓶颈，但未给出该配额的具体数值 [E6]；  \n- 成本分析强调总调用数、总 Token、总时间和并发上限需被设置，但仅作为优化建议中的第5条，未披露其默认值、推荐值或生产强制值 [E4]；  \n- 所有讲义与架构描述均未出现数字型容量指标（如“支持 500 QPS”“单节点承载 200 并发”“向量库连接池大小=32”等）[E3][E4][E5][E6][E7]。  \n\n综上，所有证据均未提供 DeepSearcher 生产环境并发和容量的**具体数值要求**（例如最大并发请求数、每秒处理能力、内存占用阈值、模型调用配额上限等量化参数），仅描述了管控维度（如租户隔离、deadline、分布式配额）和演进路径（如先限流再扩容），但缺失可执行的数值基准 [No relevant information found]。",
+      "reference_answer": "资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "DeepSearcher"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 34,
+          "chunk": 111,
+          "text": "6.4 用一个问题 走完 DeepSearch"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 11,
+          "chunk": 19,
+          "text": "DeepSearcher 第二阶段学习讲义\n当前 DeepSearch 内 部 虽然 出现 asyncio.gather()\n， 但其中仍 包含 同 步模型和 向 量 库调 用， 所 以 不能\n把 整个 系统 描述 成“ 异 步 高 并发架构”。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 37,
+          "chunk": 132,
+          "text": "DeepSearcher 第一阶段学习讲义\nTEXT\n4 × 2 × 10 = 80 次 LLM 调 用\n除 此之 外还 有 ：\n生成 子 查询。\n每 个 子 查询的 Collection 路由。\n每 轮 补充 查询 反 思 。\n最终 总 结 。\n所 以 DeepSearch 的成 本 并不是 简 单的 “ 比\nNaiveRAG 多 调 用一 次” 。 它 可能多 出 几 十 次 模 型调\n用， 而且延迟会 随 候选 数 波 动 。\n更 合理的优化 顺 序 ：\n1. 先 减 少或 去 重 候选 。\n2. 使 用 专 用 Cross-Encoder/Reranker。\n3. 批 量 判断 多个 Chunk， 而 不是逐 条 调 用。\n4. 简 单问题直接 走 NaiveRAG。\n5. 设 置 总 调 用 数 、总 Token、总时 间 和并 发上限 。"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 15,
+          "chunk": 29,
+          "text": "1.11 面试标准表达\nDeepSearcher 的 FastAPI 入口是 HTTP 适 配层 。\n导 入 main.py 不 连 接 外部依赖 ，lifespan 创建\nRuntimeRegistry ， 每个 请求 通过依赖注 入 获得\n当前 租 户的不可变 runtime 租约 。 同 步 POST\n/query 与 SSE POST /query/stream 都 使 用请求\n作用 域 Searcher， 由 RAGRouter 在 DeepSearch\n与 ChainOfRAG 之 间 选择 ， 再返回答案 、Token、\n可 选 安全 Trace 或增 量阶段。 同 步模型和 向 量\nSDK 仍 占 用 线 程 资源 ，因 此每 进程 限 流只是 保 护\n层 ；生产化 还需要外部 deadline、分 布 式 配 额 、\n可 靠 入 库 队 列 和 最终 用户 RBAC。"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 64,
+          "text": "DeepSearcher 第二阶段学习讲义\n1. 默认 本 地 接口 仍未 形 成 最终 用户 登 录与 角色 体 系\n；当前完成的是 服 务到 服 务 租 户 令牌 、\nCollection 授权 和 每 进程 查询 限 流。\n2. /load-files/ 接 受服 务 器 路 径 ，因 此 强 制 服 务\n令牌且 只能 由 BFF/ 受信运 维 调 用，不能直接 公开\n给浏览器 。\n3. collection_names 已 受服 务端 租 户 白名单约束\n， 但 产品用户 级身 份 体 系 仍需 继续 建 设。\n4. 核心 与 代理 都限 制 max_iter ≤ 10 ， 但仍需 总\ndeadline、模型 Token 预算 和分 布 式 并发控制。\n5. 租 户发 布 / 回滚要 求 管 理令牌 ， 默认租 户\nProvider 更新要 求 服 务 令牌 ， 配置 不 回显密钥 ；\n后续 仍需 角色 和 审 计 治理 。\n6. URL 抓 取可能产生 费 用 滥 用、SSRF 和 恶意内 容\n入 库 风险 。\n7. 查询 已 经改 用 POST Body； 仍要 避 免在 自 定 义日\n志 、APM payload 或 错 误 上 报 中 记 录请求 体 。\n十倍流量的 改造顺序 应是：入口 鉴权限 流和请求 体\n上 限 → 有 界并发与 背压 → 入 库任 务 队 列 → 外部\n依赖超时 、 预算 和 熔 断 → 租 户 授权 → 最 后 再 水平\n扩 容。 单 纯 增加 Uvicorn worker 不能 提高 模型 限额\n， 还会 复制 连 接和进程 内 配置 。\n24"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 3,
+          "chunk": 4,
+          "text": "1. 先用一分钟认识项目\nDeepSearcher 是一个基于 RAG 的文档问答项目，\n解决的是：通用 大 模 型 不 了 解用 户私有 文档， 回 答\n也缺少 可 核验依 据。\n用 户上传 PDF 后 ，系 统 先 提取 文字，把 长 文档切成\n片 段，再把 每 个 片 段转 换 成向量并 写 入 Milvus。用\n户提 问时，系 统 把问题 也 转 换 成向量， 从 Milvus\n找到相 关 片 段， 最后让千 问 根 据这 些片 段生成答 案 。\nTEXT\n离线入库：PDF → 提取文字 → 切分片段 → 生成向量 →\n写入 Milvus\n在线查询：问题 → 选择查询策略 → 选择知识库 → 向量检\n索 → 千问回答\n当前 项目 已经 能 本地 完成入库、检索和 回 答， 也有\n中 文可 视 化 前端 与 执 行 Trace。 但“链 路能 运 行 ” 不\n代表已经达到 生 产 标 准 ：检索 评测 、错 误 分 类 、 流\n式 输出 、 安全 和多 租户仍 需完 善 。\n必须 先分清两个名 称 ：\n3"
+        }
+      ],
+      "agent": "naive",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 231
+    },
+    {
+      "sample_id": "workspace-061",
+      "question": "那三种分别适合什么场景？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "部署",
+        "单文档"
+      ],
+      "difficulty": "medium",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 5,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.25,
+      "reciprocal_rank": 0.5,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 12,
+      "supported_claim_count": 11,
+      "claim_support_rate": 0.9166666666666666,
+      "ungrounded_claim_rate": 0.08333333333333333,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.4,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 15289.611,
+      "tokens": 5809,
+      "llm_calls": 5,
+      "error": null,
+      "answer": "- **Milvus Lite** is a lightweight, Python-library-based deployment designed for local, resource-constrained environments. It is suitable for personal learning, rapid prototyping (e.g., in Jupyter Notebooks), and small-scale data testing [E2][E3][E5]. It cannot simulate independent network service behavior or cluster-level failures, nor does it reflect real-world scalability or fault tolerance characteristics [E1][E5]. It is not intended for production use where service availability, horizontal scaling, or distributed resilience are required [E1][E5].\n\n- **Milvus Standalone** is a single-machine, server-style deployment where all Milvus components (e.g., query, data, index) are bundled into one Docker image, enabling convenient local or edge-server deployment [E2][E3]. It targets scenarios where vector search is an independent capability and data volume or concurrent load is expected to grow steadily—but not at billion-scale—while avoiding the operational overhead of Kubernetes orchestration [E5]. It requires dedicated deployment, monitoring, and capacity planning, unlike Lite [E5].\n\n- **Milvus Distributed** is a cloud-native, Kubernetes-based deployment architecture explicitly designed for billion-scale or larger vector workloads, supporting tens of billions of vectors with consistent stability [E2][E3][E4]. Its highly decoupled, stateless component design (query node, data node, index node) allows independent vertical and horizontal scaling, redundancy in critical components, and optimized cost-performance trade-offs [E3][E4]. It is appropriate for enterprise-grade, production-critical applications demanding high reliability, elasticity, and multi-tenant operational maturity [E2][E4].\n\nNo evidence specifies precise vector count thresholds (e.g., “<1M for Lite”, “1M–100M for Standalone”) or defines exact hardware/resource boundaries—only qualitative scale descriptors (e.g., “small data”, “billion-scale”, “edge devices with limited resources”) [E1][E2][E3][E5]. There is no conflict among the chunks regarding deployment purpose; all consistently associate Lite with prototyping/local use, Standalone with simplified single-node service, and Distributed with large-scale, resilient, cloud-native production [E1][E2][E3][E4][E5].",
+      "reference_answer": "Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "Unstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems.\nMilvus offers three deployment modes, covering a wide range of data scales—from local prototyping in\nJupyter Notebooks to massive Kubernetes clusters managing tens of billions of vectors:\nMilvus Lite is a Python library that can be easily integrated into your applications. As a lightweight\nversion of Milvus, it’s ideal for quick prototyping in Jupyter Notebooks or running on edge devices with\nlimited resources. Learn more.\nMilvus Standalone is a single-machine server deployment, with all components bundled into a single\nDocker image for convenient deployment. Learn more.\nMilvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture\ndesigned for billion-scale or even larger scenarios. This architecture ensures redundancy in critical\ncomponents. Learn more."
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 2,
+          "chunk": 5,
+          "text": "What Makes Milvus so Scalable\nIn 2022, Milvus supported billion-scale vectors, and in 2023, it scaled up to tens of billions with consistent\nstability, powering large-scale scenarios for over 300 major enterprises, including Salesforce, PayPal,\nShopee, Airbnb, eBay, NVIDIA, IBM, AT&T, LINE, ROBLOX, Inflection, etc.\nMilvus's cloud-native and highly decoupled system architecture ensures that the system can continuously\nexpand as data grows:\nMilvus itself is fully stateless so it can be easily scaled with the help of Kubernetes or public clouds. In\naddition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        }
+      ],
+      "agent": "deep_search",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 241
+    },
+    {
+      "sample_id": "workspace-062",
+      "question": "换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "话题切换",
+        "FastAPI",
+        "单文档"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 4,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 9,
+      "supported_claim_count": 8,
+      "claim_support_rate": 0.8888888888888888,
+      "ungrounded_claim_rate": 0.1111111111111111,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.3333333333333333,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 15273.173,
+      "tokens": 7650,
+      "llm_calls": 6,
+      "error": null,
+      "answer": "FastAPI 应用启动时通过 `lifespan` 事件处理器管理外部组件的生命周期，而非在模块导入时初始化依赖。具体而言，应用工厂定义后，`lifespan` 启动阶段才读取配置、创建 `RuntimeRegistry`，并按需构建当前活动版本所需的外部组件实例，包括 LLM 客户端、Embedding 客户端、文件加载器、网页爬虫、VectorDB 客户端、RAGRouter（由 DeepSearch 和 ChainOfRAG 组成）以及 NaiveRAG 等基础能力 [E1][E3]。这些组件不共享全局状态，而是通过依赖注入（如 `Depends(get_runtime)`）为每个请求提供租约式访问，租约在请求退出时自动释放 [E1][E3]。初始化失败不会导致进程崩溃，而是使 `/health` 和业务接口返回带组件名的 503 错误，确保服务可观测性与部分可用性 [E1]。\n\n关闭阶段，`lifespan` 统一等待 SSE 清理任务完成，并释放向量客户端等资源；旧版本实例会在最后一个使用其 runtime 的请求结束后才关闭，实现优雅降级 [E1]。相较传统 `startup`/`shutdown` 事件，`lifespan` 提供了更严格的异步上下文管理能力，支持异步初始化与清理，且与 ASGI 生命周期深度绑定，从而保障多 worker 场景下资源隔离与一致性 [E1][E2]。但该模式也引入额外代码层次，需权衡可测试性提升与结构复杂度增加 [E2]。\n\n所有外部组件均不通过模块级全局变量（如 `init_config()` 创建的对象）提供给在线请求，仅 `lifespan` 中的 `RuntimeRegistry` 作为唯一可信来源 [E1]。HTTP 入口层（如 `main.py`）本身不触发任何外部连接，严格遵循“导入即定义、运行时才连接”的原则 [E1][E3]。",
+      "reference_answer": "导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 4,
+          "chunk": 8,
+          "text": "1.2 应用启动时发生什么\nmain.py 导 入 时 只 定 义应用工 厂 与路 由 ，不 连 接模\n型 或向 量 库 。FastAPI lifespan 启动 后读取 配置 ， 创\n建 RuntimeRegistry ， 再 构 建 当前 活动 版本 需要 的\n：\n- LLM 客 户端。\n- Embedding 客 户端。\n- 文件 加载器 和 网页爬虫 。\n- VectorDB 客 户端。\n- 由 DeepSearch 和 ChainOfRAG 组 成的 默认\nRAGRouter。\n- 作 为 基础能 力保留 的 NaiveRAG。\n在线 请求 通过 Depends(get_runtime) 获得租约 ，\n退出时释放 ；版本 切换 后 旧 实 例会等最 后一 个旧 请\n求 结 束再关闭 。 初始 化 失败 不 会让 应用进程 消失\n， /health 与业务接口 会返回带 安全 组 件 名 的 503\n， 关闭 阶段统一 等待 SSE 清理任 务并 释放向 量 客\n户端。\n旧 版本 还有两个 容 易忽略 的事实；当前 FastAPI 已\n完成版本化 改造 ：\n1. init_config() 的模 块级对象仍为 CLI/ 库调 用 保\n留 ， 但 FastAPI 在线 请求 从 lifespan 中 的\nRuntimeRegistry 取请求 租约 。\n4"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 13,
+          "chunk": 25,
+          "text": "方案的代价\n当前 单 文件入口适合学习和本 地 Demo： 代 码少 、\n调 用链直、Swagger 文 档 可 自 动 生成， 也 容 易从函\n数跳进业务 代 码 。 若 过 早拆 成 很多 Controller、\nService、Repository， 反 而 会增加理 解成本。\n但 当目 标 变 为多 人 、 多租 户 或 生产 服 务 时 ， 需要 付\n出 结构化成本：\n- lifespan 和 依赖注 入 增加代 码 层次 ， 但换 来可测试\n的 资源 生 命周 期。\n- 任 务 队 列增加部署组 件和状态 管 理 ， 但 避 免 大 文\n件入 库 拖垮 Web 线 程。\n- 领域 错 误 模型 需要 维 护映射 表， 但客 户端 才 能可\n靠 重试和 提示 。\n- 配置中 心 或 版本化 配置增加 基础设 施 ， 但多\nworker 和 多 实 例才 能一 致 。\n- 认 证、路 径白名单 与 密钥 脱敏 增加 开 发工作， 却\n是 公开 服 务的基本安全边界。\n13"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 15,
+          "chunk": 29,
+          "text": "1.11 面试标准表达\nDeepSearcher 的 FastAPI 入口是 HTTP 适 配层 。\n导 入 main.py 不 连 接 外部依赖 ，lifespan 创建\nRuntimeRegistry ， 每个 请求 通过依赖注 入 获得\n当前 租 户的不可变 runtime 租约 。 同 步 POST\n/query 与 SSE POST /query/stream 都 使 用请求\n作用 域 Searcher， 由 RAGRouter 在 DeepSearch\n与 ChainOfRAG 之 间 选择 ， 再返回答案 、Token、\n可 选 安全 Trace 或增 量阶段。 同 步模型和 向 量\nSDK 仍 占 用 线 程 资源 ，因 此每 进程 限 流只是 保 护\n层 ；生产化 还需要外部 deadline、分 布 式 配 额 、\n可 靠 入 库 队 列 和 最终 用户 RBAC。"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 3,
+          "chunk": 4,
+          "text": "1. FastAPI 业务入口：把 HTTP"
+        }
+      ],
+      "agent": "deep_search",
+      "context_expected_dependency": false,
+      "context_predicted_dependency": false,
+      "context_dependency_correct": true,
+      "context_query_match": true,
+      "context_fallback_used": true,
+      "context_tokens": 234
+    },
+    {
+      "sample_id": "workspace-063",
+      "question": "那是越大越相似吗？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "Embedding",
+        "易错点"
+      ],
+      "difficulty": "easy",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 7,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 9,
+      "supported_claim_count": 9,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.14285714285714285,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 18937.959,
+      "tokens": 7901,
+      "llm_calls": 6,
+      "error": null,
+      "answer": "在 Milvus 中，L2 distance（欧氏距离）是一种**距离度量**，其数值越小表示两个向量在几何空间中越接近，即**越相似**；反之，L2 distance 越大，表示两个向量相距越远，**越不相似** [E1][E2][E4][E6][E7]。  \n证据明确指出：“L2 是距离，越小越近”[E1]，“当前默认 L2 越小越近”[E2][E6]，并以二维示例验证：问题向量 [0, 0] 到 [0.1, 0]、[0.9, 0]、[2.1, 0] 的 L2 距离分别为 0.1、0.9、2.1，其中距离最小者（0.1）对应最相似的文档 A，排在最前 [E4]。  \n尽管结果字段名为 `score`，但实际存储的是 Milvus 返回的 `distance`，因此不能解读为“score 越大越相似”[E1]；相反，生产响应应明确标注 `higher_is_better=false` 或等效语义以避免歧义 [E7]。  \n\nL2 与其它度量（如余弦相似度 Cosine 或内积 IP）行为不同：Cosine 和 IP 属于**相似度度量**，值越大越相似；而 L2 是**距离度量**，值越小越相似 [E1]。例如，向量 [1, 0, 0] 与 [9, 0, 0] 方向完全一致，Cosine 相似度为 1，但 L2 距离为 8，显著大于零，说明二者在 L2 下并不“接近”[E3]。这种差异源于度量本身的数学定义和语义：L2 衡量绝对几何距离，Cosine 衡量方向一致性，IP 同时受方向和模长影响 [E1]。  \n\n此外，L2 的可解释性依赖于向量空间的一致性：要求文档与查询向量来自同一 Embedding 模型、相同维度、相同预处理与归一化配置；否则即使维度匹配，距离也缺乏可靠语义 [E5][E6]。维度不匹配则根本无法计算 L2（因坐标无法逐项对齐）[E4]。  \n\n综上，**L2 distance 越大，表示越不相似**；该结论由所有相关证据一致支持，无冲突 [E1][E2][E4][E6][E7]。",
+      "reference_answer": "不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 14,
+          "chunk": 47,
+          "text": "3.2 L2 距离怎样解释\n当前 项目 默 认 使 用 L2， 也就 是 欧氏距 离 。\n必须记 住 ：\nL2 是 距 离 ， 越小越 近 。\n项目的 2 维临 时 Collection 实 验 得 到 距 离 0.01 、\n0.81 、 4.81 ， 排序从小到大 。 虽然 结 果字段名 叫\nscore ， 当前 实 际 保存的是 Milvus 返 回 的 distance\n，不能说 “ score 越大越相 似 ” 。\n三种 常 见 度 量的人话 区别 ：\n[Table 1]\n| 度量 | 直观含义 |\n| --- | --- |\n| L2 | 比较绝对几何距离 |\n| Cosine | 比较向量方向是否一致 |\n| IP | 比较内积，同时受方向和模长影响 |\n选择 度 量 应参 考 Embedding 模 型建议 、向量是 否\n归 一化， 以 及 真 实 评测结 果。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 77,
+          "text": "4.12 这一部分的标准表达\nMilvus 在项目里保存 Chunk 向量、 原 文、 来 源\n和 metadata，并 按 问题向量 执 行 top-k 搜 索。\nCollection 固 定 数 据 结 构 和 维度 ，索 引负责 加 速\n近 邻 搜 索，metric 决定 距 离含 义。 当前默 认 L2\n越小越 近 。 本地 实 验验 证 了建表 、 插 入、 距 离排\n序 和 维度 不 匹 配；项目 当前主 要 短 板 是 部 分 异 常\n会被 转 换 成 空 结 果，生 产上必须区 分 真 实 无命中\n与系 统 故障 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 16,
+          "chunk": 53,
+          "text": "3.6 L2 与 Cosine 为什么可能给出不同直觉\n考虑 两个向量：\nTEXT\n[1, 0, 0]\n[9, 0, 0]\n它们 方向完 全 一 致 ， 所 以 Cosine 相 似 度 为 1； 但长\n度相 差 8， 所 以 L2 距 离 并不 小 。\n这说 明“ 哪个 更相 关 ” 不是 脱 离 模 型 和 metric 的 绝 对\n概念 。Embedding 模 型 在 训练 时通 常 对向量 空 间 和\n16"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 15,
+          "chunk": 50,
+          "text": "3.4 用一个二维例子理解向量\n真 实项目 使 用 1024 维 向量，人 脑很 难 直接 观察 。\n学习时可 以 先 看 二 维 坐标：\nTEXT\n问题 Q：[0, 0]\n文档 A：[0.1, 0]\n文档 B：[0.9, 0]\n文档 C：[2.1, 0]\n如 果 使 用 L2，Q 到 A、B、C 的 距 离 分 别 是 0.1 、\n0.9 、 2.1 。A 距 离最小 ， 应排 在 最前 。 真 实\nEmbedding 只是把二 维 扩 展到数 百 或数千维 ，基 本\n思 路不变。\n这 也 解 释 了维度 错 误 为什么不是 “小误 差 ” 。二 维 向\n量 [0.1, 0.8] 和三 维 向量 [0.1, 0.8, 0.3] 连 数\n据 结 构都 不一 致 ， 无 法逐坐标 计算 同 一种 距 离 。\n15"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 16,
+          "chunk": 52,
+          "text": "3.5 为什么同维模型也不能混用\n可 以 把两个 Embedding 模 型想 成两 张 不 同 坐标系\n的 地 图 。 即 使 两 张地 图都 有 1024 个坐标，模 型 A\n的第一个坐标 也 不 等 于模 型 B 的第一个坐标 含 义。\n因 此 文档向量 来自 模 型 A、问题向量 来自 模 型 B 时\n， 计算 出 的 距 离没有 可 靠 语义。 知 识库不 仅 应该记\n录 dimension， 还 应记 录：\nprovider 与模 型 名 称 。\n模 型 版 本 。\n文 本 预处 理方式。\n是 否 归 一化。\n使 用的 metric。\n文档与 Chunk 配 置 版 本 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 18,
+          "chunk": 57,
+          "text": "3.8 这一部分的标准表达\nDeepSearcher 离 线阶段对 每 个 Chunk 生成 固 定\n维度 的 Embedding，在线阶段用 同 一个模 型 把用\n户 问题转 换 成查询向量，再由 Milvus 计算近 邻 。\n当前 配 置 使 用 1024 维 和 L2，因 此 距 离越小越 近 。\n维度 一 致 只是 Schema 的 必 要 条 件 ， 如 果 更换 模\n型 ， 即 使维度相同 ，语义 空 间也 可能不 同 ， 所 以\n通 常 要 创 建新 Collection、 重新 向量化并通 过评\n测后 再切 换 。"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 23,
+          "chunk": 62,
+          "text": "DeepSearcher 第二阶段学习讲义\nCollection 也 不能只 靠开 关 升 级 ： 它 缺少稀疏 字 段、\nFunction 和 索引 ， 需要新建 Schema 并重 新 入 库 。\n当前 RetrievalResult.score 承接 Milvus 的\ndistance ， 默认 L2 越小越近 ，而前端 笼 统 标 为 “ 相\n似 度”不 够严谨 。生产 响 应应 同时 携 带\nmetric/score_type/higher_is_better/retrieval\n_mode 。"
+        }
+      ],
+      "agent": "deep_search",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 228
+    },
+    {
+      "sample_id": "workspace-066",
+      "question": "默认关掉它具体意味着什么，又有什么误判风险？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "ChainOfRAG",
+        "多证据"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 2,
+      "matched_evidence_count": 2,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 8,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.25,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 10,
+      "supported_claim_count": 7,
+      "claim_support_rate": 0.7,
+      "ungrounded_claim_rate": 0.3,
+      "invalid_claim_citation_rate": 0.2,
+      "claim_citation_precision": 0.2222222222222222,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 19743.209,
+      "tokens": 9477,
+      "llm_calls": 6,
+      "error": null,
+      "answer": "ChainOfRAG 默认关闭 early stopping 的具体含义是：系统在初始化时将 `early_stopping=False` 设为默认参数，导致每轮迭代结束后不触发信息充分性判断逻辑，也不执行任何基于充分性的反思（reasoning）分支；系统将无条件执行至预设的最大迭代轮数 `max_iter`，无论中间某轮是否已获得足以回答原始问题的完整证据 [E4][E6][E13]。该设置意味着“充分性反思”模块根本未被调用，而非模型返回了空值或否定判断 [E4][E6][E7]。\n\n这一设计带来的误判风险主要包括三类：  \n1. **冗余推理与资源浪费**：即使首轮检索已获取覆盖原始问题所有要点的关键事实，系统仍会继续执行后续轮次，造成不必要的 Token 消耗和延迟累积 [E6]；由于 ChainOfRAG 采用串行检索链，每轮均需 LLM 生成追问、路由、向量检索及中间答案生成，其计算开销随轮数累积增长，且上下文持续膨胀导致 Token 和延迟非严格线性但显著上升 [E3][E8]。  \n2. **错误中间答案向后传播**：因缺乏每轮充分性校验，早期生成的错误中间答案可能被带入后续轮次，误导追问构造与文档选择，形成级联误差；这被明确列为 ChainOfRAG 的主要风险之一 [E2][E9]。  \n3. **文档索引校验不完整**：关闭 early stopping 后，系统不评估支持证据是否覆盖原问题各要点，亦不检测新轮次是否引入新事实或重复历史内容，导致证据覆盖完整性无法保障 [E1][E2]。\n\n量化评估该误判风险目前缺乏直接指标：证据未提供具体统计方法（如误判率、过早/过晚停止频率、冗余轮次占比）或实证评测数据；仅指出应综合质量、p95 延迟、Token 消耗与失败率进行 Pareto 折中优化，而非单一追求正确率 [E8]。同时，当前 ChainOfRAG 并非 CoRAG 论文方法的完整复现，其充分性判断机制缺失进一步削弱了风险可控性 [E2][E5][E15]。\n\n关于误判类型，证据一致指出关闭 early stopping 不会导致“过早终止”（因反思分支完全不运行），但会加剧“冗余推理”与“错误传播”；而“过早停止”仅在 `early_stopping=True` 时由模型误判充分性引发 [E1][E4][E6]。因此，“过早终止”不属于默认关闭状态下的风险，而是启用该机制后才存在的潜在问题 [E1][E4]。",
+      "reference_answer": "过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 45,
+          "chunk": 165,
+          "text": "7.9 early stopping 为什么可能 过早或过晚\n充 分 性判断 只要 求 模 型回 答 Yes 或 No 。\n过 早 停止 ：\nTEXT\n已 有 部 分证据\n→ 模 型误判 为 足够\n→ 返回 Yes\n→ 最终答案 缺少 关 键事实\n过 晚 停止 ：\nTEXT\n证据 已 经 充 分\n→ 模 型仍 返回 No\n→ 继续无意义 检索\n→ Token 和 延迟 增加\n因 此 停止条 件 不 应 只 依 赖 一 次主观判断 。可 以结 合\n：\n是 否找到新 支 持 文档。\n新 一轮是 否增加新 事实。\n追问是 否 与 历史 重 复。\n支 持 证据是 否 覆 盖原 问题 各 要 点 。\n是 否达到 Token、时 间或 轮 数 预算 。\n45"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 49,
+          "chunk": 176,
+          "text": "7.15 这一部分的标准表达\nChainOfRAG 适合多跳事实问题。 它每 轮 根 据 原\n始 问题和 历史 中间 问答生成一个 简 单追问，再 做\nCollection 路由、向量检索和 中间 答 案 生成； 随\n后 由 LLM 选择支 持该 问答对的文档。 中间 问答\n进 入 下 一轮， 形 成 串 行检索 链 。 如 果 启 用 early\nstopping， 每 轮 还 会判断当前信息 是 否足 够 ， 否\n则最 多 执 行 max_iter 轮。 当前默 认关 闭 early\nstopping， 中间 答 案 还 可能 传 播 错 误 ，文档索 引\n校验也 不完整； 它 只是 受 CoRAG 思想 启 发 ，不\n是 论 文 训练 方法的完整复 现 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 50,
+          "chunk": 178,
+          "text": "DeepSearcher 第一阶段学习讲义\nChainOfRAG ： 原 问题、 历史 中间 问答\n对 比项 ： 候选 过 滤\nNaiveRAG ：基 础 去 重\nDeepSearch ：Chunk 级 YES/NO 过 滤\nChainOfRAG ： 选择支 持 问答对的文档\n对 比项 ： 停止 方式\nNaiveRAG ：一轮 结 束\nDeepSearch ： 无补充 查询 或达到上限\nChainOfRAG ：可 选 充 分 性判断或达到上限\n对 比项 ：成 本 与 延迟\nNaiveRAG ：较 低 、较 稳 定\nDeepSearch ：较 高 ， 调 用量可能 很 大\nChainOfRAG ： 随串 行轮 数 累 积"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 41,
+          "chunk": 146,
+          "text": "7.3 early stopping\n只 有 early_stopping=True 时，系 统才会 在 每 轮 判\n断当前信息 是 否足 够 。 返 回 Yes 时 提前 停止 ， 否则\n继 续到 max_iter 。\n当前默 认 early_stopping=False 。关 闭后 不 会产\n生 充 分 性 反 思 ， 而 是 执 行完整 最大 轮 数 。这不是 反\n思 返 回 空 值 ， 而 是 反 思 分 支 根本没有运 行。\n41"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 51,
+          "chunk": 182,
+          "text": "9. 第一阶段不能说错的事 实\n1. DeepSearcher 是项目；DeepSearch 是一个查询\n策略。\n2. 默 认查询路 径 先由 RAGRouter 选择 DeepSearch\n或 ChainOfRAG，不是 默 认 走 NaiveRAG。\n3. Chunk 是实 际 向量化和检索单 元 。\n4. overlap 缓 解切分 边界 ； wider_text 补充 生成 上\n下 文。\n5. 当前 1500/100 是 默 认 值 ， 没有评测 证 明最 优。\n6. 向量 维度 一 致 只是 必 要 条 件 ， 相同维度 的不 同 模\n型仍 可能不 兼 容 。\n7. 当前默 认 L2 是 距 离 ， 越小越 近 。\n8. Milvus 的 score 字段 当前 实 际 承 载 distance。\n9. 空 结 果不一定 表示知 识库 没有 答 案 ， 也 可能是系\n统失败 。\n10. LLM 路由 输出必须校验 ，不能直接 相信 。\n11. DeepSearch 的 Rerank 更 接 近 逐 条 YES/NO 过\n滤 。\n12. max_iter=1 的 DeepSearch 不 执 行 反 思 。\n13. ChainOfRAG 默 认关 闭 early stopping，因 此默\n认 没有充 分 性 反 思 。\n14. Trace 是 执 行事 件 ，不是模 型思维链 。\n15. 当前 ChainOfRAG 不是 CoRAG 论 文的完整复 现 。\n51"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 46,
+          "chunk": 167,
+          "text": "7.10 默 认 关闭 early stopping 的 实际 含义\n构造 函 数默 认：\nPYTHON\nearly_stopping = False\n关 闭 时， 每 轮 结 束 后 不 会调 用 信息充 分 性判断 ， 也\n不 会记 录 反 思结 果，系 统会 一直 执 行 到 max_iter 。\n它 的优 点 是行为 更确 定，不 会被 模 型过 早 停止 ； 代\n价 是 即 使 第一轮 已经找到 完整答 案 ， 也会 继 续执 行\n后续 轮 次 。\n所 以看到“ Trace 没有 反 思” 时，要先检查 开 关， 而\n不是认为模 型 返 回内容 丢 失 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 33,
+          "chunk": 105,
+          "text": "6.2 反思 与 停止\n非 最后 一轮时，系 统 把 原 问题、 历史子 查询和 已有\nChunk 交 给 LLM。 如 果 仍缺 证据， 就 生成 补充 查\n询； 返 回 空列 表 时 提前 停止 ； 达到 max_iter 时 强\n制 结 束 。\n当 max_iter=1 时，第一轮 就 是 最后 一轮， 代 码在\n检索 后 直接 退 出 ，不 会进 入 反 思 。 没有 反 思结 果不\n是模 型 返 回 空 值 ， 而 是 反 思代 码 没有执 行。\n33"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 59,
+          "text": "DeepSearcher 第二阶段学习讲义\n终回答 。 它没有 拆 分 input/output/cached/reasonin\ng Token， 也没有 统计 Embedding 使 用量， 所 以 只\n能 近似估 算 费 用。\nChainOfRAG 在单 Collection、 max_iter=3 的 常 见\n路 径中 大 约需要 一 次 Agent 路 由 、 每 轮 三次 LLM\n调 用和一 次最终回答 ， 即 约 11 次调 用。后续 轮 次\n还会 携 带 累积 上下文，因 此 Token 和延迟不 保 证 严\n格 线 性 增长 。 优 化目 标 应是 质 量、p95、Token、 失\n败 率 的 Pareto 折 中 ，而不是只 追 求 最 高正 确 率 。"
+        }
+      ],
+      "agent": "deep_search",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 241
+    },
+    {
+      "sample_id": "workspace-070",
+      "question": "那这个项目本地选的是哪一种，为什么？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "跨文档",
+        "指代",
+        "部署"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": true,
+      "required_evidence_count": 2,
+      "matched_evidence_count": 2,
+      "required_document_count": 2,
+      "matched_document_count": 2,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": true,
+      "retrieved_count": 4,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.375,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.6,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "partially_grounded",
+      "claim_count": 10,
+      "supported_claim_count": 8,
+      "claim_support_rate": 0.8,
+      "ungrounded_claim_rate": 0.2,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.75,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 16798.309,
+      "tokens": 5633,
+      "llm_calls": 6,
+      "error": null,
+      "answer": "For local deployment of Milvus, the recommended形态 (form) is **Milvus Lite** for personal learning, prototyping, and small-data testing, and **Milvus Standalone** (Docker-based) when simulating a real networked service with resource constraints and fault behavior [E2][E4].  \n\nMilvus Lite is a lightweight Python library—not a standalone server—designed for quick prototyping in Jupyter Notebooks or edge devices with limited resources; it cannot model independent network service failures or horizontal scalability [E1][E2][E4]. It is explicitly labeled as suitable for “personal learning, prototype, small data testing” but fails to represent production-grade service characteristics like fault tolerance or distributed scaling [E2][E4].\n\nMilvus Standalone deploys all components in a single Docker image, offering a convenient single-machine server setup ideal for local development that requires realistic service connectivity, persistence, and basic concurrency—unlike Lite—and avoids the operational overhead of Kubernetes orchestration [E1][E3][E4]. Evidence confirms that Docker-based Milvus (i.e., Standalone) has been successfully used locally for core operations including collection creation, vector insertion, L2 distance sorting, and dimension validation [E2].\n\nMilvus Distributed is not appropriate for local deployment: it targets billion-scale scenarios on Kubernetes clusters, emphasizes cloud-native architecture and component redundancy, and incurs significant infrastructure and operational complexity [E1][E3]. No evidence supports its use for local development or testing.\n\nThus, the choice between Lite and Standalone depends on whether the goal is *code-integrated experimentation* (Lite) or *service-integrated validation* (Standalone). Lite avoids deployment overhead but sacrifices service realism; Standalone trades simplicity for fidelity to production service behavior—including failure modes and resource boundaries—making it more suitable for pre-production local testing where service contracts (e.g., REST/gRPC APIs, persistence, concurrent access) matter [E2][E4]. Neither Lite nor Standalone provides fault tolerance or elastic scalability—those are exclusive to Distributed mode [E1][E3][E4].",
+      "reference_answer": "DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。",
+      "retrieved": [
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "Unstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems.\nMilvus offers three deployment modes, covering a wide range of data scales—from local prototyping in\nJupyter Notebooks to massive Kubernetes clusters managing tens of billions of vectors:\nMilvus Lite is a Python library that can be easily integrated into your applications. As a lightweight\nversion of Milvus, it’s ideal for quick prototyping in Jupyter Notebooks or running on edge devices with\nlimited resources. Learn more.\nMilvus Standalone is a single-machine server deployment, with all components bundled into a single\nDocker image for convenient deployment. Learn more.\nMilvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture\ndesigned for billion-scale or even larger scenarios. This architecture ensures redundancy in critical\ncomponents. Learn more."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        }
+      ],
+      "agent": "deep_search",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 244
+    },
+    {
+      "sample_id": "workspace-071",
+      "question": "那具体必须达到多少？",
+      "answerable": false,
+      "tags": [
+        "多轮",
+        "省略",
+        "无答案",
+        "容量"
+      ],
+      "difficulty": "medium",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 0,
+      "matched_evidence_count": 0,
+      "required_document_count": 0,
+      "matched_document_count": 0,
+      "full_evidence_retrieved": null,
+      "full_document_coverage": null,
+      "retrieved_count": 5,
+      "retrieval_hit": null,
+      "retrieval_recall": null,
+      "retrieval_precision": null,
+      "reciprocal_rank": null,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": true,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_correct": null,
+      "refusal_correct": true,
+      "grounding_state": "insufficient_evidence",
+      "claim_count": 1,
+      "supported_claim_count": 0,
+      "claim_support_rate": 0.0,
+      "ungrounded_claim_rate": 1.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": null,
+      "claim_citation_recall": null,
+      "latency_ms": 11037.961,
+      "tokens": 6361,
+      "llm_calls": 6,
+      "error": null,
+      "answer": "No relevant information found.",
+      "reference_answer": "资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 11,
+          "chunk": 19,
+          "text": "DeepSearcher 第二阶段学习讲义\n当前 DeepSearch 内 部 虽然 出现 asyncio.gather()\n， 但其中仍 包含 同 步模型和 向 量 库调 用， 所 以 不能\n把 整个 系统 描述 成“ 异 步 高 并发架构”。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 37,
+          "chunk": 132,
+          "text": "DeepSearcher 第一阶段学习讲义\nTEXT\n4 × 2 × 10 = 80 次 LLM 调 用\n除 此之 外还 有 ：\n生成 子 查询。\n每 个 子 查询的 Collection 路由。\n每 轮 补充 查询 反 思 。\n最终 总 结 。\n所 以 DeepSearch 的成 本 并不是 简 单的 “ 比\nNaiveRAG 多 调 用一 次” 。 它 可能多 出 几 十 次 模 型调\n用， 而且延迟会 随 候选 数 波 动 。\n更 合理的优化 顺 序 ：\n1. 先 减 少或 去 重 候选 。\n2. 使 用 专 用 Cross-Encoder/Reranker。\n3. 批 量 判断 多个 Chunk， 而 不是逐 条 调 用。\n4. 简 单问题直接 走 NaiveRAG。\n5. 设 置 总 调 用 数 、总 Token、总时 间 和并 发上限 。"
+        },
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 64,
+          "text": "DeepSearcher 第二阶段学习讲义\n1. 默认 本 地 接口 仍未 形 成 最终 用户 登 录与 角色 体 系\n；当前完成的是 服 务到 服 务 租 户 令牌 、\nCollection 授权 和 每 进程 查询 限 流。\n2. /load-files/ 接 受服 务 器 路 径 ，因 此 强 制 服 务\n令牌且 只能 由 BFF/ 受信运 维 调 用，不能直接 公开\n给浏览器 。\n3. collection_names 已 受服 务端 租 户 白名单约束\n， 但 产品用户 级身 份 体 系 仍需 继续 建 设。\n4. 核心 与 代理 都限 制 max_iter ≤ 10 ， 但仍需 总\ndeadline、模型 Token 预算 和分 布 式 并发控制。\n5. 租 户发 布 / 回滚要 求 管 理令牌 ， 默认租 户\nProvider 更新要 求 服 务 令牌 ， 配置 不 回显密钥 ；\n后续 仍需 角色 和 审 计 治理 。\n6. URL 抓 取可能产生 费 用 滥 用、SSRF 和 恶意内 容\n入 库 风险 。\n7. 查询 已 经改 用 POST Body； 仍要 避 免在 自 定 义日\n志 、APM payload 或 错 误 上 报 中 记 录请求 体 。\n十倍流量的 改造顺序 应是：入口 鉴权限 流和请求 体\n上 限 → 有 界并发与 背压 → 入 库任 务 队 列 → 外部\n依赖超时 、 预算 和 熔 断 → 租 户 授权 → 最 后 再 水平\n扩 容。 单 纯 增加 Uvicorn worker 不能 提高 模型 限额\n， 还会 复制 连 接和进程 内 配置 。\n24"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 39,
+          "chunk": 138,
+          "text": "6.11 应该 怎样 限制 一次 DeepSearch\n仅 有 max_iter 还 不 够 。一 次请求 还 应限 制 ：\n最大 初 始子 查询 数 。\n每 轮 最大补充 查询 数 。\n每 个 Collection 最大 候选 数 。\n最大 LLM 调 用 次数 。\n最大 Token。\n单个 外 部调 用 超 时。\n整 体 请求 deadline。\n最大 并 发数 和 取 消 传 播 。\n达到 预算 时，系 统应 返 回“ 在 当前 预算 内 得 到 的 部\n分答 案 和证据 ” ，并在 Trace 中 说 明 停止 原 因， 而 不\n是 静 默 截 断或无限 等 待 。\n39"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 1,
+          "chunk": 0,
+          "text": "DeepSearcher"
+        }
+      ],
+      "agent": "deep_search",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 231
+    },
+    {
+      "sample_id": "workspace-061",
+      "question": "那三种分别适合什么场景？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "部署",
+        "单文档"
+      ],
+      "difficulty": "medium",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 5,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.25,
+      "reciprocal_rank": 0.5,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 1.0,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 3,
+      "supported_claim_count": 3,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.4,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 10148.094,
+      "tokens": 5872,
+      "llm_calls": 5,
+      "error": null,
+      "answer": "Milvus Lite is suitable for personal learning, prototyping, and small data testing [E1][E4].  \nMilvus Standalone (Docker Milvus) is suitable for learning real service connectivity, resource constraints, and failures, or when vector search is an independent capability with continuously growing data and concurrency [E1][E2][E3][E4].  \nMilvus Distributed is suitable for billion-scale or larger scenarios, featuring a cloud-native architecture designed for high scalability, redundancy, and massive vector management [E2][E3][E5].",
+      "reference_answer": "Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "Unstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems.\nMilvus offers three deployment modes, covering a wide range of data scales—from local prototyping in\nJupyter Notebooks to massive Kubernetes clusters managing tens of billions of vectors:\nMilvus Lite is a Python library that can be easily integrated into your applications. As a lightweight\nversion of Milvus, it’s ideal for quick prototyping in Jupyter Notebooks or running on edge devices with\nlimited resources. Learn more.\nMilvus Standalone is a single-machine server deployment, with all components bundled into a single\nDocker image for convenient deployment. Learn more.\nMilvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture\ndesigned for billion-scale or even larger scenarios. This architecture ensures redundancy in critical\ncomponents. Learn more."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 2,
+          "chunk": 5,
+          "text": "What Makes Milvus so Scalable\nIn 2022, Milvus supported billion-scale vectors, and in 2023, it scaled up to tens of billions with consistent\nstability, powering large-scale scenarios for over 300 major enterprises, including Salesforce, PayPal,\nShopee, Airbnb, eBay, NVIDIA, IBM, AT&T, LINE, ROBLOX, Inflection, etc.\nMilvus's cloud-native and highly decoupled system architecture ensures that the system can continuously\nexpand as data grows:\nMilvus itself is fully stateless so it can be easily scaled with the help of Kubernetes or public clouds. In\naddition, Milvus components are well decoupled, with the three most critical tasks—search, data insertion,\nand indexing/compaction—designed as easily parallelized processes, with complex logic separated out. This\nensures that the corresponding query node, data node, and index node can scale both up and out\nindependently, optimizing performance and cost efficiency."
+        }
+      ],
+      "agent": "chain_of_rag",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 241
+    },
+    {
+      "sample_id": "workspace-062",
+      "question": "换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "话题切换",
+        "FastAPI",
+        "单文档"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 1,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.6,
+      "grounded_criteria_coverage": 0.8,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 1,
+      "supported_claim_count": 1,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 1.0,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 11505.267,
+      "tokens": 7947,
+      "llm_calls": 6,
+      "error": null,
+      "answer": "FastAPI 应用启动时通过 lifespan 事件管理外部组件生命周期：读取配置，创建 RuntimeRegistry，并构建当前活动版本所需的 LLM 客户端、Embedding 客户端、文件加载器、网页爬虫、VectorDB 客户端、RAGRouter 和 NaiveRAG；初始化失败时应用进程不退出，/health 与业务接口返回带安全组件名的 503；关闭阶段统一等待 SSE 清理任务并释放向量客户端 [E1].",
+      "reference_answer": "导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+          "page": 4,
+          "chunk": 8,
+          "text": "1.2 应用启动时发生什么\nmain.py 导 入 时 只 定 义应用工 厂 与路 由 ，不 连 接模\n型 或向 量 库 。FastAPI lifespan 启动 后读取 配置 ， 创\n建 RuntimeRegistry ， 再 构 建 当前 活动 版本 需要 的\n：\n- LLM 客 户端。\n- Embedding 客 户端。\n- 文件 加载器 和 网页爬虫 。\n- VectorDB 客 户端。\n- 由 DeepSearch 和 ChainOfRAG 组 成的 默认\nRAGRouter。\n- 作 为 基础能 力保留 的 NaiveRAG。\n在线 请求 通过 Depends(get_runtime) 获得租约 ，\n退出时释放 ；版本 切换 后 旧 实 例会等最 后一 个旧 请\n求 结 束再关闭 。 初始 化 失败 不 会让 应用进程 消失\n， /health 与业务接口 会返回带 安全 组 件 名 的 503\n， 关闭 阶段统一 等待 SSE 清理任 务并 释放向 量 客\n户端。\n旧 版本 还有两个 容 易忽略 的事实；当前 FastAPI 已\n完成版本化 改造 ：\n1. init_config() 的模 块级对象仍为 CLI/ 库调 用 保\n留 ， 但 FastAPI 在线 请求 从 lifespan 中 的\nRuntimeRegistry 取请求 租约 。\n4"
+        }
+      ],
+      "agent": "chain_of_rag",
+      "context_expected_dependency": false,
+      "context_predicted_dependency": false,
+      "context_dependency_correct": true,
+      "context_query_match": true,
+      "context_fallback_used": true,
+      "context_tokens": 234
+    },
+    {
+      "sample_id": "workspace-063",
+      "question": "那是越大越相似吗？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "Embedding",
+        "易错点"
+      ],
+      "difficulty": "easy",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 1,
+      "matched_evidence_count": 1,
+      "required_document_count": 1,
+      "matched_document_count": 1,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": null,
+      "retrieved_count": 3,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.125,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.0,
+      "grounded_criteria_coverage": 0.6666666666666666,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 1,
+      "supported_claim_count": 1,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.3333333333333333,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 6392.603,
+      "tokens": 5319,
+      "llm_calls": 5,
+      "error": null,
+      "answer": "No [E1][E2][E3]",
+      "reference_answer": "不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 14,
+          "chunk": 47,
+          "text": "3.2 L2 距离怎样解释\n当前 项目 默 认 使 用 L2， 也就 是 欧氏距 离 。\n必须记 住 ：\nL2 是 距 离 ， 越小越 近 。\n项目的 2 维临 时 Collection 实 验 得 到 距 离 0.01 、\n0.81 、 4.81 ， 排序从小到大 。 虽然 结 果字段名 叫\nscore ， 当前 实 际 保存的是 Milvus 返 回 的 distance\n，不能说 “ score 越大越相 似 ” 。\n三种 常 见 度 量的人话 区别 ：\n[Table 1]\n| 度量 | 直观含义 |\n| --- | --- |\n| L2 | 比较绝对几何距离 |\n| Cosine | 比较向量方向是否一致 |\n| IP | 比较内积，同时受方向和模长影响 |\n选择 度 量 应参 考 Embedding 模 型建议 、向量是 否\n归 一化， 以 及 真 实 评测结 果。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 77,
+          "text": "4.12 这一部分的标准表达\nMilvus 在项目里保存 Chunk 向量、 原 文、 来 源\n和 metadata，并 按 问题向量 执 行 top-k 搜 索。\nCollection 固 定 数 据 结 构 和 维度 ，索 引负责 加 速\n近 邻 搜 索，metric 决定 距 离含 义。 当前默 认 L2\n越小越 近 。 本地 实 验验 证 了建表 、 插 入、 距 离排\n序 和 维度 不 匹 配；项目 当前主 要 短 板 是 部 分 异 常\n会被 转 换 成 空 结 果，生 产上必须区 分 真 实 无命中\n与系 统 故障 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 18,
+          "chunk": 57,
+          "text": "3.8 这一部分的标准表达\nDeepSearcher 离 线阶段对 每 个 Chunk 生成 固 定\n维度 的 Embedding，在线阶段用 同 一个模 型 把用\n户 问题转 换 成查询向量，再由 Milvus 计算近 邻 。\n当前 配 置 使 用 1024 维 和 L2，因 此 距 离越小越 近 。\n维度 一 致 只是 Schema 的 必 要 条 件 ， 如 果 更换 模\n型 ， 即 使维度相同 ，语义 空 间也 可能不 同 ， 所 以\n通 常 要 创 建新 Collection、 重新 向量化并通 过评\n测后 再切 换 。"
+        }
+      ],
+      "agent": "chain_of_rag",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 224
+    },
+    {
+      "sample_id": "workspace-066",
+      "question": "默认关掉它具体意味着什么，又有什么误判风险？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "指代",
+        "ChainOfRAG",
+        "多证据"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 2,
+      "matched_evidence_count": 0,
+      "required_document_count": 1,
+      "matched_document_count": 0,
+      "full_evidence_retrieved": false,
+      "full_document_coverage": null,
+      "retrieved_count": 4,
+      "retrieval_hit": false,
+      "retrieval_recall": 0.0,
+      "retrieval_precision": 0.0,
+      "reciprocal_rank": 0.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.8,
+      "grounded_criteria_coverage": 0.4,
+      "evidence_source_correct": false,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 2,
+      "supported_claim_count": 2,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.0,
+      "claim_citation_recall": 0.0,
+      "latency_ms": 10612.011,
+      "tokens": 6478,
+      "llm_calls": 5,
+      "error": null,
+      "answer": "ChainOfRAG 默认关闭 early stopping（i.e., `early_stopping=False`），意味着系统不会在每轮判断当前信息是否足够，而是直接执行满 `max_iter` 轮，导致充分性反思分支根本未运行 [E2][E3]. 误判风险包括错误中间答案向后传播 [E4], 文档索引校验不完整 [E3], 以及缺乏充分性反思导致冗余检索和延迟增加 [E2][E3].",
+      "reference_answer": "过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 51,
+          "chunk": 182,
+          "text": "9. 第一阶段不能说错的事 实\n1. DeepSearcher 是项目；DeepSearch 是一个查询\n策略。\n2. 默 认查询路 径 先由 RAGRouter 选择 DeepSearch\n或 ChainOfRAG，不是 默 认 走 NaiveRAG。\n3. Chunk 是实 际 向量化和检索单 元 。\n4. overlap 缓 解切分 边界 ； wider_text 补充 生成 上\n下 文。\n5. 当前 1500/100 是 默 认 值 ， 没有评测 证 明最 优。\n6. 向量 维度 一 致 只是 必 要 条 件 ， 相同维度 的不 同 模\n型仍 可能不 兼 容 。\n7. 当前默 认 L2 是 距 离 ， 越小越 近 。\n8. Milvus 的 score 字段 当前 实 际 承 载 distance。\n9. 空 结 果不一定 表示知 识库 没有 答 案 ， 也 可能是系\n统失败 。\n10. LLM 路由 输出必须校验 ，不能直接 相信 。\n11. DeepSearch 的 Rerank 更 接 近 逐 条 YES/NO 过\n滤 。\n12. max_iter=1 的 DeepSearch 不 执 行 反 思 。\n13. ChainOfRAG 默 认关 闭 early stopping，因 此默\n认 没有充 分 性 反 思 。\n14. Trace 是 执 行事 件 ，不是模 型思维链 。\n15. 当前 ChainOfRAG 不是 CoRAG 论 文的完整复 现 。\n51"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 41,
+          "chunk": 146,
+          "text": "7.3 early stopping\n只 有 early_stopping=True 时，系 统才会 在 每 轮 判\n断当前信息 是 否足 够 。 返 回 Yes 时 提前 停止 ， 否则\n继 续到 max_iter 。\n当前默 认 early_stopping=False 。关 闭后 不 会产\n生 充 分 性 反 思 ， 而 是 执 行完整 最大 轮 数 。这不是 反\n思 返 回 空 值 ， 而 是 反 思 分 支 根本没有运 行。\n41"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 49,
+          "chunk": 176,
+          "text": "7.15 这一部分的标准表达\nChainOfRAG 适合多跳事实问题。 它每 轮 根 据 原\n始 问题和 历史 中间 问答生成一个 简 单追问，再 做\nCollection 路由、向量检索和 中间 答 案 生成； 随\n后 由 LLM 选择支 持该 问答对的文档。 中间 问答\n进 入 下 一轮， 形 成 串 行检索 链 。 如 果 启 用 early\nstopping， 每 轮 还 会判断当前信息 是 否足 够 ， 否\n则最 多 执 行 max_iter 轮。 当前默 认关 闭 early\nstopping， 中间 答 案 还 可能 传 播 错 误 ，文档索 引\n校验也 不完整； 它 只是 受 CoRAG 思想 启 发 ，不\n是 论 文 训练 方法的完整复 现 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 50,
+          "chunk": 180,
+          "text": "ChainOfRAG ：多跳事实和线索追查\n对 比项 ： 主 要 风险\nNaiveRAG ：证据 覆 盖 不 足\nDeepSearch ：成 本高 、 输出 格 式 脆弱\nChainOfRAG ：错 误中间 答 案 向 后传 播\n50"
+        }
+      ],
+      "agent": "chain_of_rag",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 247
+    },
+    {
+      "sample_id": "workspace-070",
+      "question": "那这个项目本地选的是哪一种，为什么？",
+      "answerable": true,
+      "tags": [
+        "多轮",
+        "跨文档",
+        "指代",
+        "部署"
+      ],
+      "difficulty": "hard",
+      "history_turn_count": 2,
+      "multi_document": true,
+      "required_evidence_count": 2,
+      "matched_evidence_count": 2,
+      "required_document_count": 2,
+      "matched_document_count": 2,
+      "full_evidence_retrieved": true,
+      "full_document_coverage": true,
+      "retrieved_count": 5,
+      "retrieval_hit": true,
+      "retrieval_recall": 1.0,
+      "retrieval_precision": 0.375,
+      "reciprocal_rank": 1.0,
+      "empty_result": false,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": null,
+      "answer_criteria_coverage": 0.2,
+      "grounded_criteria_coverage": 1.0,
+      "evidence_source_correct": true,
+      "refusal_correct": null,
+      "grounding_state": "fully_grounded",
+      "claim_count": 1,
+      "supported_claim_count": 1,
+      "claim_support_rate": 1.0,
+      "ungrounded_claim_rate": 0.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": 0.6,
+      "claim_citation_recall": 1.0,
+      "latency_ms": 8993.241,
+      "tokens": 5686,
+      "llm_calls": 5,
+      "error": null,
+      "answer": "Milvus 项目本地部署选择 Milvus Lite 形态，因其适用于个人学习、原型开发和小数据测试，且适合在本地快速验证建表、插入、L2排序和维度匹配等基础功能 [E1][E2][E3][E4][E5].",
+      "reference_answer": "DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。",
+      "retrieved": [
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 20,
+          "chunk": 64,
+          "text": "4.4 Milvus Lite 与 Docker Milvus\n[Table 1]\n| 方式 | 适合阶段 | 主要限制 |\n| --- | --- | --- |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能代表独立网络 服务的故障和扩展 能力 |\n| Docker Milvus | 学习真实服务连接、 资源限制和故障 | 部署和资源成本更 高 |\n本地已 用 Docker Milvus 验 证 建表 、 插 入、L2 排序\n和 维度 不 匹 配。 当前环境缺少 milvus_lite 依 赖 ，\n因 此 不能 声 称 所 有 Lite 测 试 均 通 过 。"
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 22,
+          "chunk": 71,
+          "text": "4.9 为什么 选择 Milvus 没有唯 一 答案\n[Table 1]\n| 方案 | 适合场景 | 需要承担的代价 |\n| --- | --- | --- |\n| FAISS | 单机算法实验、小 规模本地检索 | 持久化、服务化、 权限和元数据管理 要自行补充 |\n| pgvector | 已有 PostgreSQL， 向量需与关系数据 联合查询 | 纯向量规模扩大后 要评估索引和数据 库压力 |\n| Milvus Lite | 个人学习、原型、 小数据测试 | 不能模拟独立网络 服务与集群故障 |\n| Docker/服务化 Milvus | 向量检索是独立能 力，数据和并发持 续增长 | 需要单独部署、监 控和容量治理 |\n所 以 面试时不要只说 “ Milvus 性 能 高” 。 更 专 业 的说\n法是： 当前 项目 选择 Milvus，是因为 它提 供\nCollection、向量索 引 、metadata 与 独 立 客 户端 接\n口 ； 但小 规 模项目 未 必 需要 承担独 立 服 务 的 运维 成\n本 。\n22"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 1,
+          "text": "Unstructured Data, Embeddings, and Milvus\nUnstructured data, such as text, images, and audio, varies in format and carries rich underlying semantics,\nmaking it challenging to analyze. To manage this complexity, embeddings are used to convert unstructured\ndata into numerical vectors that capture its essential characteristics. These vectors are then stored in a\nvector database, enabling fast and scalable searches and analytics.\nMilvus offers robust data modeling capabilities, enabling you to organize your unstructured or multi-modal\ndata into structured collections. It supports a wide range of data types for different attribute modeling,\nincluding common numerical and character types, various vector types, arrays, sets, and JSON, saving you\nfrom the effort of maintaining multiple database systems.\nMilvus offers three deployment modes, covering a wide range of data scales—from local prototyping in\nJupyter Notebooks to massive Kubernetes clusters managing tens of billions of vectors:\nMilvus Lite is a Python library that can be easily integrated into your applications. As a lightweight\nversion of Milvus, it’s ideal for quick prototyping in Jupyter Notebooks or running on edge devices with\nlimited resources. Learn more.\nMilvus Standalone is a single-machine server deployment, with all components bundled into a single\nDocker image for convenient deployment. Learn more.\nMilvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture"
+        },
+        {
+          "document": "WhatisMilvus.pdf",
+          "page": 1,
+          "chunk": 2,
+          "text": "Milvus Distributed can be deployed on Kubernetes clusters, featuring a cloud-native architecture\ndesigned for billion-scale or even larger scenarios. This architecture ensures redundancy in critical\ncomponents. Learn more."
+        },
+        {
+          "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+          "page": 24,
+          "chunk": 77,
+          "text": "4.12 这一部分的标准表达\nMilvus 在项目里保存 Chunk 向量、 原 文、 来 源\n和 metadata，并 按 问题向量 执 行 top-k 搜 索。\nCollection 固 定 数 据 结 构 和 维度 ，索 引负责 加 速\n近 邻 搜 索，metric 决定 距 离含 义。 当前默 认 L2\n越小越 近 。 本地 实 验验 证 了建表 、 插 入、 距 离排\n序 和 维度 不 匹 配；项目 当前主 要 短 板 是 部 分 异 常\n会被 转 换 成 空 结 果，生 产上必须区 分 真 实 无命中\n与系 统 故障 。"
+        }
+      ],
+      "agent": "chain_of_rag",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 244
+    },
+    {
+      "sample_id": "workspace-071",
+      "question": "那具体必须达到多少？",
+      "answerable": false,
+      "tags": [
+        "多轮",
+        "省略",
+        "无答案",
+        "容量"
+      ],
+      "difficulty": "medium",
+      "history_turn_count": 2,
+      "multi_document": false,
+      "required_evidence_count": 0,
+      "matched_evidence_count": 0,
+      "required_document_count": 0,
+      "matched_document_count": 0,
+      "full_evidence_retrieved": null,
+      "full_document_coverage": null,
+      "retrieved_count": 0,
+      "retrieval_hit": null,
+      "retrieval_recall": null,
+      "retrieval_precision": null,
+      "reciprocal_rank": null,
+      "empty_result": true,
+      "duplicate_count": 0,
+      "duplicate_rate": 0.0,
+      "no_answer_false_positive": false,
+      "answer_criteria_coverage": null,
+      "grounded_criteria_coverage": null,
+      "evidence_source_correct": null,
+      "refusal_correct": true,
+      "grounding_state": "insufficient_evidence",
+      "claim_count": 1,
+      "supported_claim_count": 0,
+      "claim_support_rate": 0.0,
+      "ungrounded_claim_rate": 1.0,
+      "invalid_claim_citation_rate": 0.0,
+      "claim_citation_precision": null,
+      "claim_citation_recall": null,
+      "latency_ms": 8430.507,
+      "tokens": 2951,
+      "llm_calls": 5,
+      "error": null,
+      "answer": "No relevant information found",
+      "reference_answer": "资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。",
+      "retrieved": [],
+      "agent": "chain_of_rag",
+      "context_expected_dependency": true,
+      "context_predicted_dependency": true,
+      "context_dependency_correct": true,
+      "context_query_match": false,
+      "context_fallback_used": false,
+      "context_tokens": 234
+    }
+  ],
+  "metric_notes": {
+    "retrieval_precision_at_k": "相关结果数除以固定 K；返回不足 K 条时，缺失位置按不相关计。",
+    "answer_criteria_coverage": "标准答案要点在生成答案中的确定性字符串覆盖率。",
+    "grounded_criteria_coverage": "标准答案要点在召回文本中的覆盖率，是证据充分度代理指标，不等同于 LLM 忠实度裁判。",
+    "evidence_source_accuracy": "返回来源中至少一个命中标注文档与页码的比例。",
+    "full_evidence_retrieval_rate": "回答所需的全部标注文档页都被召回的样本比例。",
+    "full_document_coverage_rate": "跨文档问题所需的每份文档至少命中一条证据的样本比例。",
+    "claim_support_rate": "生成答案中带有本次有效证据编号的声明比例。",
+    "claim_citation_precision": "声明实际引用的证据中，命中金标文档与页码的比例。",
+    "claim_citation_recall": "金标证据页中至少被一个声明引用的比例。",
+    "context_dependency_accuracy": "有历史样本中，是否需要依赖历史的分类准确率。",
+    "context_query_match_rate": "上下文改写结果与数据集标注独立问题的规范化精确匹配率。"
+  }
+}

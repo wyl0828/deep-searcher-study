@@ -3,6 +3,7 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
+from frontend.product.auth import require_admin
 from frontend.product.services.documents import StagedUpload
 from frontend.server import (
     app,
@@ -10,6 +11,15 @@ from frontend.server import (
     probe_backend,
     validate_collection_name,
 )
+
+
+@pytest.fixture(autouse=True)
+def authenticated_admin():
+    app.dependency_overrides[require_admin] = lambda: object()
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(require_admin, None)
 
 
 def test_legacy_ingest_accepts_streamed_multipart_pdf(tmp_path, monkeypatch):

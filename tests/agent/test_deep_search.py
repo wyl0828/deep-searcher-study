@@ -740,6 +740,19 @@ class TestDeepSearch(BaseAgentTest):
         self.assertIn("all_sub_queries", metadata)
         self.assertEqual(len(metadata["all_sub_queries"]), 2)
 
+    def test_retrieve_does_not_wait_for_a_timed_out_executor_worker(self):
+        async def mock_async_retrieve(*_args, **_kwargs):
+            await asyncio.wait_for(asyncio.to_thread(time.sleep, 0.2), timeout=0.01)
+
+        self.deep_search.async_retrieve = mock_async_retrieve
+        started = time.perf_counter()
+        with self.assertRaises(asyncio.TimeoutError):
+            self.deep_search.retrieve("slow provider")
+        elapsed = time.perf_counter() - started
+
+        self.assertLess(elapsed, 0.1)
+        time.sleep(0.2)
+
     def test_async_retrieve(self):
         """Test the async_retrieve method."""
         query = "Tell me about deep learning"

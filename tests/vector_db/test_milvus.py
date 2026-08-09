@@ -23,9 +23,40 @@ from deepsearcher.vector_db.exceptions import (
     VectorListFailed,
     VectorSearchFailed,
 )
+from deepsearcher.vector_db.milvus import _weighted_rrf_hits
 
 # Filter out the pkg_resources deprecation warning from milvus_lite
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
+
+
+def test_weighted_rrf_fuses_duplicates_and_keeps_dense_head_anchor():
+    def hit(hit_id, text):
+        return {
+            "id": hit_id,
+            "entity": {
+                "embedding": [],
+                "text": text,
+                "reference": "guide.pdf",
+                "metadata": {},
+            },
+            "distance": 0.0,
+        }
+
+    dense = [hit("dense-only", "dense"), hit("shared", "shared")]
+    sparse = [hit("shared", "shared"), hit("sparse-only", "sparse")]
+
+    fused = _weighted_rrf_hits(
+        sparse,
+        dense,
+        sparse_weight=1.0,
+        dense_weight=1.5,
+        rrf_k=5,
+        dense_anchor_count=1,
+        limit=3,
+    )
+
+    assert [item["id"] for item in fused] == ["dense-only", "shared", "sparse-only"]
+    assert fused[1]["distance"] > fused[0]["distance"]
 
 
 @unittest.skipIf(
@@ -43,6 +74,9 @@ class TestMilvus(unittest.TestCase):
         self.assertEqual(milvus.default_collection, "test_collection")
         self.assertFalse(milvus.hybrid)
         self.assertEqual(milvus.rrf_k, 60)
+        self.assertEqual(milvus.hybrid_ranker, "rrf")
+        self.assertEqual(milvus.hybrid_candidate_multiplier, 1)
+        self.assertEqual(milvus.hybrid_dense_anchor_count, 0)
         self.assertEqual(milvus.metric_type, "L2")
         self.assertIsNotNone(milvus.client)
 
@@ -217,6 +251,11 @@ class TestMilvusSafeCollectionVersioning(unittest.TestCase):
         milvus.default_collection = "deepsearcher"
         milvus.hybrid = False
         milvus.rrf_k = 60
+        milvus.hybrid_ranker = "rrf"
+        milvus.hybrid_sparse_weight = 1.0
+        milvus.hybrid_dense_weight = 1.0
+        milvus.hybrid_candidate_multiplier = 1
+        milvus.hybrid_dense_anchor_count = 0
         milvus.client = Mock()
         return milvus
 
@@ -594,6 +633,51 @@ class TestMilvusFailureVisibility(unittest.TestCase):
         ranker = milvus.client.hybrid_search.call_args.kwargs["ranker"]
         self.assertEqual(ranker._k, 60)
 
+    def test_weighted_rrf_hybrid_preserves_dense_anchors_and_expands_candidates(self):
+        milvus = self.make_milvus()
+        milvus.metric_type = "L2"
+        milvus.hybrid = True
+        milvus.hybrid_ranker = "weighted_rrf"
+        milvus.hybrid_dense_weight = 1.5
+        milvus.hybrid_candidate_multiplier = 2
+        milvus.hybrid_dense_anchor_count = 2
+        milvus.client.has_collection.return_value = True
+
+        def search(**kwargs):
+            prefix = "sparse" if kwargs["anns_field"] == "sparse_vector" else "dense"
+            return [
+                [
+                    {
+                        "id": f"{prefix}-{index}",
+                        "entity": {
+                            "embedding": [0.1, 0.2],
+                            "text": f"{prefix}-{index}",
+                            "reference": "guide.pdf",
+                            "metadata": {"chunk_index": index},
+                        },
+                        "distance": float(index),
+                    }
+                    for index in range(6)
+                ]
+            ]
+
+        milvus.client.search.side_effect = search
+
+        results = milvus.search_data(
+            "kb_selected",
+            [0.1, 0.2],
+            query_text="guide",
+            retrieval_mode="hybrid",
+            top_k=3,
+        )
+
+        self.assertEqual([result.text for result in results[:2]], ["dense-0", "dense-1"])
+        self.assertTrue(all(result.metric_type == "WEIGHTED_RRF" for result in results))
+        self.assertEqual(
+            {call.kwargs["limit"] for call in milvus.client.search.call_args_list}, {6}
+        )
+        milvus.client.hybrid_search.assert_not_called()
+
     def test_explicit_dense_mode_uses_embedding_field_on_hybrid_collection(self):
         milvus = self.make_milvus()
         milvus.hybrid = True
@@ -692,7 +776,17 @@ class TestMilvusFailureVisibility(unittest.TestCase):
         self.assertEqual(profile["physical_collection"], "kb_backing")
         self.assertEqual(profile["row_count"], 16)
         self.assertEqual(profile["capabilities"], ["dense", "bm25", "hybrid"])
-        self.assertEqual(profile["fusion"], {"algorithm": "RRF", "k": 60})
+        self.assertEqual(
+            profile["fusion"],
+            {
+                "algorithm": "RRF",
+                "k": 60,
+                "dense_weight": 1.0,
+                "sparse_weight": 1.0,
+                "candidate_multiplier": 1,
+                "dense_anchor_count": 0,
+            },
+        )
         self.assertEqual(len(profile["indexes"]), 2)
 
     def test_missing_collection_is_not_reported_as_zero_hit(self):

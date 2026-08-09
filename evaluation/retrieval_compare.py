@@ -17,16 +17,24 @@ from typing import Any, Mapping, Sequence
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.configuration import Configuration, ModuleFactory
 from deepsearcher.offline_loading import load_from_local_files
+from deepsearcher.query_context import contextualize_query
 from evaluation.benchmark import (
     DEFAULT_CONFIG,
     DEFAULT_DATASET,
     ROOT,
+    CountingLLM,
     load_env_file,
     select_samples,
-    verify_source,
+    verify_sources,
 )
 from evaluation.dataset import EvalDataset, load_dataset
-from evaluation.metrics import aggregate, evaluate_sample, percentile, result_view
+from evaluation.metrics import (
+    METRIC_VERSION,
+    aggregate,
+    evaluate_sample,
+    percentile,
+    result_view,
+)
 
 RETRIEVAL_MODES = ("dense", "bm25", "hybrid")
 EVALUATION_COLLECTION_PATTERN = re.compile(r"eval_[A-Za-z0-9_]{1,58}")
@@ -100,8 +108,7 @@ def summarize_by_tag(
     for mode, rows in rows_by_mode.items():
         tags = sorted({tag for row in rows for tag in row.get("tags", [])})
         result[mode] = {
-            tag: summarize_mode([row for row in rows if tag in row.get("tags", [])])
-            for tag in tags
+            tag: summarize_mode([row for row in rows if tag in row.get("tags", [])]) for tag in tags
         }
     return result
 
@@ -118,14 +125,39 @@ def evaluate_modes(
     limit: int | None = None,
     sample_ids: Sequence[str] | None = None,
     source_aliases: Mapping[str, Sequence[str]] | None = None,
+    contextualizer_llm: Any | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
     samples = select_samples(dataset, limit=limit, sample_ids=sample_ids)
+    if contextualizer_llm is None and any(sample.history for sample in samples):
+        raise ValueError("contextualizer_llm is required for conversational samples")
     rows_by_mode: dict[str, list[dict[str, Any]]] = {mode: [] for mode in modes}
     for sample_index, sample in enumerate(samples):
+        context_started = time.perf_counter()
+        contextualization = None
+        effective_query = sample.question
+        context_calls_before = int(getattr(contextualizer_llm, "calls", 0))
+        if sample.history:
+            contextualization = contextualize_query(
+                contextualizer_llm,
+                sample.question,
+                [
+                    {
+                        "role": role,
+                        "content": content,
+                        "grounded": role == "assistant",
+                    }
+                    for role, content in sample.history
+                ],
+            )
+            effective_query = contextualization.query
+        contextualization_latency_ms = (
+            (time.perf_counter() - context_started) * 1000 if sample.history else 0.0
+        )
+        context_calls = int(getattr(contextualizer_llm, "calls", 0)) - context_calls_before
         embedding_started = time.perf_counter()
         embedding_error: str | None = None
         try:
-            vector = embedding_model.embed_query(sample.question)
+            vector = embedding_model.embed_query(effective_query)
         except Exception as exc:
             vector = []
             embedding_error = _safe_error(exc)
@@ -133,9 +165,7 @@ def evaluate_modes(
 
         mode_results: dict[str, list[Any]] = {mode: [] for mode in modes}
         mode_durations: dict[str, list[float]] = {mode: [] for mode in modes}
-        mode_signatures: dict[str, list[tuple[tuple[Any, ...], ...]]] = {
-            mode: [] for mode in modes
-        }
+        mode_signatures: dict[str, list[tuple[tuple[Any, ...], ...]]] = {mode: [] for mode in modes}
         mode_errors: dict[str, str | None] = {mode: embedding_error for mode in modes}
         if embedding_error is None:
             for repetition in range(repetitions):
@@ -147,7 +177,7 @@ def evaluate_modes(
                         results = vector_db.search_data(
                             collection=collection,
                             vector=vector,
-                            query_text=sample.question,
+                            query_text=effective_query,
                             retrieval_mode=mode,
                             top_k=top_k,
                         )
@@ -164,23 +194,54 @@ def evaluate_modes(
             search_latency_ms = median(durations) if durations else 0.0
             signatures = mode_signatures[mode]
             stability_rate = (
-                mean(signature == signatures[0] for signature in signatures)
-                if signatures
-                else None
+                mean(signature == signatures[0] for signature in signatures) if signatures else None
             )
             row = evaluate_sample(
                 sample,
                 mode_results[mode],
                 answer=None,
                 top_k=top_k,
-                latency_ms=embedding_latency_ms + search_latency_ms,
-                tokens=0,
+                latency_ms=(
+                    contextualization_latency_ms + embedding_latency_ms + search_latency_ms
+                ),
+                tokens=(contextualization.token_usage if contextualization is not None else 0),
+                llm_calls=context_calls,
                 error=mode_errors[mode],
                 source_aliases=source_aliases,
             )
             row.update(
                 {
                     "retrieval_mode": mode,
+                    "context_expected_dependency": (
+                        sample.context_dependent if sample.history else None
+                    ),
+                    "context_predicted_dependency": (
+                        contextualization.depends_on_history
+                        if contextualization is not None
+                        else None
+                    ),
+                    "context_dependency_correct": (
+                        contextualization.depends_on_history == sample.context_dependent
+                        if contextualization is not None
+                        else None
+                    ),
+                    "context_query_match": (
+                        re.sub(r"\s+", " ", effective_query.casefold()).strip()
+                        == re.sub(
+                            r"\s+",
+                            " ",
+                            (sample.standalone_question or "").casefold(),
+                        ).strip()
+                        if contextualization is not None
+                        else None
+                    ),
+                    "context_fallback_used": (
+                        contextualization.fallback_used if contextualization is not None else None
+                    ),
+                    "contextualization_latency_ms": round(
+                        contextualization_latency_ms,
+                        3,
+                    ),
                     "embedding_latency_ms": round(embedding_latency_ms, 3),
                     "search_latency_ms": round(search_latency_ms, 3),
                     "search_repetitions": len(durations),
@@ -191,14 +252,11 @@ def evaluate_modes(
             )
             rows_by_mode[mode].append(row)
         status = ", ".join(
-            f"{mode}={'ok' if mode_errors[mode] is None else mode_errors[mode]}"
-            for mode in modes
+            f"{mode}={'ok' if mode_errors[mode] is None else mode_errors[mode]}" for mode in modes
         )
         print(f"[{sample_index + 1}/{len(samples)}] {sample.id}: {status}")
 
-    return rows_by_mode, {
-        mode: summarize_mode(rows) for mode, rows in rows_by_mode.items()
-    }
+    return rows_by_mode, {mode: summarize_mode(rows) for mode, rows in rows_by_mode.items()}
 
 
 def _quality_score(summary: Mapping[str, Any]) -> float:
@@ -333,6 +391,21 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "question",
         "answerable",
         "tags",
+        "difficulty",
+        "history_turn_count",
+        "context_expected_dependency",
+        "context_predicted_dependency",
+        "context_dependency_correct",
+        "context_query_match",
+        "context_fallback_used",
+        "contextualization_latency_ms",
+        "multi_document",
+        "required_evidence_count",
+        "matched_evidence_count",
+        "required_document_count",
+        "matched_document_count",
+        "full_evidence_retrieved",
+        "full_document_coverage",
         "retrieved_count",
         "retrieval_hit",
         "retrieval_recall",
@@ -376,7 +449,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--modes", default=",".join(RETRIEVAL_MODES))
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--repetitions", type=int, default=3)
-    parser.add_argument("--rrf-k", type=int, default=60)
+    parser.add_argument("--rrf-k", type=int, default=5)
+    parser.add_argument(
+        "--hybrid-ranker",
+        choices=("rrf", "weighted", "weighted_rrf"),
+        default="weighted_rrf",
+    )
+    parser.add_argument("--dense-weight", type=float, default=1.5)
+    parser.add_argument("--sparse-weight", type=float, default=1.0)
+    parser.add_argument("--candidate-multiplier", type=int, default=1)
+    parser.add_argument("--dense-anchors", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=10)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--sample-ids")
@@ -389,15 +471,35 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _create_components(config: Configuration, *, rrf_k: int) -> tuple[Any, Any, Any]:
+def _create_components(
+    config: Configuration,
+    *,
+    rrf_k: int,
+    hybrid_ranker: str,
+    dense_weight: float,
+    sparse_weight: float,
+    candidate_multiplier: int,
+    dense_anchors: int,
+) -> tuple[Any, Any, Any, Any]:
     vector_setting = config.get_provider_config("vector_db")
     if vector_setting.get("provider") != "Milvus":
         raise ValueError("retrieval comparison currently requires the Milvus provider")
     vector_config = dict(vector_setting.get("config") or {})
-    vector_config.update({"hybrid": True, "rrf_k": rrf_k})
+    vector_config.update(
+        {
+            "hybrid": True,
+            "rrf_k": rrf_k,
+            "hybrid_ranker": hybrid_ranker,
+            "hybrid_dense_weight": dense_weight,
+            "hybrid_sparse_weight": sparse_weight,
+            "hybrid_candidate_multiplier": candidate_multiplier,
+            "hybrid_dense_anchor_count": dense_anchors,
+        }
+    )
     config.set_provider_config("vector_db", "Milvus", vector_config)
     factory = ModuleFactory(config)
     return (
+        CountingLLM(factory.create_llm()),
         factory.create_embedding(),
         factory.create_file_loader(),
         factory.create_vector_db(),
@@ -415,6 +517,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.top_k,
         args.repetitions,
         args.rrf_k,
+        args.dense_weight,
+        args.sparse_weight,
+        args.candidate_multiplier,
         args.batch_size,
         args.max_search_p95_ratio,
         args.max_search_p95_overhead_ms,
@@ -424,12 +529,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("positive limits, repetitions, RRF and latency thresholds are required")
     if args.limit is not None and args.limit < 1:
         raise SystemExit("limit must be positive")
+    if args.dense_anchors < 0:
+        raise SystemExit("dense anchors must be non-negative")
     if args.min_quality_gain < 0 or args.max_quality_regression < 0:
         raise SystemExit("quality thresholds must be non-negative")
 
     load_env_file(args.env_file)
     dataset = load_dataset(args.dataset)
-    source_path = verify_source(dataset)
+    source_paths = verify_sources(dataset)
     sample_ids = (
         tuple(value.strip() for value in args.sample_ids.split(",") if value.strip())
         if args.sample_ids
@@ -440,7 +547,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     config = Configuration(str(args.config))
-    embedding_model, file_loader, vector_db = _create_components(config, rrf_k=args.rrf_k)
+    contextualizer_llm, embedding_model, file_loader, vector_db = _create_components(
+        config,
+        rrf_k=args.rrf_k,
+        hybrid_ranker=args.hybrid_ranker,
+        dense_weight=args.dense_weight,
+        sparse_weight=args.sparse_weight,
+        candidate_multiplier=args.candidate_multiplier,
+        dense_anchors=args.dense_anchors,
+    )
     report: dict[str, Any] | None = None
     cleanup_result: dict[str, Any] | None = None
     preparation: dict[str, Any] | None = None
@@ -449,7 +564,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if vector_db.collection_exists(collection):
                 vector_db.delete_collection(collection)
             preparation = load_from_local_files(
-                str(source_path),
+                [str(path) for path in source_paths],
                 collection_name=collection,
                 collection_description=f"O-06 evaluation: {dataset.dataset_id}@{dataset.version}",
                 chunk_size=int(config.load_settings["chunk_size"]),
@@ -470,8 +585,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if missing_modes:
             raise ValueError(f"collection does not support retrieval modes: {missing_modes}")
 
-        source_document = str(dataset.source["document"])
-        source_aliases = {source_document: (source_path.name,)}
+        source_aliases = {
+            source.document: (source_path.name,)
+            for source, source_path in zip(dataset.sources, source_paths, strict=True)
+        }
         rows_by_mode, summaries = evaluate_modes(
             dataset,
             embedding_model=embedding_model,
@@ -483,6 +600,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             limit=args.limit,
             sample_ids=sample_ids,
             source_aliases=source_aliases,
+            contextualizer_llm=contextualizer_llm,
         )
         thresholds = DecisionThresholds(
             min_quality_gain=args.min_quality_gain,
@@ -499,14 +617,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         config_path = args.config.resolve()
         vector_setting = config.get_provider_config("vector_db")
         report = {
-            "report_schema_version": 1,
-            "metric_version": "1.0.0",
+            "report_schema_version": 2,
+            "metric_version": METRIC_VERSION,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "dataset": {
                 "id": dataset.dataset_id,
                 "version": dataset.version,
                 "sha256": dataset.sha256,
-                "source": dataset.source,
+                "sources": [source.as_dict() for source in dataset.sources],
                 "sample_count": len(samples),
                 "answerable_sample_count": sum(sample.answerable for sample in samples),
             },
@@ -521,7 +639,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "top_k": args.top_k,
                 "repetitions": args.repetitions,
                 "embedding_batch_size": args.batch_size,
-                "rrf": {"algorithm": "RRF", "k": args.rrf_k},
+                "fusion": {
+                    "algorithm": args.hybrid_ranker,
+                    "rrf_k": args.rrf_k,
+                    "dense_weight": args.dense_weight,
+                    "sparse_weight": args.sparse_weight,
+                    "candidate_multiplier": args.candidate_multiplier,
+                    "dense_anchor_count": args.dense_anchors,
+                },
                 "source_aliases": source_aliases,
                 "config_path": str(config_path),
                 "config_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
@@ -534,6 +659,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "version": embedding_profile.version,
                     "dimension": embedding_profile.dimension,
                     "fingerprint": embedding_profile.fingerprint,
+                },
+                "llm": {
+                    "provider": config.get_provider_config("llm").get("provider"),
+                    "model": config.get_provider_config("llm").get("config", {}).get("model"),
                 },
                 "vector_db": {"provider": vector_setting.get("provider")},
                 "git": _git_state(),
@@ -555,6 +684,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "search_latency_ms": "同一问题重复检索后取中位数；模式执行顺序轮换。",
                 "ranking_stability_rate": "重复检索 Top-K 文档、页码、Chunk 和文本顺序完全一致的比例。",
                 "quality_score": "Recall@K、MRR 与召回答案要点覆盖率的等权平均，仅用于本报告门禁。",
+                "context_dependency_accuracy": "有历史样本中，是否需要依赖历史的分类准确率。",
+                "context_query_match_rate": "改写结果与金标独立问题的规范化精确匹配率。",
             },
         }
         if args.cleanup:
@@ -564,7 +695,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             ROOT / "evaluation" / "results" / datetime.now().strftime("%Y%m%d-%H%M%S-o06")
         )
         report_path, details_path = save_report(report, output_dir)
-        print(json.dumps({"metrics": summaries, "decision": decision}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps({"metrics": summaries, "decision": decision}, ensure_ascii=False, indent=2)
+        )
         print(f"report: {report_path}")
         print(f"details: {details_path}")
         return 0

@@ -4,16 +4,19 @@ from deepsearcher.agent.base import RAGAgent
 from deepsearcher.agent.collection_router import CollectionRouter
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
+from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
 from deepsearcher.llm.base import BaseLLM
 from deepsearcher.utils import log
 from deepsearcher.vector_db.base import BaseVectorDB, RetrievalResult, deduplicate_results
 
-SUMMARY_PROMPT = """You are a AI content analysis expert, good at summarizing content. Please summarize a specific and detailed answer or report based on the previous queries and the retrieved document chunks.
+SUMMARY_PROMPT = """You are an AI content analysis expert. Generate a specific and detailed answer based on the retrieved evidence.
 
 Original Query: {query}
 
-Related Chunks: 
+Evidence:
 {mini_chunk_str}
+
+{grounding_instructions}
 """
 
 
@@ -148,20 +151,19 @@ class NaiveRAG(RAGAgent):
                 - The total token usage
         """
         all_retrieved_results, n_token_retrieval, _ = self.retrieve(query, **kwargs)
-        chunk_texts = []
-        for chunk in all_retrieved_results:
-            if self.text_window_splitter and "wider_text" in chunk.metadata:
-                chunk_texts.append(chunk.metadata["wider_text"])
-            else:
-                chunk_texts.append(chunk.text)
-        mini_chunk_str = ""
-        for i, chunk in enumerate(chunk_texts):
-            mini_chunk_str += f"""<chunk_{i}>\n{chunk}\n</chunk_{i}>\n"""
-
-        summary_prompt = SUMMARY_PROMPT.format(query=query, mini_chunk_str=mini_chunk_str)
+        trace_collector = kwargs.get("trace_collector")
+        mini_chunk_str = format_grounding_evidence(
+            all_retrieved_results,
+            use_wider_text=self.text_window_splitter,
+            trace_collector=trace_collector,
+        )
+        summary_prompt = SUMMARY_PROMPT.format(
+            query=query,
+            mini_chunk_str=mini_chunk_str,
+            grounding_instructions=GROUNDING_PROMPT,
+        )
         char_response = self.llm.chat([{"role": "user", "content": summary_prompt}])
         final_answer = char_response.content
-        trace_collector = kwargs.get("trace_collector")
         if trace_collector is not None:
             trace_collector.record_final_answer(char_response.total_tokens)
         log.color_print(

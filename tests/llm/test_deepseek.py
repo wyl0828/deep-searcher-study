@@ -60,7 +60,7 @@ class TestDeepSeek(unittest.TestCase):
             )
             
             # Check default model
-            self.assertEqual(llm.model, "deepseek-reasoner")
+            self.assertEqual(llm.model, "deepseek-v4-flash")
 
     def test_init_with_api_key_from_env(self):
         """Test initialization with API key from environment variable."""
@@ -89,7 +89,7 @@ class TestDeepSeek(unittest.TestCase):
     def test_init_with_custom_model(self):
         """Test initialization with custom model."""
         with patch.dict('os.environ', {}, clear=True):
-            model = "deepseek-chat"
+            model = "deepseek-v4-pro"
             llm = DeepSeek(model=model)
             self.assertEqual(llm.model, model)
 
@@ -116,7 +116,7 @@ class TestDeepSeek(unittest.TestCase):
         # Check that completions.create was called correctly
         self.mock_completions.create.assert_called_once()
         call_args = self.mock_completions.create.call_args
-        self.assertEqual(call_args[1]["model"], "deepseek-reasoner")
+        self.assertEqual(call_args[1]["model"], "deepseek-v4-flash")
         self.assertEqual(call_args[1]["messages"], messages)
 
         # Check response
@@ -141,7 +141,7 @@ class TestDeepSeek(unittest.TestCase):
         # Check that completions.create was called correctly
         self.mock_completions.create.assert_called_once()
         call_args = self.mock_completions.create.call_args
-        self.assertEqual(call_args[1]["model"], "deepseek-reasoner")
+        self.assertEqual(call_args[1]["model"], "deepseek-v4-flash")
         self.assertEqual(call_args[1]["messages"], messages)
 
         # Check response
@@ -166,4 +166,4 @@ class TestDeepSeek(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

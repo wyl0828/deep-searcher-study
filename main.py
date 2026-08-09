@@ -10,7 +10,7 @@ import threading
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from time import monotonic
-from typing import AsyncIterator, Callable, Dict, List, Sequence, Union
+from typing import AsyncIterator, Callable, Dict, List, Literal, Sequence, Union
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -31,6 +31,7 @@ from deepsearcher.configuration import (
     build_runtime,
 )
 from deepsearcher.health import RuntimeHealthMonitor, blocked_checks, failed_check
+from deepsearcher.query_context import ContextualQuery, contextualize_query
 from deepsearcher.runtime_registry import (
     DEFAULT_TENANT_ID,
     RuntimeControlError,
@@ -439,15 +440,54 @@ class RuntimeRollbackRequest(BaseModel):
     expected_version: int | None = Field(default=None, ge=1)
 
 
+class ConversationHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1200)
+    grounded: bool = False
+
+
 class QueryStreamRequest(BaseModel):
     original_query: str = Field(min_length=1, max_length=4000)
     max_iter: int = Field(default=3, ge=1, le=10)
     collection_names: List[str] | None = Field(default=None, max_length=512)
     use_web_search: bool = False
+    conversation_history: List[ConversationHistoryMessage] = Field(
+        default_factory=list,
+        max_length=12,
+    )
 
 
 class QueryRequest(QueryStreamRequest):
     include_trace: bool = False
+
+
+def _contextualize_request(
+    payload: QueryStreamRequest,
+    runtime: RuntimeComponents,
+    collector: TraceCollector | None = None,
+) -> ContextualQuery:
+    if not payload.conversation_history:
+        return ContextualQuery(
+            query=payload.original_query.strip(),
+            depends_on_history=False,
+            history_turn_count=0,
+            fallback_used=False,
+            reason="no_history",
+        )
+    context = contextualize_query(
+        runtime.llm,
+        payload.original_query,
+        [item.model_dump() for item in payload.conversation_history],
+    )
+    if collector is not None and context.history_turn_count:
+        collector.record_contextualization(
+            depends_on_history=context.depends_on_history,
+            history_turn_count=context.history_turn_count,
+            fallback_used=context.fallback_used,
+            reason=context.reason,
+            token_usage=context.token_usage,
+        )
+    return context
 
 
 class CollectionRebuildRequest(BaseModel):
@@ -909,9 +949,13 @@ def perform_query(
             kwargs["collection_names"] = explicit_collections
 
         if payload.include_trace:
+            collector = TraceCollector(original_query, request_id=_request_id(request))
+            contextual = _contextualize_request(payload, runtime, collector)
             result_text, _, consume_token, trace = query_with_trace(
-                original_query,
+                contextual.query,
                 payload.max_iter,
+                trace_collector=collector,
+                initial_tokens=contextual.token_usage,
                 **kwargs,
             )
             return {
@@ -920,7 +964,13 @@ def perform_query(
                 "trace": trace,
             }
 
-        result_text, _, consume_token = query(original_query, payload.max_iter, **kwargs)
+        contextual = _contextualize_request(payload, runtime)
+        result_text, _, consume_token = query(
+            contextual.query,
+            payload.max_iter,
+            initial_tokens=contextual.token_usage,
+            **kwargs,
+        )
         return {"result": result_text, "consume_token": consume_token}
     except VectorDBError:
         raise
@@ -1031,14 +1081,24 @@ async def perform_query_stream(
 
         def run_query() -> None:
             try:
+                contextual = _contextualize_request(payload, lease.runtime)
                 collector.emit_started()
+                if contextual.history_turn_count:
+                    collector.record_contextualization(
+                        depends_on_history=contextual.depends_on_history,
+                        history_turn_count=contextual.history_turn_count,
+                        fallback_used=contextual.fallback_used,
+                        reason=contextual.reason,
+                        token_usage=contextual.token_usage,
+                    )
                 result_text, _, consume_token, trace = query_with_trace(
-                    payload.original_query,
+                    contextual.query,
                     payload.max_iter,
                     collection_names=collection_names,
                     use_web_search=payload.use_web_search,
                     searcher=lease.runtime.default_searcher,
                     trace_collector=collector,
+                    initial_tokens=contextual.token_usage,
                 )
             except QueryCancelled:
                 collector.emit_event(

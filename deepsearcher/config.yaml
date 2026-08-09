@@ -1,17 +1,12 @@
 provide_settings:
   llm:
-    provider: "OpenAI"
+    provider: "DeepSeek"
     config:
-      model: "qwen-plus"
-#      model: "gemini-2.5-flash"  # Gemini - disabled, switched to Alibaba Cloud Bailian
-#      api_key: "sk-xxxx"  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
-#      base_url: ""
-
-#    provider: "DeepSeek"
-#    config:
-#      model: "deepseek-reasoner"
-##      api_key: "sk-xxxx"  # Uncomment to override the `DEEPSEEK_API_KEY` set in the environment variable
-##      base_url: ""
+      model: "deepseek-v4-flash"
+      timeout: 30
+      max_retries: 1
+#      api_key: "sk-xxxx"  # Uncomment to override the `DEEPSEEK_API_KEY` set in the environment variable
+#      base_url: "https://api.deepseek.com"
 
 #    provider: "SiliconFlow"
 #    config:
@@ -62,6 +57,8 @@ provide_settings:
       model: "text-embedding-v4"
 #      model: "models/gemini-embedding-2"  # Gemini - disabled, switched to Alibaba Cloud Bailian
       dimension: 1024
+      timeout: 30
+      max_retries: 1
 #      api_key: ""  # Uncomment to override the `OPENAI_API_KEY` set in the environment variable
 #      base_url: "" # Uncomment to override the `OPENAI_BASE_URL` set in the environment variable
 #      dimension: 1536 # Uncomment to customize the embedding dimension 
@@ -166,10 +163,14 @@ provide_settings:
       uri: "http://127.0.0.1:19530"
       token: "root:Milvus"
       db: "default"
-      # O-06 固定评测未证明 Hybrid/RRF 优于 Dense，生产默认继续使用 Dense。
-      # 改为 true 前必须重建对应知识库，不能直接查询旧的 Dense-only Collection。
-      hybrid: false
-      rrf_k: 60
+      # workspace_v2@2.2.0 三重复门禁已通过；旧 Dense-only 知识库需重建后才能使用。
+      hybrid: true
+      rrf_k: 5
+      hybrid_ranker: "weighted_rrf"
+      hybrid_dense_weight: 1.5
+      hybrid_sparse_weight: 1.0
+      hybrid_candidate_multiplier: 1
+      hybrid_dense_anchor_count: 2
 
   # vector_db:      
   #   provider: "OracleDB"

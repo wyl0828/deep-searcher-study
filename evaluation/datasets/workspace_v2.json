@@ -1,0 +1,817 @@
+{
+  "schema_version": 2,
+  "dataset_id": "deepsearcher-workspace-v2",
+  "version": "2.2.0",
+  "description": "DeepSearcher 多文档与多轮业务评测集，覆盖单文档事实、跨文档组合、上下文追问、话题切换、精确术语、方案取舍和无答案拒答。",
+  "sources": [
+    {
+      "document": "WhatisMilvus.pdf",
+      "path": "examples/data/WhatisMilvus.pdf",
+      "sha256": "00cac5d6ca84077ed81380becc06cde379be11db37fcef59ec4b041a4f39acc1"
+    },
+    {
+      "document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+      "path": "output/pdf/DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+      "sha256": "96e82d991e27a309931695f05300338c6ecd07cfcbcc46efee9b5ede511067d2"
+    },
+    {
+      "document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+      "path": "output/pdf/DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+      "sha256": "288eb9cc7e7dc9940eca3def97144886f5d5a38e97e7025d98069f8d8744b9a3"
+    }
+  ],
+  "samples": [
+    {
+      "id": "workspace-001",
+      "question": "Milvus 是什么，它以哪两种形态提供？",
+      "answerable": true,
+      "reference_answer": "Milvus 是高性能、可扩展的向量数据库，同时提供开源软件和云服务。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}],
+      "criteria": [["向量数据库", "vector database"], ["开源", "open-source"], ["云服务", "cloud service"]],
+      "tags": ["事实", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-002",
+      "question": "Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？",
+      "answerable": true,
+      "reference_answer": "Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}],
+      "criteria": [["Lite", "轻量"], ["Standalone", "单机"], ["Distributed", "Kubernetes"], ["原型", "prototyping"]],
+      "tags": ["解释", "部署", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-003",
+      "question": "Milvus 文档将高性能归因于哪些关键设计？",
+      "answerable": true,
+      "reference_answer": "包括面向 AVX512、SIMD、GPU 和 NVMe SSD 的硬件优化，IVF/HNSW/DiskANN 等高级搜索算法，以及 C++ 搜索引擎和列式存储。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}, {"document": "WhatisMilvus.pdf", "page": 2}],
+      "criteria": [["硬件", "hardware-aware"], ["IVF", "HNSW", "DiskANN"], ["C++"], ["列", "column-oriented"]],
+      "tags": ["多证据", "性能", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-004",
+      "question": "Milvus 的架构为什么可以随数据规模扩展？",
+      "answerable": true,
+      "reference_answer": "Milvus 采用云原生、无状态和高度解耦架构，将搜索、写入及索引/压实任务拆开，使 query、data、index 节点能够独立纵向或横向扩展。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 2}],
+      "criteria": [["无状态", "stateless"], ["解耦", "decoupled"], ["独立", "independently"], ["Kubernetes", "cloud-native"]],
+      "tags": ["架构", "扩展性", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-005",
+      "question": "ANN、过滤、范围、混合、关键词搜索和重排各解决什么问题？",
+      "answerable": true,
+      "reference_answer": "ANN 找最近的 top-k；过滤搜索在条件约束下执行 ANN；范围搜索找半径内向量；混合搜索联合多个向量字段；关键词搜索使用 BM25；重排按附加条件或二级算法调整初始结果顺序。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 2}],
+      "criteria": [["top K", "top-k"], ["过滤条件", "filtering"], ["半径", "radius"], ["多个向量字段", "multiple vector fields"], ["BM25"], ["调整", "重排", "reranking"]],
+      "tags": ["检索", "多要点", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-006",
+      "question": "Milvus 官方列出了哪些 API 或 SDK？",
+      "answerable": true,
+      "reference_answer": "包括 RESTful API、PyMilvus、Go SDK、Java SDK 和 Node.js SDK；文档还列出微软贡献的 C# SDK。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 3}],
+      "criteria": [["RESTful"], ["PyMilvus"], ["Go SDK"], ["Java SDK"], ["Node.js"], ["C#"]],
+      "tags": ["列表", "精确术语", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-007",
+      "question": "Milvus 除普通标量外支持哪些高级数据类型？",
+      "answerable": true,
+      "reference_answer": "支持稀疏向量、二进制向量、JSON 和数组，并为这些类型提供相应距离度量。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 3}],
+      "criteria": [["稀疏向量", "Sparse Vectors"], ["二进制向量", "Binary Vectors"], ["JSON"], ["数组", "Array"]],
+      "tags": ["列表", "数据模型", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-008",
+      "question": "Milvus 在数据导入、多租户和一致性方面提供了什么能力？",
+      "answerable": true,
+      "reference_answer": "提供高吞吐批量导入工具；通过 Partition Key、Clustering Key 等支持多租户；ANN 搜索时可调一致性级别。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 3}],
+      "criteria": [["高吞吐", "high-throughput"], ["Partition Key"], ["Clustering Key"], ["一致性", "consistency"]],
+      "tags": ["多要点", "治理", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-009",
+      "question": "PyMilvus 的 AI 集成覆盖哪三类能力？",
+      "answerable": true,
+      "reference_answer": "包括 Embedding 模型集成、Reranking 模型集成，以及与 LangChain 等 AI 工具的集成。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 4}],
+      "criteria": [["Embedding"], ["Reranking", "reranker"], ["LangChain", "AI 工具"]],
+      "tags": ["列表", "AI 集成", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-010",
+      "question": "Attu、Birdwatcher、Milvus Backup 和 Milvus CDC 分别有什么用途？",
+      "answerable": true,
+      "reference_answer": "Attu 是管理 Milvus 的 GUI；Birdwatcher 用于连接 etcd 调试状态；Milvus Backup 负责备份恢复；Milvus CDC 捕获并同步增量数据。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 4}],
+      "criteria": [["GUI"], ["etcd", "调试"], ["备份", "restore"], ["增量", "CDC", "同步"]],
+      "tags": ["工具", "多要点", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-011",
+      "question": "DeepSearcher 为什么不把整篇 PDF 直接生成一个向量？",
+      "answerable": true,
+      "reference_answer": "系统先提取文本并切成 Chunk，Chunk 才是向量化和检索单元，从而保留更细的检索颗粒度并避免整篇文档语义过度混杂。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 12}],
+      "criteria": [["Chunk"], ["向量化", "检索单元"], ["颗粒度"]],
+      "tags": ["Chunk", "原理", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-012",
+      "question": "chunk_overlap 和 wider_text 的区别是什么？",
+      "answerable": true,
+      "reference_answer": "overlap 发生在文档切分阶段，用重复文字缓解边界断裂；wider_text 在命中后的生成阶段补充更宽上下文。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 8}],
+      "criteria": [["切分", "边界"], ["生成", "上下文"], ["overlap"], ["wider_text"]],
+      "tags": ["Chunk", "对比", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-013",
+      "question": "为什么不能说 1500/100 是最优分块参数，应如何验证？",
+      "answerable": true,
+      "reference_answer": "它只是工程默认值。应在带标准证据的问题集上比较 Recall@K、回答正确率和忠实度、重复片段比例、入库时间、存储、查询延迟与 Token。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 9}],
+      "criteria": [["默认", "不能证明"], ["Recall@K"], ["正确率", "忠实度"], ["延迟", "Token"], ["存储", "入库"]],
+      "tags": ["Chunk", "评测", "取舍", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-014",
+      "question": "两个 Embedding 模型都是 1024 维，为什么仍不能混用？",
+      "answerable": true,
+      "reference_answer": "维度一致只是 Schema 的必要条件，不同模型可能使用完全不同的语义空间、归一化方式和推荐 metric。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 14}],
+      "criteria": [["必要条件"], ["语义空间"], ["归一化", "metric"]],
+      "tags": ["Embedding", "兼容性", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-015",
+      "question": "当前项目应如何解释 L2 和 score 字段？",
+      "answerable": true,
+      "reference_answer": "L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 14}],
+      "criteria": [["越小越近"], ["distance"], ["不能", "越大越相似"]],
+      "tags": ["Embedding", "Milvus", "易错点", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-016",
+      "question": "切换 Embedding 模型时，稳妥的迁移流程是什么？",
+      "answerable": true,
+      "reference_answer": "创建新版本 Collection，用新模型重新向量化，验证维度、度量和评测结果后切换，并保留旧 Collection 回滚。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 14}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 15}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 18}],
+      "criteria": [["新 Collection", "新版本"], ["重新向量化"], ["评测"], ["回滚", "旧 Collection"]],
+      "tags": ["Embedding", "迁移", "多证据", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-017",
+      "question": "DeepSearcher 写入 Milvus 的一条知识记录包含哪些核心内容？",
+      "answerable": true,
+      "reference_answer": "包含 Chunk 的 embedding、text、reference 和 metadata，例如 wider_text。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 18}],
+      "criteria": [["embedding"], ["text"], ["reference"], ["metadata", "wider_text"]],
+      "tags": ["Milvus", "数据模型", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-018",
+      "question": "在本项目语境里，Milvus Lite 与 Docker Milvus 的主要取舍是什么？",
+      "answerable": true,
+      "reference_answer": "Lite 适合个人学习、原型和小数据测试，但不能代表独立网络服务的故障与扩展能力；Docker Milvus 能学习真实服务连接和故障，但部署和资源成本更高。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 20}],
+      "criteria": [["Lite", "原型"], ["独立网络服务", "故障", "扩展"], ["Docker"], ["资源成本"]],
+      "tags": ["部署", "取舍", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-019",
+      "question": "为什么生产环境不能滥用 force_new_collection？",
+      "answerable": true,
+      "reference_answer": "它可能删除已有 Collection 并造成数据丢失。更安全的做法是创建版本化 Collection、验证后切流并保留旧版本回滚。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 20}],
+      "criteria": [["删除", "数据丢失"], ["版本化"], ["验证", "切流"], ["回滚"]],
+      "tags": ["Milvus", "安全", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-020",
+      "question": "为什么向量检索失败不能统一返回空列表？",
+      "answerable": true,
+      "reference_answer": "空列表会把真实无命中、Collection 不存在、Milvus 不可用、维度不匹配或 Embedding 失败混为一谈，误导用户并污染 Recall 与空结果率。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 23}],
+      "criteria": [["无命中"], ["Collection"], ["Milvus", "不可用"], ["维度"], ["污染评测", "Recall"]],
+      "tags": ["错误处理", "评测", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-021",
+      "question": "Hybrid 检索为什么可能有帮助，又为什么不能仅凭代码存在就启用？",
+      "answerable": true,
+      "reference_answer": "Dense 有利于语义改写，BM25 对编号、日期和专有词更稳，RRF 可融合两路；但是否提升必须在同一问题集比较 Recall、延迟、存储和资源开销。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 23}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 24}],
+      "criteria": [["Dense", "语义"], ["BM25", "专有", "日期"], ["RRF"], ["评测", "Recall"], ["延迟", "存储"]],
+      "tags": ["检索", "Hybrid", "取舍", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-022",
+      "question": "DeepSearcher 当前默认在线查询为什么不能描述成默认走 NaiveRAG？",
+      "answerable": true,
+      "reference_answer": "默认入口经 configuration.default_searcher 进入 RAGRouter，再在 DeepSearch 与 ChainOfRAG 中选择；NaiveRAG 只作为基础能力和对照，不在默认候选中。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 27}],
+      "criteria": [["RAGRouter"], ["DeepSearch"], ["ChainOfRAG"], ["NaiveRAG", "对照"]],
+      "tags": ["路由", "易错点", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-023",
+      "question": "NaiveRAG 的完整最小链路是什么，它没有哪些复杂步骤？",
+      "answerable": true,
+      "reference_answer": "问题经 Collection 选择、Embedding、Milvus top-k、去重和上下文组织后由 LLM 生成答案；它只检索和生成一次，不做查询改写、反思和迭代。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 25}],
+      "criteria": [["Collection"], ["Embedding"], ["top-k"], ["LLM"], ["不", "改写", "反思", "迭代"]],
+      "tags": ["NaiveRAG", "链路", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-024",
+      "question": "DeepSearch 从原问题到最终答案要经过哪些主要阶段？",
+      "answerable": true,
+      "reference_answer": "先生成最多四个子查询并发检索，对候选 Chunk 做 YES/NO 支持性过滤，合并去重；非最后一轮反思并生成补充查询，达到停止条件后汇总证据生成答案。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 33}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 40}],
+      "criteria": [["子查询"], ["并发"], ["YES/NO", "过滤"], ["去重"], ["补充查询", "反思"], ["汇总"]],
+      "tags": ["DeepSearch", "链路", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-025",
+      "question": "为什么 DeepSearch 当前的 Rerank 成本可能非常高？",
+      "answerable": true,
+      "reference_answer": "它不是一次打分排序，而是对每个候选 Chunk 单独调用 LLM 做 YES/NO 二分类。4 个子查询、2 个 Collection、每个 10 条候选时最多可产生 80 次判断调用。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 33}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 37}],
+      "criteria": [["逐", "每个", "Chunk"], ["YES/NO", "二分类"], ["80"], ["Token", "延迟"]],
+      "tags": ["DeepSearch", "成本", "多证据", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-026",
+      "question": "DeepSearch 设置 max_iter=1 时为什么没有反思事件？",
+      "answerable": true,
+      "reference_answer": "第一轮同时就是最后一轮，代码在检索后直接退出，不进入非最后一轮的反思与补充查询逻辑。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 33}],
+      "criteria": [["最后一轮"], ["直接退出"], ["不", "反思"]],
+      "tags": ["DeepSearch", "反思", "易错点", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-027",
+      "question": "ChainOfRAG 如何沿事实线索完成多跳查询？",
+      "answerable": true,
+      "reference_answer": "每轮根据原问题和历史中间问答生成一个简单追问，完成 Collection 路由、检索和中间答案，再选择支持文档；后续轮次依赖已得到的事实，最后汇总。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 40}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 49}],
+      "criteria": [["追问"], ["历史中间问答", "中间答案"], ["Collection"], ["支持文档"], ["汇总"]],
+      "tags": ["ChainOfRAG", "多跳", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-028",
+      "question": "当前 ChainOfRAG 与 CoRAG 论文方法的边界是什么？",
+      "answerable": true,
+      "reference_answer": "当前实现只借鉴逐步查询改写和多轮检索思想，使用通用 LLM Prompt 和应用层循环；没有论文中的模型训练、拒绝采样中间检索链和完整测试时解码策略。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 42}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 48}],
+      "criteria": [["通用 LLM", "Prompt"], ["应用", "循环"], ["没有", "模型训练"], ["拒绝采样"], ["解码"]],
+      "tags": ["ChainOfRAG", "论文边界", "多证据", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-029",
+      "question": "ChainOfRAG 的 early stopping 有哪些误判风险，默认关闭意味着什么？",
+      "answerable": true,
+      "reference_answer": "过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 45}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 46}],
+      "criteria": [["过早", "漏"], ["过晚", "Token", "延迟"], ["默认关闭"], ["max_iter"], ["不", "反思"]],
+      "tags": ["ChainOfRAG", "停止条件", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-030",
+      "question": "NaiveRAG、DeepSearch 和 ChainOfRAG 分别更适合哪类问题？",
+      "answerable": true,
+      "reference_answer": "简单单事实优先 NaiveRAG；多个相互独立方面更像 DeepSearch；后一个问题依赖前一个答案的多跳任务更像 ChainOfRAG。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 48}],
+      "criteria": [["单事实", "NaiveRAG"], ["多个方面", "DeepSearch"], ["依赖", "ChainOfRAG"]],
+      "tags": ["路由", "策略对比", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-031",
+      "question": "FastAPI 应用启动时如何管理外部组件的生命周期？",
+      "answerable": true,
+      "reference_answer": "导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 4}],
+      "criteria": [["导入", "不连接"], ["lifespan"], ["RuntimeRegistry"], ["租约"], ["旧请求", "关闭"]],
+      "tags": ["FastAPI", "生命周期", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-032",
+      "question": "核心 API 的 Provider 配置、文件入库、网站入库、普通查询和流式查询分别是什么边界？",
+      "answerable": true,
+      "reference_answer": "Provider 接口发布受信租户的新 runtime 且不回显密钥；load-files 接受后端路径；load-website 依赖外网爬虫；query 用 POST JSON 返回结果/可选 Trace；query/stream 用 SSE 返回安全阶段和终态。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 5}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 6}],
+      "criteria": [["runtime", "Provider"], ["后端", "路径"], ["网站", "爬虫"], ["POST", "query"], ["SSE", "stream"]],
+      "tags": ["FastAPI", "API 契约", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-033",
+      "question": "一次带 Trace 的 POST /query 请求如何进入 Agent 并返回？",
+      "answerable": true,
+      "reference_answer": "Pydantic 校验 Body 后，perform_query 调用 query_with_trace；请求依赖从 RuntimeRegistry 获取 runtime 租约，RAGRouter 选择 Agent，Agent 完成路由、Embedding、Milvus 检索和生成，最后返回 result、Token 和 Trace。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 6}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 7}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 8}],
+      "criteria": [["Pydantic"], ["query_with_trace"], ["RuntimeRegistry", "租约"], ["RAGRouter"], ["Milvus"], ["trace", "Token"]],
+      "tags": ["FastAPI", "查询链路", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-034",
+      "question": "为什么 /load-files/ 不能直接接收用户浏览器中的本地路径？",
+      "answerable": true,
+      "reference_answer": "它读取的是 FastAPI 所在机器可见的路径，浏览器电脑上的路径对远端后端没有意义，因此需要 BFF 先接收文件并保存成后端可见文件。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 9}],
+      "criteria": [["后端", "机器"], ["浏览器", "路径"], ["BFF", "保存"]],
+      "tags": ["上传", "边界", "单文档"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-035",
+      "question": "为什么把同步路由从 def 改成 async def 不会自动提高并发？",
+      "answerable": true,
+      "reference_answer": "同步 def 会在线程池执行但线程有限；若 async def 内仍直接调用同步 LLM、Embedding 和 Milvus SDK，会阻塞事件循环。只有依赖真正异步并逐层 await 才能获得异步收益。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 10}],
+      "criteria": [["线程池"], ["有限", "排队"], ["同步", "阻塞事件循环"], ["真正异步", "await"]],
+      "tags": ["FastAPI", "并发", "易错点", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-036",
+      "question": "DeepSearcher API 的错误响应为什么不能直接使用 str(e)？",
+      "answerable": true,
+      "reference_answer": "原始异常可能泄漏密钥、路径或内部实现。客户端应只收到稳定 code、安全 message、request_id 和 retryable，日志也需受控脱敏。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 11}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 12}],
+      "criteria": [["泄漏", "密钥", "路径"], ["code"], ["request_id"], ["retryable"], ["脱敏"]],
+      "tags": ["安全", "错误协议", "多证据", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-037",
+      "question": "单元、ASGI、集成和并发测试分别保护什么风险？",
+      "answerable": true,
+      "reference_answer": "纯函数单测保护分类和 DTO；TestClient/ASGI 覆盖路由、校验、middleware 和错误映射；集成测试验证 Milvus/模型 Stub 的完整链路；并发测试验证版本隔离和资源回收。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 12}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 13}],
+      "criteria": [["纯函数", "DTO"], ["TestClient", "ASGI"], ["集成", "Milvus"], ["并发", "版本隔离", "资源回收"]],
+      "tags": ["测试", "多要点", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-038",
+      "question": "Trace 为什么不是模型思维链，它如何从 Agent 到产品引用？",
+      "answerable": true,
+      "reference_answer": "TraceCollector 记录路由、检索、支持、反思和 Token 等显式应用事件，并做截断脱敏；核心 API 返回安全 Trace/SSE 阶段，产品层将支持文档持久化为 Citation。它不读取模型隐藏推理。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 18}],
+      "criteria": [["显式", "应用事件"], ["不", "隐藏思维链"], ["脱敏", "截断"], ["Citation"], ["SSE"]],
+      "tags": ["Trace", "引用", "安全", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-039",
+      "question": "产品工作台和旧学习控制台在路由、状态和查询方式上有什么区别？",
+      "answerable": true,
+      "reference_answer": "产品页覆盖新对话、持久化聊天、知识库和文档，TanStack Query 管服务端状态并用 ReadableStream 消费 SSE、AbortController 停止回答；/console 使用旧 api.js，完成后一次性展示答案和 Trace。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 19}],
+      "criteria": [["TanStack Query"], ["ReadableStream", "SSE"], ["AbortController"], ["/console"], ["一次", "Trace"]],
+      "tags": ["React", "产品工作台", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-040",
+      "question": "诊断 RAG 质量时，检索和生成阶段分别看哪些指标？",
+      "answerable": true,
+      "reference_answer": "检索看 Recall@K、MRR、nDCG、重复率和空结果率；生成看 Answer Correctness、Faithfulness、Citation Correctness 和拒答准确率。先确认金标证据是否进入 TopK，再定位生成或上下文。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 21}],
+      "criteria": [["Recall@K"], ["MRR"], ["nDCG"], ["Faithfulness"], ["Citation Correctness"], ["拒答"]],
+      "tags": ["评测", "指标", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-041",
+      "question": "当前 latency_ms 与 consume_token 为什么都不能直接等同于完整成本？",
+      "answerable": true,
+      "reference_answer": "latency_ms 近似覆盖代理等待 FastAPI、LLM、Embedding 和 Milvus 的时间，但不含完整浏览器网络、React 渲染及阶段 Span；Token 是手工累计 LLM 总量，不拆 input/output/cache/reasoning，也不含 Embedding。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 21}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 22}],
+      "criteria": [["浏览器", "React"], ["阶段 Span"], ["LLM"], ["input", "output", "cached", "reasoning"], ["Embedding"]],
+      "tags": ["可观测性", "成本", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-042",
+      "question": "Dense、BM25、Hybrid 和 RRF 的职责分别是什么，当前默认配置是什么？",
+      "answerable": true,
+      "reference_answer": "Dense 用 Embedding 找语义近似；BM25 按词频等找字面匹配；Hybrid 同时召回两路；RRF 按排名融合不同量纲。当前实现具备混合路径，但 YAML 仍是 Dense-only。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 22}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 23}],
+      "criteria": [["Dense", "语义"], ["BM25", "字面"], ["Hybrid", "两路"], ["RRF", "排名"], ["Dense-only"]],
+      "tags": ["检索", "Hybrid", "多证据", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-043",
+      "question": "流量扩大十倍时，为什么不能只增加 Uvicorn worker，推荐的改造顺序是什么？",
+      "answerable": true,
+      "reference_answer": "Agent 会把一次请求放大为多次 LLM 调用，瓶颈还包括线程池、RPM/TPM、Milvus、内存和排队。应依次做入口鉴权限流与请求上限、有界并发和背压、入库任务队列、依赖超时/预算/熔断、租户授权，再考虑水平扩容。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 23}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 24}],
+      "criteria": [["放大", "LLM"], ["RPM", "TPM"], ["限流"], ["背压"], ["任务队列"], ["超时", "熔断"], ["水平扩容"]],
+      "tags": ["系统设计", "并发", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-044",
+      "question": "当前核心和工作台已经具备哪些安全边界，又缺少什么？",
+      "answerable": true,
+      "reference_answer": "已有服务到服务令牌、租户 Collection 白名单、每进程限流、Provider 管理令牌及配置脱敏；仍缺最终用户登录/RBAC、分布式并发控制和更完整审计。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 24}],
+      "criteria": [["服务", "令牌"], ["Collection", "白名单"], ["每进程", "限流"], ["最终用户", "RBAC"], ["分布式"]],
+      "tags": ["安全", "边界", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-045",
+      "question": "生产化 SSE 为什么需要持久 run、事件 ID 和显式取消？",
+      "answerable": true,
+      "reference_answer": "事件需要先持久化才能用 Last-Event-ID 重放并在前端幂等归并；客户端断线不代表任务取消，用户停止应发送显式取消请求；同步 LLM 还需区分 cancellation_requested 与真正 cancelled。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 25}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 26}],
+      "criteria": [["持久", "Event Store"], ["event_id", "Last-Event-ID"], ["幂等"], ["断线", "不等于", "取消"], ["显式", "取消"]],
+      "tags": ["SSE", "系统设计", "多证据", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-046",
+      "question": "产品工作台持久化了哪些业务对象，为什么 BackgroundTasks 仍不算可靠任务队列？",
+      "answerable": true,
+      "reference_answer": "持久化 KnowledgeBase、Document、IngestJob、Conversation、Message 和 Citation。BackgroundTasks 仍在 Web 进程内，不天然提供租约、死信、进程恢复和多 Worker 调度。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 26}],
+      "criteria": [["KnowledgeBase"], ["Document"], ["IngestJob"], ["Conversation"], ["Message"], ["Citation"], ["租约", "死信", "恢复"]],
+      "tags": ["产品工作台", "任务队列", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-047",
+      "question": "如何用一条完整链路介绍 DeepSearcher 的离线、在线和产品能力？",
+      "answerable": true,
+      "reference_answer": "离线用 PDFLoader、1500/100 Chunk、text-embedding-v4 1024 维向量写入 Docker Milvus；在线由 RAGRouter 选择 DeepSearch/ChainOfRAG，完成路由、检索和 qwen-plus 生成；产品层提供知识库、持久化对话、任务状态、引用、可停止 SSE 和安全 API。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 27}],
+      "criteria": [["PDFLoader"], ["1500", "100"], ["1024"], ["Docker Milvus"], ["RAGRouter"], ["qwen-plus"], ["SSE", "引用"]],
+      "tags": ["项目总览", "多要点", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-048",
+      "question": "自动化、真实浏览器和 SSE 闭环通过后，仍不能宣称哪些能力？",
+      "answerable": true,
+      "reference_answer": "不能外推为模型质量 SLO、容量上限、完整无障碍合规、生产安全认证、高并发或所有回答声明都 grounded。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 28}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 29}],
+      "criteria": [["质量 SLO"], ["容量"], ["无障碍"], ["安全认证"], ["grounded", "所有声明"]],
+      "tags": ["诚实边界", "测试", "多证据", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-049",
+      "question": "Milvus 官方三种部署形态与 DeepSearcher 当前本地选择之间是什么关系？",
+      "answerable": true,
+      "reference_answer": "官方形态包括 Lite、Standalone 和 Distributed；DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 20}],
+      "criteria": [["Lite"], ["Standalone"], ["Distributed"], ["Docker Milvus"], ["真实服务"]],
+      "tags": ["跨文档", "部署", "对比"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-050",
+      "question": "Milvus 支持的混合与关键词检索能力，是否意味着 DeepSearcher 当前生产配置已经启用 Hybrid？",
+      "answerable": true,
+      "reference_answer": "不意味着。Milvus 支持多向量 Hybrid 和 BM25 Keyword Search，DeepSearcher 代码也有混合路径，但当前 YAML 仍为 Dense-only；已有 Collection 若要启用还需新 Schema 和重新入库。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 2}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 22}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 23}],
+      "criteria": [["Milvus", "Hybrid"], ["BM25"], ["Dense-only"], ["重新入库", "新 Schema"]],
+      "tags": ["跨文档", "检索", "易错点"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-051",
+      "question": "从 Milvus 对 Embedding 的说明到 DeepSearcher 的具体配置，完整数据链路是什么？",
+      "answerable": true,
+      "reference_answer": "Embedding 把文本等非结构化数据转换为高维数值向量并存入 Milvus；DeepSearcher 对 Chunk 使用 text-embedding-v4 生成 1024 维向量，在线用同一模型生成查询向量并按 L2 从小到大检索。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 18}],
+      "criteria": [["非结构化", "数值向量", "unstructured", "numerical"], ["Chunk"], ["1024"], ["查询向量"], ["L2", "越小"]],
+      "tags": ["跨文档", "Embedding", "链路"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-052",
+      "question": "为什么不能把 Milvus 文档中的性能描述直接当成 DeepSearcher 的容量证明？",
+      "answerable": true,
+      "reference_answer": "Milvus 文档描述的是数据库自身在特定基准和架构下的能力；DeepSearcher 的端到端容量还受 Agent 放大、LLM 限额、线程池、网络、Embedding 和应用实现影响，当前没有正式容量压测或 SLO。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 23}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 28}],
+      "criteria": [["Milvus", "基准"], ["Agent", "LLM"], ["线程池"], ["压测", "容量"], ["SLO"]],
+      "tags": ["跨文档", "性能", "诚实边界"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-053",
+      "question": "为什么产品中存在 Citation 仍不能证明回答的每个事实都有依据？",
+      "answerable": true,
+      "reference_answer": "引用只说明系统保存了某些支持文档或来源位置；还必须逐条验证回答声明是否真正被对应片段支持。当前产品引用基础不能证明所有声明都 grounded。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 12}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 18}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 29}],
+      "criteria": [["引用", "支持文档"], ["逐条", "声明"], ["片段", "支持"], ["不能证明", "grounded"]],
+      "tags": ["跨文档", "引用", "可信回答"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-054",
+      "question": "为什么默认 Agent 路由与 Token 成本必须一起分析？",
+      "answerable": true,
+      "reference_answer": "默认 RAGRouter 会选择 DeepSearch 或 ChainOfRAG，而不是固定 NaiveRAG；DeepSearch 可能产生大量逐 Chunk 判断，ChainOfRAG 每轮也有多次 LLM 调用，因此不能按一次检索一次生成估算成本。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 27}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 37}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 22}],
+      "criteria": [["RAGRouter"], ["DeepSearch"], ["ChainOfRAG"], ["逐 Chunk", "逐条调用"], ["多次", "LLM"], ["不能", "一次"]],
+      "tags": ["跨文档", "路由", "成本"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-055",
+      "question": "DeepSearcher 从文档切分到浏览器引用的完整可信链路是什么？",
+      "answerable": true,
+      "reference_answer": "Loader 提取 PDF，splitter 生成带来源信息的 Chunk，Embedding 后写入 Milvus；查询时 Agent 检索并筛选支持文档，TraceCollector 输出脱敏定位信息，产品服务持久化为 Citation，React 在引用抽屉中展示。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 12}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 18}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 18}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 19}],
+      "criteria": [["Loader"], ["Chunk"], ["Embedding"], ["Milvus"], ["支持文档"], ["TraceCollector"], ["Citation"], ["React"]],
+      "tags": ["跨文档", "端到端", "引用"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-056",
+      "question": "资料规定 DeepSearcher 生产环境每秒必须支持多少个查询？",
+      "answerable": false,
+      "reference_answer": "资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["无答案", "容量"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-057",
+      "question": "DeepSearcher 当前每月模型和基础设施费用的精确金额是多少？",
+      "answerable": false,
+      "reference_answer": "资料没有提供月度精确费用；现有 Token 统计也不足以形成完整账单。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["无答案", "成本"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-058",
+      "question": "当前业务评测证明 DeepSearch 比 NaiveRAG 的答案准确率高多少个百分点？",
+      "answerable": false,
+      "reference_answer": "资料没有给出这一业务准确率提升结论，不能编造提升比例。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["无答案", "评测", "陷阱"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-059",
+      "question": "当前最终用户登录明确采用了哪一家 OIDC 身份提供商？",
+      "answerable": false,
+      "reference_answer": "资料没有确定 OIDC 身份提供商，当前也没有最终用户登录与 RBAC。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["无答案", "安全"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-060",
+      "question": "Milvus 文档承诺所有向量检索在任何数据规模下都能达到多少毫秒延迟？",
+      "answerable": false,
+      "reference_answer": "资料没有给出适用于所有数据规模和环境的固定毫秒延迟承诺。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["无答案", "Milvus", "性能"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-061",
+      "question": "那三种分别适合什么场景？",
+      "history": [
+        {"role": "user", "content": "Milvus 是什么，它有哪些部署形态？"},
+        {"role": "assistant", "content": "Milvus 是向量数据库，部署形态包括 Lite、Standalone 和 Distributed。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？",
+      "answerable": true,
+      "reference_answer": "Lite 适合本地原型或边缘设备，Standalone 是单机 Docker 服务，Distributed 面向 Kubernetes 上的十亿级及更大规模。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}],
+      "criteria": [["Lite", "轻量"], ["Standalone", "单机"], ["Distributed", "Kubernetes"], ["原型", "prototyping"]],
+      "tags": ["多轮", "指代", "部署", "单文档"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-062",
+      "question": "换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？",
+      "history": [
+        {"role": "user", "content": "Milvus 有哪些部署形态？"},
+        {"role": "assistant", "content": "包括 Lite、Standalone 和 Distributed。"}
+      ],
+      "context_dependent": false,
+      "standalone_question": "换个话题，FastAPI 应用启动时如何管理外部组件的生命周期？",
+      "answerable": true,
+      "reference_answer": "导入 main.py 时不连接外部组件；lifespan 创建 RuntimeRegistry 和活动 runtime。请求通过 Depends 获取租约，版本切换后旧实例等旧请求结束再关闭，停机时等待 SSE 清理并释放客户端。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 4}],
+      "criteria": [["导入", "不连接"], ["lifespan"], ["RuntimeRegistry"], ["租约"], ["旧请求", "关闭"]],
+      "tags": ["多轮", "话题切换", "FastAPI", "单文档"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-063",
+      "question": "那是越大越相似吗？",
+      "history": [
+        {"role": "user", "content": "当前项目的向量检索用什么距离？"},
+        {"role": "assistant", "content": "当前使用 Milvus 返回的 L2 distance。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "DeepSearcher 当前使用的 L2 distance 是越大越相似吗？",
+      "answerable": true,
+      "reference_answer": "不是。L2 是欧氏距离，越小越近；项目名为 score 的字段实际承载 Milvus 返回的 distance，不能解释成越大越相似。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 14}],
+      "criteria": [["越小越近"], ["distance"], ["不能", "越大越相似"]],
+      "tags": ["多轮", "指代", "Embedding", "易错点"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-064",
+      "question": "那两者到底差在哪一步？",
+      "history": [
+        {"role": "user", "content": "分块时既有 chunk_overlap，也有 wider_text。"},
+        {"role": "assistant", "content": "它们都与上下文完整性有关，但作用阶段不同。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "chunk_overlap 和 wider_text 分别作用在哪一步，有什么区别？",
+      "answerable": true,
+      "reference_answer": "overlap 发生在文档切分阶段，用重复文字缓解边界断裂；wider_text 在命中后的生成阶段补充更宽上下文。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 8}],
+      "criteria": [["切分", "边界"], ["生成", "上下文"], ["overlap"], ["wider_text"]],
+      "tags": ["多轮", "省略", "Chunk", "对比"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-065",
+      "question": "如果只跑一轮，为什么看不到它？",
+      "history": [
+        {"role": "user", "content": "DeepSearch 每轮检索后会做反思吗？"},
+        {"role": "assistant", "content": "非最后一轮可以执行反思并生成补充查询。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "DeepSearch 设置 max_iter=1 时为什么看不到反思事件？",
+      "answerable": true,
+      "reference_answer": "第一轮同时就是最后一轮，代码在检索后直接退出，不进入非最后一轮的反思与补充查询逻辑。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 33}],
+      "criteria": [["最后一轮"], ["直接退出"], ["不", "反思"]],
+      "tags": ["多轮", "指代", "DeepSearch", "反思"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-066",
+      "question": "默认关掉它具体意味着什么，又有什么误判风险？",
+      "history": [
+        {"role": "user", "content": "ChainOfRAG 有 early stopping 吗？"},
+        {"role": "assistant", "content": "有充分性判断控制的 early stopping，但当前默认关闭。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "ChainOfRAG 的 early stopping 默认关闭具体意味着什么，又有哪些误判风险？",
+      "answerable": true,
+      "reference_answer": "过早停止会漏掉关键事实，过晚停止会浪费 Token 和延迟。默认关闭时不执行充分性判断、不记录反思，并一直运行到 max_iter。",
+      "evidence": [{"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 45}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 46}],
+      "criteria": [["过早", "漏"], ["过晚", "Token", "延迟"], ["默认关闭"], ["max_iter"], ["不", "反思"]],
+      "tags": ["多轮", "指代", "ChainOfRAG", "多证据"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-067",
+      "question": "为什么浏览器不能直接把这个路径交给它？",
+      "history": [
+        {"role": "user", "content": "核心 API 提供 /load-files/ 文件入库接口。"},
+        {"role": "assistant", "content": "该接口接收后端机器可读取的文件路径。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "为什么用户浏览器不能直接把本地文件路径交给 /load-files/？",
+      "answerable": true,
+      "reference_answer": "它读取的是 FastAPI 所在机器可见的路径，浏览器电脑上的路径对远端后端没有意义，因此需要 BFF 先接收文件并保存成后端可见文件。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 9}],
+      "criteria": [["后端", "机器"], ["浏览器", "路径"], ["BFF", "保存"]],
+      "tags": ["多轮", "指代", "上传", "边界"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "workspace-068",
+      "question": "它为什么不算思维链，最后又怎么变成引用？",
+      "history": [
+        {"role": "user", "content": "DeepSearcher 查询可以返回 Trace。"},
+        {"role": "assistant", "content": "Trace 记录系统显式执行阶段。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "DeepSearcher Trace 为什么不算模型思维链，最后又如何变成产品引用？",
+      "answerable": true,
+      "reference_answer": "TraceCollector 记录路由、检索、支持、反思和 Token 等显式应用事件，并做截断脱敏；核心 API 返回安全 Trace/SSE 阶段，产品层将支持文档持久化为 Citation。它不读取模型隐藏推理。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 18}],
+      "criteria": [["显式", "应用事件"], ["不", "隐藏思维链"], ["脱敏", "截断"], ["Citation"], ["SSE"]],
+      "tags": ["多轮", "指代", "Trace", "引用"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-069",
+      "question": "所以现在默认已经用上两路融合了吗？",
+      "history": [
+        {"role": "user", "content": "Dense 和 BM25 可以组成 Hybrid，再用 RRF 融合。"},
+        {"role": "assistant", "content": "代码中存在相应的混合检索路径。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "DeepSearcher 当前默认配置已经使用 Dense 与 BM25 两路 Hybrid 和 RRF 融合了吗？",
+      "answerable": true,
+      "reference_answer": "没有。Dense 用 Embedding 找语义近似，BM25 找字面匹配，Hybrid 同时召回两路，RRF 按排名融合；当前 YAML 仍是 Dense-only。",
+      "evidence": [{"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 22}, {"document": "DeepSearcher第二阶段学习讲义-手机阅读版.pdf", "page": 23}],
+      "criteria": [["Dense", "语义"], ["BM25", "字面"], ["Hybrid", "两路"], ["RRF", "排名"], ["Dense-only"]],
+      "tags": ["多轮", "省略", "Hybrid", "易错点"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-070",
+      "question": "那这个项目本地选的是哪一种，为什么？",
+      "history": [
+        {"role": "user", "content": "Milvus 官方有 Lite、Standalone 和 Distributed 三种部署形态。"},
+        {"role": "assistant", "content": "三种形态面向不同规模与运行环境。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "DeepSearcher 当前本地 Milvus 选择对应 Lite、Standalone 和 Distributed 中的哪一种，为什么？",
+      "answerable": true,
+      "reference_answer": "DeepSearcher 当前使用 Docker Milvus 来验证真实服务连接和故障，更接近 Standalone，而不是 Lite 或 Kubernetes Distributed。",
+      "evidence": [{"document": "WhatisMilvus.pdf", "page": 1}, {"document": "DeepSearcher第一阶段学习讲义-手机阅读版.pdf", "page": 20}],
+      "criteria": [["Lite"], ["Standalone"], ["Distributed"], ["Docker Milvus"], ["真实服务"]],
+      "tags": ["多轮", "跨文档", "指代", "部署"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "workspace-071",
+      "question": "那具体必须达到多少？",
+      "history": [
+        {"role": "user", "content": "如果要把 DeepSearcher 用到生产，需要关注并发和容量。"},
+        {"role": "assistant", "content": "资料强调要通过正式压测建立容量结论。"}
+      ],
+      "context_dependent": true,
+      "standalone_question": "资料规定 DeepSearcher 生产环境每秒必须支持多少个查询？",
+      "answerable": false,
+      "reference_answer": "资料没有给出生产 QPS 指标，且明确不能在没有正式压测时声称容量上限。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["多轮", "省略", "无答案", "容量"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "workspace-072",
+      "question": "另一个问题：当前最终用户登录明确采用了哪一家 OIDC 身份提供商？",
+      "history": [
+        {"role": "user", "content": "Milvus 的多租户能力有哪些？"},
+        {"role": "assistant", "content": "资料提到 Partition Key 和 Clustering Key。"}
+      ],
+      "context_dependent": false,
+      "standalone_question": "另一个问题：当前最终用户登录明确采用了哪一家 OIDC 身份提供商？",
+      "answerable": false,
+      "reference_answer": "资料没有确定 OIDC 身份提供商，当前也没有最终用户登录与 RBAC。",
+      "evidence": [],
+      "criteria": [],
+      "tags": ["多轮", "话题切换", "无答案", "安全"],
+      "difficulty": "easy"
+    }
+  ]
+}
