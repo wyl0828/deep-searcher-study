@@ -1,15 +1,13 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a reproducible problem in DeepSearcher Study
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-Please describe your issue **in English**
-
-*Note: Small LLMs cannot perform well at prompt following, and are prone to hallucinations. Please make sure your LLM is cutting-edge, preferably a reasoning model, e.g. OpenAI o-series, DeepSeek R1, Claude 3.7 Sonnet etc.*
+请描述可复现的问题；中文或英文均可。请勿粘贴 API Key、服务令牌、用户资料、完整私有文档或生产日志。
 
 **Describe the bug**
 A clear and concise description of what the bug is.

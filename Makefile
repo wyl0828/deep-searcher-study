@@ -1,7 +1,13 @@
 lint:
-	uv run ruff format --diff
-	uv run ruff check
+	uv run --frozen ruff format --diff .
+	uv run --frozen ruff check .
 
 format:
-	uv run ruff format
-	uv run ruff check --fix
+	uv run --frozen ruff format .
+	uv run --frozen ruff check --fix .
+
+test:
+	uv run --frozen pytest -q
+
+quality:
+	uv run --frozen python scripts/quality_gate.py --mode fast

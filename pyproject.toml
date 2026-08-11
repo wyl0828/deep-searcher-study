@@ -23,15 +23,21 @@ dependencies = [
     "tqdm>=4.67.1",
     "uvicorn>=0.34.2",
 ]
-description = "None"
+description = "Independently maintained trustworthy RAG research and engineering project"
 license = { file = "LICENSE"}
 authors = [
     { name = "Cheney Zhang", email = "277584121@qq.com" },
     { name = "SimFG", email = "bang.fu@zilliz.com" }
 ]
+# Upstream authors remain credited; current fork stewardship is declared separately.
+maintainers = [
+    { name = "DeepSearcher Study maintainers" }
+]
 
 [project.urls]
-Homepage = "https://github.com/zilliztech/deep-searcher"
+Homepage = "https://github.com/wyl0828/deep-searcher-study"
+Repository = "https://github.com/wyl0828/deep-searcher-study"
+Upstream = "https://github.com/zilliztech/deep-searcher"
 
 [project.scripts]
 deepsearcher = "deepsearcher.cli:main"

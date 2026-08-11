@@ -1,13 +1,13 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
+about: Propose an improvement to DeepSearcher Study
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-Please describe your suggestion **in English**.
+请说明建议与它要解决的问题；中文或英文均可。涉及可信度、风险或时效策略时，请说明预期的可验证行为。
 
 **Is your feature request related to a problem? Please describe.**
 A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]

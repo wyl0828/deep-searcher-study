@@ -9,8 +9,7 @@ on:
       - '.github/workflows/docs.yml'
   push:
     branches:
-      - "**"
-      - "!gh-pages"
+      - "study-baseline"
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
@@ -18,7 +17,6 @@ on:
 
 jobs:
   build-docs:
-    if: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name != 'zilliztech/deep-searcher') }}
     uses: ./.github/workflows/docs.yml
     with:
       deploy: false

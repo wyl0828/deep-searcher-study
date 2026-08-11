@@ -1,159 +1,47 @@
-# Contributing to DeepSearcher
+# 贡献指南
 
-We welcome contributions from everyone. This document provides guidelines to make the contribution process straightforward.
+感谢你关注 DeepSearcher Study。它是一个独立维护的 Apache-2.0 衍生项目，重点是可信 RAG 的证据管理、
+答案核验与质量评测；项目与上游的关系、许可和同步原则见 [UPSTREAM.md](UPSTREAM.md)。
 
+## 开始之前
 
-## Pull Request Process
+1. 阅读 [README.md](README.md)、[路线图](docs/roadmap/trustworthy-rag-roadmap.md) 和相关 ADR，确认改动符合当前维护方向。
+2. 对于通用且适合上游的修复，请保持为小而独立的变更，考虑向上游项目单独提交；不要把尚未被上游接纳的内容表述为上游能力。
+3. 不要提交 API Key、服务令牌、用户资料、学习记录、面试材料、真实业务文档、运行日志或本地数据库。
 
-1. Fork the repository and create your branch from `master`.
-2. Make your changes.
-3. Run tests and linting to ensure your code meets the project's standards.
-4. Update documentation if necessary.
-5. Submit a pull request.
+## 本地环境
 
+项目主要在 Windows 本地工作台环境中维护，需要 Python 3.10+、[uv](https://docs.astral.sh/uv/getting-started/)、
+Node.js 20+，以及 Docker Desktop（用于 Milvus）。
 
-## Linting and Formatting
-
-Keeping a consistent style for code, code comments, commit messages, and PR descriptions will greatly accelerate your PR review process.
-We require you to run code linter and formatter before submitting your pull requests:
-
-To check the coding styles:
-
-```shell
-make lint
+```powershell
+git clone https://github.com/wyl0828/deep-searcher-study.git
+Set-Location deep-searcher-study
+Copy-Item env.example .env
+uv sync --frozen
 ```
 
-To fix the coding styles:
+当前默认配置使用 DeepSeek 生成模型和 OpenAI Embedding；按 `deepsearcher/config.yaml` 与 `.env` 配置所需密钥。
+不要把 `.env` 或本地数据加入提交。
 
-```shell
-make format
-```
-Our CI pipeline also runs these checks automatically on all pull requests to ensure code quality and consistency.
+## 提交前检查
 
+请先运行快速质量门禁：
 
-## Development Environment Setup with uv
-
-DeepSearcher uses [uv](https://github.com/astral-sh/uv) as the recommended package manager. uv is a fast, reliable Python package manager and installer. The project's `pyproject.toml` is configured to work with uv, which will provide faster dependency resolution and package installation compared to traditional tools.
-
-### Install Project in Development Mode(aka Editable Installation)
-
-1. Install uv if you haven't already:
-   Follow the [offical installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
-
-2. Clone the repository and navigate to the project directory:
-   ```shell
-   git clone https://github.com/zilliztech/deep-searcher.git && cd deep-searcher
-   ```
-3. Synchronize and install dependencies:
-   ```shell
-   uv sync
-   source .venv/bin/activate
-   ```
-   `uv sync` will install all dependencies specified in `uv.lock` file. And the `source .venv/bin/activate` command will activate the virtual environment.
-
-   - (Optional) To install all optional dependencies:
-      ```shell
-      uv sync --all-extras --dev
-      ```
-
-   - (Optional) To install specific optional dependencies:
-      ```shell
-      # Take optional `ollama` dependency for example
-      uv sync --extra ollama
-      ```
-   For more optional dependencies, refer to the `[project.optional-dependencies]` part of `pyproject.toml` file.
-
-
-
-### Adding Dependencies
-
-When you need to add new dependencies to the `pyproject.toml` file, you can use the following commands:
-
-```shell
-uv add <package_name>
-```
-DeepSearcher uses optional dependencies to keep the default installation lightweight. Optional features can be installed using the syntax `deepsearcher[<extra>]`. To add a dependency to an optional extra, use the following command:
-
-```shell
-uv add <package_name> --optional <extra>
-```
-For more details, refer to the [offical Managing dependencies documentation](https://docs.astral.sh/uv/concepts/projects/dependencies/).
-
-### Dependencies Locking
-
-For development, we use lockfiles to ensure consistent dependencies. You can use 
-```shell
-uv lock --check
-```
-to verify if your lockfile is up-to-date with your project dependencies.
-
-When you modify or add dependencies in the project, the lockfile will be automatically updated the next time you run a uv command. You can also explicitly update the lockfile using:
-```shell
-uv lock
+```powershell
+.\scripts\run-quality-gate.ps1 -Mode Fast
 ```
 
-While the environment is synced automatically, it may also be explicitly synced using uv sync:
-```shell
-uv sync
-```
-Syncing the environment manually is especially useful for ensuring your editor has the correct versions of dependencies.
+它覆盖 Python 检查与测试、前端测试/类型检查/构建、Chromium E2E、迁移、Trust 金标评测、文档构建和
+`git diff --check`。如果改动影响真实检索、模型调用或评测阈值，请额外阅读
+[evaluation/README.md](evaluation/README.md)，明确记录数据集、配置和成本边界。
 
+## Pull Request 要求
 
-For more detailed information about dependency locking and syncing, refer to the [offical Locking and syncing documentation](https://docs.astral.sh/uv/concepts/projects/sync/).
+- 从 `study-baseline` 创建分支，并说明问题、设计取舍、测试命令和结果。
+- 改动 Trust、Policy、Risk、Freshness 或 Provenance 时，同步更新对应 ADR、数据集或测试；不要用 Stub
+  结果声称真实模型质量。
+- 保持声明可核验：性能、质量和安全结论必须标明运行条件与已知限制。
+- 每个提交应聚焦单一主题；避免格式化无关文件或混入本地学习材料。
 
-
-## Running Tests
-
-Before submitting your pull request, make sure to run the test suite to ensure your changes haven't introduced any regressions.
-
-### Installing Test Dependencies
-
-First, ensure you have pytest installed. If you haven't installed the development dependencies yet, you can do so with:
-
-```shell
-uv sync --all-extras --dev
-```
-
-This will install all development dependencies and optional dependencies including pytest and other testing tools.
-
-### Running the Tests
-
-To run all tests in the `tests` directory:
-
-```shell
-uv run pytest tests
-```
-
-For more verbose output that shows individual test results:
-
-```shell
-uv run pytest tests -v
-```
-
-You can also run tests for specific directories or files. For example:
-
-```shell
-# Run tests in a specific directory
-uv run pytest tests/embedding
-
-# Run tests in a specific file
-uv run pytest tests/embedding/test_bedrock_embedding.py
-
-# Run a specific test class
-uv run pytest tests/embedding/test_bedrock_embedding.py::TestBedrockEmbedding
-
-# Run a specific test method
-uv run pytest tests/embedding/test_bedrock_embedding.py::TestBedrockEmbedding::test_init_default
-```
-
-The `-v` flag (verbose mode) provides more detailed output, showing each test case and its result individually. This is particularly useful when you want to see which specific tests are passing or failing.
-
-
-## Developer Certificate of Origin (DCO)
-
-All contributions require a sign-off, acknowledging the [Developer Certificate of Origin](https://developercertificate.org/). 
-Add a `Signed-off-by` line to your commit message:
-
-```text
-Signed-off-by: Your Name <your.email@example.com>
-```
+维护者会根据项目路线、质量证据、可维护性和安全边界进行审查。
