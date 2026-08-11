@@ -34,7 +34,14 @@ DeepSearcher Study 是基于 [zilliztech/deep-searcher](https://github.com/zilli
 
 DeepSearcher Study 结合大语言模型与向量数据库，对私有资料执行检索、推理、证据核验与质量评估，适用于需要可追溯回答的知识管理、学习和信息检索场景。
 
-![Architecture](./assets/pic/deep-searcher-arch.png)
+## 当前产品界面
+
+<p align="center">
+  <img src="./output/product-audit-2026-08-02-a11y/05-knowledge-improved.png" alt="知识库治理页：文档状态、重建索引与上传入口" width="48%" />
+  <img src="./output/playwright/p01-citation-drawer.png" alt="问答页：带引用回答与证据定位抽屉" width="48%" />
+</p>
+
+<p align="center"><em>左：知识库、文档和索引状态治理；右：回答、引用来源与原文定位。</em></p>
 
 ## 核心能力
 
@@ -46,8 +53,12 @@ DeepSearcher Study 结合大语言模型与向量数据库，对私有资料执�
 
 ---
 
-## 🎉 Demo
-![demo](./assets/pic/demo.gif)
+## 产品工作流
+
+用户在工作台中创建知识库、上传并持久化处理资料，然后发起带引用的问答。回答页面会显示引用来源和
+Evidence 内部定位；当证据不足、发生冲突或当前时效无法证明时，Trust Layer 会保留可审计状态并采取
+保守的降级或拒答策略。详细交互与质量边界见[路线图](docs/roadmap/trustworthy-rag-roadmap.md)和
+[评测说明](evaluation/README.md)。
 
 
 ## 📖 快速入门
