@@ -16,7 +16,7 @@
 - 修改： `.gitignore` — 排除 Milvus 数据、日志、测试 PDF 和本地密钥。
 - 修改： `deepsearcher/config.yaml` — 将向量库从本地文件切换到 Docker Milvus；模型通过阿里云百炼 OpenAI 兼容入口调用。
 - 新建： `data/baseline/aurora-facts.pdf` — 不进入 Git 的端到端测试 PDF。
-- 新建： `docs/验证记录/2026-07-01-original-baseline.md` — 保存实际版本、命令和验收结果。
+- 本地记录：实际版本、命令和验收结果保存在私有验证笔记中，不纳入公开仓库。
 - 保留： `deepsearcher/agent/`、`deepsearcher/loader/`、`deepsearcher/vector_db/`、`deepsearcher/offline_loading.py`、`deepsearcher/online_query.py`。
 
 ### 任务 1: 建立官方源码基线
@@ -522,7 +522,7 @@ Execution note: 首次查询返回 `Lin Qiao owns Project Aurora, and its approv
 ### 任务 8: 记录结果并完成审计
 
 **文件：**
-- 新建： `docs/验证记录/2026-07-01-original-baseline.md`
+- 本地记录：实际版本、命令和验收结果保存在私有验证笔记中。
 
 - [x] **步骤 1: 写入实际验证记录**
 
@@ -586,13 +586,6 @@ git diff --exit-code upstream/master...HEAD -- deepsearcher/agent deepsearcher/l
 
 预期： 退出码为 0。
 
-- [x] **步骤 4: 提交验证记录**
+- [x] **步骤 4: 归档验证记录**
 
-运行：
-
-```powershell
-git add docs/验证记录/2026-07-01-original-baseline.md
-git commit -m "docs: record DeepSearcher baseline verification"
-```
-
-预期： 本地提交成功，不自动推送。
+验证记录保留在本地私有目录，并由 `.gitignore` 排除；公开仓库只保留可复现的配置、测试和评测材料。

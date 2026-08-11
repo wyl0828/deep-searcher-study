@@ -94,9 +94,8 @@ Ruff:        D-01 修改范围 passed
 Milvus/Qdrant/Oracle 存储、核心 Manifest 与重建 API、产品数据库迁移、产品重建服务和
 React 用户引导。
 
-全仓 Ruff 还报告了本次范围外的
-`scripts/generate_mobile_learning_pdf.py` 原有 import 排序和未使用 import；为避免改动用户的
-无关文件，本次未处理。Python 全量测试中的两个 crawler coroutine warning 也与 D-01 无关，
+全仓 Ruff 还报告了本次范围外的本地学习 PDF 生成器存在 import 排序和未使用 import；为避免改动用户的
+私有辅助文件，本次未处理。Python 全量测试中的两个 crawler coroutine warning 也与 D-01 无关，
 不影响测试通过。
 
 ## 真实 Milvus 与浏览器验证

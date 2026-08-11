@@ -215,6 +215,13 @@ pyrightconfig.json
 /output/playwright/e2e-report/
 /output/playwright/e2e-results/
 
+# Private learning and interview materials (kept locally, never published)
+/docs/学习计划/
+/docs/验证记录/
+/docs/开发记录/设计规范/2026-07-09-学习记录面试题优化设计.md
+/docs/开发记录/实施计划/2026-07-09-学习记录面试题优化.md
+/scripts/generate_mobile_learning_pdf.py
+
 # Resumable evaluation working files (final report.json/details.csv stay versioned)
 /evaluation/results/**/checkpoint.jsonl
 /evaluation/results/**/checkpoint.meta.json
