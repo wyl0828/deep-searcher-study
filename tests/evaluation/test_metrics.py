@@ -1,3 +1,5 @@
+import pytest
+
 from deepsearcher.vector_db.base import RetrievalResult
 from evaluation.dataset import EvalSample, EvidenceTarget
 from evaluation.metrics import aggregate, criteria_coverage, evaluate_sample
@@ -141,6 +143,213 @@ def test_claim_level_metrics_reject_wrong_source_and_measure_support():
     assert row["invalid_claim_citation_rate"] == 0.5
     assert row["claim_citation_precision"] == 1
     assert row["claim_citation_recall"] == 1
+
+
+def test_trust_metrics_measure_pre_policy_consistency_and_answer_changes():
+    trust = {
+        "input": {
+            "claims": [
+                {
+                    "support_status": "supported",
+                    "consistency_status": "consistent",
+                    "entailment_status": "entailed",
+                    "risk_status": "passed",
+                },
+                {
+                    "support_status": "unsupported",
+                    "consistency_status": "inconsistent",
+                    "entailment_status": "contradicted",
+                    "risk_status": "rejected",
+                },
+                {
+                    "support_status": "supported",
+                    "consistency_status": "not_applicable",
+                    "entailment_status": "unknown",
+                    "risk_status": "rejected",
+                },
+            ]
+        },
+        "entailment": {"token_usage": 23},
+        "risk": {"risk_level": "high", "query_type": "financial_policy"},
+        "policy": {"action": "downgrade", "answer_changed": True},
+        "provenance": {
+            "version": 2,
+            "digest": "sha256:" + "a" * 64,
+            "evidence": {
+                "snapshot_status": "complete",
+                "evidence_count": 2,
+                "knowledge_base_count": 1,
+                "web_count": 1,
+                "items": [
+                    {
+                        "source_type": "knowledge_base",
+                        "publication_anchor_bound": True,
+                        "version_family_bound": True,
+                    },
+                    {
+                        "source_type": "web",
+                        "publication_anchor_bound": False,
+                        "version_family_bound": False,
+                    },
+                ],
+            },
+            "temporal": {
+                "version": 1,
+                "source": "request_clock",
+                "reference_date": "2026-08-11",
+                "timezone": "Asia/Shanghai",
+                "fingerprint": "sha256:" + "b" * 64,
+            },
+        },
+    }
+    row = evaluate_sample(
+        answerable_sample(),
+        [result()],
+        answer="Milvus 是向量数据库。[E1]",
+        top_k=5,
+        latency_ms=1,
+        tokens=1,
+        trust=trust,
+    )
+
+    assert row["trust_input_claim_count"] == 3
+    assert row["trust_input_claim_support_rate"] == pytest.approx(2 / 3)
+    assert row["consistency_checked_claim_count"] == 2
+    assert row["consistency_inconsistency_rate"] == 0.5
+    assert row["entailment_checked_claim_count"] == 3
+    assert row["entailment_coverage_rate"] == 1
+    assert row["entailment_contradiction_rate"] == pytest.approx(1 / 3)
+    assert row["entailment_unknown_rate"] == pytest.approx(1 / 3)
+    assert row["entailment_token_usage"] == 23
+    assert row["risk_level"] == "high"
+    assert row["query_type"] == "financial_policy"
+    assert row["risk_rejected_claim_count"] == 2
+    assert row["risk_claim_rejection_rate"] == pytest.approx(2 / 3)
+    assert row["policy_action"] == "downgrade"
+    assert row["policy_answer_changed"] is True
+    assert row["provenance_available"] is True
+    assert row["provenance_contract_version"] == 2
+    assert row["temporal_provenance_bound"] is True
+    assert row["evidence_provenance_status"] == "complete"
+    assert row["evidence_provenance_bound"] is True
+    assert row["evidence_provenance_complete"] is True
+    assert row["web_evidence_provenance_count"] == 1
+    assert row["evidence_publication_anchor_count"] == 1
+    assert row["evidence_publication_anchor_eligible_count"] == 1
+    assert row["evidence_publication_anchor_coverage_rate"] == 1
+    assert row["evidence_version_family_count"] == 1
+    assert row["evidence_version_family_eligible_count"] == 1
+    assert row["evidence_version_family_coverage_rate"] == 1
+    summary = aggregate([row])
+    assert summary["trust_input_claim_support_rate"] == 0.6667
+    assert summary["consistency_inconsistency_rate"] == 0.5
+    assert summary["entailment_coverage_rate"] == 1
+    assert summary["entailment_contradiction_rate"] == 0.3333
+    assert summary["entailment_unknown_rate"] == 0.3333
+    assert summary["entailment_tokens"] == {"total": 23, "average": 23.0}
+    assert summary["high_risk_sample_count"] == 1
+    assert summary["high_risk_rate"] == 1
+    assert summary["risk_claim_rejection_rate"] == 0.6667
+    assert summary["policy_change_rate"] == 1
+    assert summary["provenance_coverage_rate"] == 1
+    assert summary["temporal_provenance_bound_rate"] == 1
+    assert summary["evidence_provenance_bound_rate"] == 1
+    assert summary["evidence_provenance_complete_rate"] == 1
+    assert summary["web_evidence_provenance_count"] == 1
+    assert summary["evidence_publication_anchor_count"] == 1
+    assert summary["evidence_publication_anchor_eligible_count"] == 1
+    assert summary["evidence_publication_anchor_coverage_rate"] == 1
+    assert summary["evidence_version_family_count"] == 1
+    assert summary["evidence_version_family_eligible_count"] == 1
+    assert summary["evidence_version_family_coverage_rate"] == 1
+
+
+def test_relative_time_metrics_expose_unknown_and_fail_closed_rejection():
+    trust = {
+        "input": {
+            "claims": [
+                {
+                    "support_status": "unsupported",
+                    "consistency_status": "unknown",
+                    "consistency_checks": [
+                        {
+                            "kind": "relative_time",
+                            "status": "unknown",
+                            "reason_code": "RELATIVE_TIME_EVIDENCE_ANCHOR_MISSING",
+                        }
+                    ],
+                }
+            ]
+        },
+        "policy": {"action": "refuse", "answer_changed": True},
+    }
+
+    row = evaluate_sample(
+        answerable_sample(),
+        [result()],
+        answer="根据现有证据，无法给出有充分依据的回答。",
+        top_k=5,
+        latency_ms=1,
+        tokens=1,
+        trust=trust,
+    )
+
+    assert row["consistency_checked_claim_count"] == 1
+    assert row["consistency_unknown_claim_count"] == 1
+    assert row["consistency_unknown_rate"] == 1
+    assert row["relative_time_claim_count"] == 1
+    assert row["relative_time_unknown_rate"] == 1
+    assert row["relative_time_rejection_rate"] == 1
+    summary = aggregate([row])
+    assert summary["consistency_unknown_rate"] == 1
+    assert summary["relative_time_unknown_rate"] == 1
+    assert summary["relative_time_rejection_rate"] == 1
+
+
+def test_freshness_metrics_expose_intent_unknown_and_fail_closed_rejection():
+    trust = {
+        "input": {
+            "claims": [
+                {
+                    "support_status": "unsupported",
+                    "consistency_status": "unknown",
+                    "consistency_checks": [
+                        {
+                            "kind": "freshness",
+                            "status": "unknown",
+                            "reason_code": "FRESHNESS_RECENCY_WINDOW_UNDEFINED",
+                        }
+                    ],
+                }
+            ]
+        },
+        "freshness": {
+            "required": True,
+            "mode": "recent",
+        },
+        "policy": {"action": "refuse", "answer_changed": True},
+    }
+
+    row = evaluate_sample(
+        answerable_sample(),
+        [result()],
+        answer="根据现有证据，无法给出有充分依据的回答。",
+        top_k=5,
+        latency_ms=1,
+        tokens=1,
+        trust=trust,
+    )
+
+    assert row["freshness_mode"] == "recent"
+    assert row["freshness_required"] is True
+    assert row["freshness_claim_count"] == 1
+    assert row["freshness_unknown_rate"] == 1
+    assert row["freshness_rejection_rate"] == 1
+    summary = aggregate([row])
+    assert summary["freshness_required_sample_count"] == 1
+    assert summary["freshness_required_rate"] == 1
+    assert summary["freshness_unknown_rate"] == 1
+    assert summary["freshness_rejection_rate"] == 1
 
 
 def test_empty_answerable_result_is_counted_as_miss():

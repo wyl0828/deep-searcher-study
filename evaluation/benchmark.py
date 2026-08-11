@@ -16,10 +16,18 @@ from typing import Any, Callable, Mapping, Sequence
 
 from deepsearcher.agent import ChainOfRAG, DeepSearch, NaiveRAG
 from deepsearcher.configuration import Configuration, RuntimeComponents, build_runtime
+from deepsearcher.entailment import build_entailment_checker
+from deepsearcher.provenance import TrustProvenanceSession
 from deepsearcher.query_context import contextualize_query
 from deepsearcher.trace import TraceCollector
+from deepsearcher.trust import temporal_timezone_from_query_settings
 from evaluation.dataset import EvalDataset, load_dataset
-from evaluation.metrics import METRIC_VERSION, aggregate, evaluate_sample
+from evaluation.metrics import (
+    METRIC_VERSION,
+    TRUST_METRIC_VERSION,
+    aggregate,
+    evaluate_sample,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = ROOT / "evaluation" / "datasets" / "workspace_v2.json"
@@ -137,6 +145,11 @@ def create_agents(
     chain_min_evidence_for_stop: int = 2,
 ) -> dict[str, Any]:
     llm = CountingLLM(runtime.llm)
+    trust_settings = runtime.config.query_settings.get("trust", {})
+    entailment_settings = (
+        trust_settings.get("entailment", {}) if isinstance(trust_settings, dict) else {}
+    )
+    entailment_checker = build_entailment_checker(llm, entailment_settings)
     shared = {
         "llm": llm,
         "embedding_model": runtime.embedding_model,
@@ -144,7 +157,7 @@ def create_agents(
         "route_collection": True,
         "text_window_splitter": True,
     }
-    return {
+    agents = {
         "naive": NaiveRAG(**shared),
         "deep_search": DeepSearch(
             **shared,
@@ -160,6 +173,10 @@ def create_agents(
             min_evidence_for_stop=chain_min_evidence_for_stop,
         ),
     }
+    for agent in agents.values():
+        agent.entailment_checker = entailment_checker
+        agent.runtime_components = runtime
+    return agents
 
 
 def apply_llm_timeout_override(runtime: RuntimeComponents, timeout_seconds: float | None) -> None:
@@ -438,6 +455,7 @@ def evaluate_agent(
         results: Sequence[Any] = ()
         answer: str | None = None
         grounding: dict[str, Any] | None = None
+        trust: dict[str, Any] | None = None
         tokens = 0
         error = None
         contextualization = None
@@ -464,7 +482,21 @@ def evaluate_agent(
                 "top_k": top_k,
             }
             if mode == "answer":
-                collector = TraceCollector(sample.question)
+                provenance_session = TrustProvenanceSession(
+                    getattr(agent, "runtime_components", agent),
+                    collection_names=[collection],
+                    execution_scope="evaluation",
+                )
+                collector = TraceCollector(
+                    sample.question,
+                    entailment_checker=getattr(agent, "entailment_checker", None),
+                    provenance=provenance_session.snapshot(),
+                    provenance_resolver=provenance_session.bind_collections,
+                    evidence_provenance_resolver=provenance_session.bind_evidence,
+                    temporal_timezone=temporal_timezone_from_query_settings(
+                        agent.runtime_components.config.query_settings
+                    ),
+                )
                 if contextualization is not None:
                     collector.record_contextualization(
                         depends_on_history=contextualization.depends_on_history,
@@ -479,11 +511,15 @@ def evaluate_agent(
                     **kwargs,
                 )
                 tokens += int(agent_tokens or 0)
-                grounding = collector.build(
+                answer = collector.finalize_answer(answer, results, enforce_policy=True)
+                tokens += collector.trust_tokens
+                trace = collector.build(
                     total_tokens=tokens,
                     final_results=results,
                     answer=answer,
-                ).get("grounding")
+                )
+                grounding = trace.get("grounding")
+                trust = trace.get("trust")
             else:
                 results, agent_tokens, _ = agent.retrieve(effective_query, **kwargs)
                 tokens += int(agent_tokens or 0)
@@ -502,6 +538,7 @@ def evaluate_agent(
             error=error,
             source_aliases=source_aliases,
             grounding=grounding,
+            trust=trust,
         )
         row["agent"] = agent_name
         row["context_expected_dependency"] = sample.context_dependent if sample.history else None
@@ -614,6 +651,7 @@ def build_report(
     report = {
         "report_schema_version": 2,
         "metric_version": METRIC_VERSION,
+        "trust_metric_version": TRUST_METRIC_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset": {
             "id": dataset.dataset_id,
@@ -662,6 +700,16 @@ def build_report(
             "claim_support_rate": "生成答案中带有本次有效证据编号的声明比例。",
             "claim_citation_precision": "声明实际引用的证据中，命中金标文档与页码的比例。",
             "claim_citation_recall": "金标证据页中至少被一个声明引用的比例。",
+            "trust_input_claim_support_rate": "策略执行前、通过当前 Trust Checker 的声明比例。",
+            "consistency_inconsistency_rate": "触发确定性一致性检查的声明中，明确不一致的比例。",
+            "consistency_unknown_rate": "触发确定性一致性检查的声明中，因缺少可信判定锚点而 unknown 的比例。",
+            "relative_time_unknown_rate": "包含相对时间检查的声明中，缺少请求或文档时间锚点的比例。",
+            "relative_time_rejection_rate": "包含相对时间检查的声明中，被 Trust Policy 拒绝交付的比例。",
+            "freshness_unknown_rate": "要求当前/最新/近期判断的声明中，因缺少请求日期、业务日期或明确时间窗口而无法判定的比例。",
+            "freshness_rejection_rate": "要求时效判断的声明中，被 Freshness Policy 保守拒绝交付的比例。",
+            "evidence_publication_anchor_coverage_rate": "最终知识库证据中，绑定了显式文档发布日期、可安全解释相对时间的比例；网页证据不进入分母。",
+            "evidence_version_family_coverage_rate": "最终知识库证据中，绑定了可信文档系列、可限定版本比较范围的比例；网页证据不进入分母。",
+            "policy_change_rate": "Answer Policy 实际改写最终回答的样本比例。",
             "context_dependency_accuracy": "有历史样本中，是否需要依赖历史的分类准确率。",
             "context_query_match_rate": "上下文改写结果与数据集标注独立问题的规范化精确匹配率。",
         },
@@ -721,6 +769,35 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "claim_support_rate",
         "ungrounded_claim_rate",
         "invalid_claim_citation_rate",
+        "trust_input_claim_count",
+        "trust_input_supported_claim_count",
+        "trust_input_claim_support_rate",
+        "consistency_checked_claim_count",
+        "consistency_inconsistent_claim_count",
+        "consistency_inconsistency_rate",
+        "consistency_unknown_claim_count",
+        "consistency_unknown_rate",
+        "relative_time_claim_count",
+        "relative_time_unknown_claim_count",
+        "relative_time_unknown_rate",
+        "relative_time_rejected_claim_count",
+        "relative_time_rejection_rate",
+        "freshness_mode",
+        "freshness_required",
+        "freshness_claim_count",
+        "freshness_unknown_claim_count",
+        "freshness_unknown_rate",
+        "freshness_rejected_claim_count",
+        "freshness_rejection_rate",
+        "policy_action",
+        "policy_answer_changed",
+        "temporal_provenance_bound",
+        "evidence_publication_anchor_count",
+        "evidence_publication_anchor_eligible_count",
+        "evidence_publication_anchor_coverage_rate",
+        "evidence_version_family_count",
+        "evidence_version_family_eligible_count",
+        "evidence_version_family_coverage_rate",
         "claim_citation_precision",
         "claim_citation_recall",
         "latency_ms",
@@ -820,6 +897,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "dataset_version": dataset.version,
         "dataset_sha256": dataset.sha256,
         "metric_version": METRIC_VERSION,
+        "trust_metric_version": TRUST_METRIC_VERSION,
         "config_sha256": hashlib.sha256(args.config.read_bytes()).hexdigest(),
         "collection": args.collection,
         "mode": args.mode,

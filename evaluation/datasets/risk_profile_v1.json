@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "id": "deepsearcher-risk-profile-gold",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "financial-limit",
+      "category": "high-quantitative",
+      "query": "今年公司最高报销额度是多少？",
+      "expected_risk_level": "high",
+      "expected_query_type": "financial_policy",
+      "expected_minimum_sources": 2
+    },
+    {
+      "id": "audit-delete-permission",
+      "category": "high-decision",
+      "query": "普通成员是否可以删除审计日志？",
+      "expected_risk_level": "high",
+      "expected_query_type": "legal_compliance",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "contract-liability",
+      "category": "high-decision",
+      "query": "合同规定的赔偿责任是什么？",
+      "expected_risk_level": "high",
+      "expected_query_type": "financial_policy",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "medicine-dose",
+      "category": "high-quantitative",
+      "query": "这种药物的推荐剂量是多少？",
+      "expected_risk_level": "high",
+      "expected_query_type": "health_safety",
+      "expected_minimum_sources": 2
+    },
+    {
+      "id": "regulatory-requirement",
+      "category": "high-decision",
+      "query": "法规要求企业必须保存哪些审计记录？",
+      "expected_risk_level": "high",
+      "expected_query_type": "legal_compliance",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "password-access",
+      "category": "high-decision",
+      "query": "普通成员是否可以查看管理员密码？",
+      "expected_risk_level": "high",
+      "expected_query_type": "access_control",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "audit-retention-days",
+      "category": "high-quantitative",
+      "query": "审计日志必须保留多少天？",
+      "expected_risk_level": "high",
+      "expected_query_type": "legal_compliance",
+      "expected_minimum_sources": 2
+    },
+    {
+      "id": "immediate-accident",
+      "category": "high-safety",
+      "query": "事故处理时必须先做什么？",
+      "expected_risk_level": "high",
+      "expected_query_type": "health_safety",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "acl-architecture",
+      "category": "medium-learning",
+      "query": "ACL 检索过滤的实现原理是什么？",
+      "expected_risk_level": "medium",
+      "expected_query_type": "access_control",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "policy-summary",
+      "category": "medium-learning",
+      "query": "总结这份报销制度文档的章节结构。",
+      "expected_risk_level": "medium",
+      "expected_query_type": "financial_policy",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "audit-architecture",
+      "category": "medium-learning",
+      "query": "解释审计日志在系统架构中的作用。",
+      "expected_risk_level": "medium",
+      "expected_query_type": "legal_compliance",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "database-comparison",
+      "category": "medium-general",
+      "query": "Milvus 和 PostgreSQL 有什么区别？",
+      "expected_risk_level": "medium",
+      "expected_query_type": "general_knowledge",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "ordinary-number",
+      "category": "medium-general",
+      "query": "这个知识库包含多少个文档？",
+      "expected_risk_level": "medium",
+      "expected_query_type": "general_knowledge",
+      "expected_minimum_sources": 1
+    },
+    {
+      "id": "health-data-model",
+      "category": "medium-learning",
+      "query": "用药模块的数据模型有哪些字段？",
+      "expected_risk_level": "medium",
+      "expected_query_type": "health_safety",
+      "expected_minimum_sources": 1
+    }
+  ]
+}

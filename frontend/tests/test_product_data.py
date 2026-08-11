@@ -113,10 +113,7 @@ def test_legacy_database_adds_document_and_ingest_lifecycle_columns(tmp_path):
         connection.execute(text("CREATE TABLE documents (id VARCHAR(40) PRIMARY KEY)"))
         connection.execute(
             text(
-                "CREATE TABLE ingest_jobs ("
-                "id VARCHAR(40) PRIMARY KEY, "
-                "status VARCHAR(20) NOT NULL"
-                ")"
+                "CREATE TABLE ingest_jobs (id VARCHAR(40) PRIMARY KEY, status VARCHAR(20) NOT NULL)"
             )
         )
         connection.execute(
@@ -306,6 +303,7 @@ def test_document_processing_uses_supported_embedding_batch_size(tmp_path, monke
             "collection_name": knowledge_base.collection_name,
             "batch_size": 10,
             "replace_document_id": "b" * 64,
+            "document_metadata": {},
         }
     ]
     with factory() as session:

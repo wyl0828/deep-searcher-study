@@ -1,28 +1,48 @@
-![DeepSearcher](./assets/pic/logo.png)
+# DeepSearcher Study
 
-<div align="center">
-  
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![DeepWiki](https://img.shields.io/badge/DeepWiki-AI%20Docs-orange.svg)](https://deepwiki.com/zilliztech/deep-searcher)
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/zilliz_universe.svg?style=social&label=Follow%20%40Zilliz)](https://twitter.com/zilliz_universe)
-<a href="https://discord.gg/mKc3R95yE5"><img height="20" src="https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="discord"/></a>
+> 一个独立维护的可信 RAG 研究与工程项目：以证据管理、答案核验和知识质量控制为核心。
 
-</div>
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Upstream](https://img.shields.io/badge/upstream-DeepSearcher-4B8BBE.svg)](UPSTREAM.md)
+[![Evaluation](https://img.shields.io/badge/evaluation-versioned-gold%20sets-5B8C5A.svg)](evaluation/README.md)
+[![Roadmap](https://img.shields.io/badge/roadmap-trustworthy%20RAG-7D5FFF.svg)](docs/roadmap/trustworthy-rag-roadmap.md)
+
+DeepSearcher Study 是基于 [zilliztech/deep-searcher](https://github.com/zilliztech/deep-searcher)
+的 Apache-2.0 衍生项目，独立维护且不隶属于上游团队。项目保留上游许可证与归属信息，并把持续投入集中在
+**可信回答、可审计证据和可复现评测**。完整来源、维护边界和同步原则见 [UPSTREAM.md](UPSTREAM.md)。
+
+## 当前维护重点
+
+- **Trust Layer**：将引用结构、确定性一致性、时效性、风险约束、可选语义蕴含和回答策略拆分为可版本化契约；证据不足、明确冲突或时效不明时保守降级或拒答，而不是输出虚假的确定性。
+- **Evidence 与谱系**：回答中的 Claim 可定位到模型实际看到的证据片段；Trust Provenance 绑定运行时、模型、索引、证据快照和策略版本，同时排除问题正文、密钥和其他敏感原值。
+- **质量评测**：检索、回答和 Trust Layer 使用版本化金标集与机器可读报告；确定性规则、Citation Span、风险分类和谱系不变量进入快速质量门禁。
+- **可用产品路径**：中文学习工作台提供知识库、文档入库、带引用问答、流式进度和审计视图，并通过独立 Worker、迁移与端到端测试维护可恢复性。
+
+## 维护证据与导航
+
+| 你可以核验什么 | 对应材料 |
+| --- | --- |
+| 当前开发线的功能变更、质量边界和已知限制 | [CHANGELOG.md](CHANGELOG.md) |
+| v0.3 已实现能力、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
+| 设计取舍与 fail-closed 边界 | [架构决策记录（ADR）](docs/adr/) |
+| 可运行的业务、引用、风险和谱系评测 | [evaluation/README.md](evaluation/README.md) |
+| 上游来源、许可与贡献原则 | [UPSTREAM.md](UPSTREAM.md) |
+
+项目不会把实现、数据集结构校验或小样本基线包装成通用生产承诺。每项能力的适用范围、未覆盖边界和复现入口均记录在路线图、ADR 与评测文档中。
 
 ---
 
-DeepSearcher combines cutting-edge LLMs (OpenAI o3, Qwen3, DeepSeek, Grok 4, Claude 4 Sonnet, Llama 4, QwQ, etc.) and Vector Databases (Milvus, Zilliz Cloud etc.) to perform search, evaluation, and reasoning based on private data, providing highly accurate answer and comprehensive report. This project is suitable for enterprise knowledge management, intelligent Q&A systems, and information retrieval scenarios.
+DeepSearcher Study 结合大语言模型与向量数据库，对私有资料执行检索、推理、证据核验与质量评估，适用于需要可追溯回答的知识管理、学习和信息检索场景。
 
 ![Architecture](./assets/pic/deep-searcher-arch.png)
 
-## 🚀 Features
+## 核心能力
 
-- **Private Data Search**: Maximizes the utilization of enterprise internal data while ensuring data security. When necessary, it can integrate online content for more accurate answers.
-- **Vector Database Management**: Supports Milvus and other vector databases, allowing data partitioning for efficient retrieval.
-- **Flexible Embedding Options**: Compatible with multiple embedding models for optimal selection.
-- **Multiple LLM Support**: Supports DeepSeek, OpenAI, and other large models for intelligent Q&A and content generation.
-- **Document Loader**: Supports page-aware PDF layout parsing, OCR fallback, table extraction,
-  section-aware chunks, and source-located citations; web crawling capabilities are under development.
+- **证据约束的回答**：每项事实声明绑定本次检索证据；引用结构、数字/日期/条件一致性和冲突状态独立记录。
+- **可审计可信度**：风险 Profile、时效策略、Citation Span 和 Trust Provenance 让“为什么保留、降级或拒答”可追溯。
+- **版本化知识治理**：文档的发布日期、生效日期、失效日期和版本系列贯穿入库、检索、Citation 与索引 Manifest。
+- **可复现评测**：业务检索/回答基线与 Trust 金标集分开维护；快速门禁验证契约和回归，真实模型评测显式执行。
+- **中文用户工作台**：通过本地 Milvus、持久化入库 Worker、带引用的流式问答和审计视图，提供完整的本地体验。
 
 ---
 
@@ -30,69 +50,71 @@ DeepSearcher combines cutting-edge LLMs (OpenAI o3, Qwen3, DeepSeek, Grok 4, Cla
 ![demo](./assets/pic/demo.gif)
 
 
-## 📖 Quick Start
+## 📖 快速入门
 
-### Installation
-Install DeepSearcher using one of the following methods:
+下面的路径运行的是 **DeepSearcher Study 当前源码**。请不要使用 `pip install deepsearcher` 作为本项目的
+安装方式：该包名会指向已发布的上游包，不能保证包含本仓库的 Trust Layer、评测和用户工作台改动。
 
-#### Option 1: Using pip
-Create and activate a virtual environment(Python 3.10 version is recommended).
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-Install DeepSearcher
-```bash
-pip install deepsearcher
-```
+### 前置条件
 
-For optional dependencies, e.g., ollama:
-```bash
-pip install "deepsearcher[ollama]"
-```
+- Windows 10/11、Python 3.10+ 与 [uv](https://docs.astral.sh/uv/getting-started/installation/)；
+- Docker Desktop（用于本地 Milvus）；
+- Node.js 20+ 与 npm（用于构建用户工作台）；
+- 至少一个与 `deepsearcher/config.yaml` 中 Provider 配置匹配的模型/Embedding API Key。
 
-#### Option 2: Install in Development Mode
-We recommend using [uv](https://github.com/astral-sh/uv) for faster and more reliable installation. Follow the [offical installation instructions](https://docs.astral.sh/uv/getting-started/installation/) to install it.
+### 1. 克隆并配置本仓库
 
-Clone the repository and navigate to the project directory:
-```shell
-git clone https://github.com/zilliztech/deep-searcher.git && cd deep-searcher
-```
-Synchronize and install dependencies:
-```shell
-uv sync
-source .venv/bin/activate
+```powershell
+git clone https://github.com/wyl0828/deep-searcher-study.git
+Set-Location deep-searcher-study
+Copy-Item env.example .env
+uv sync --frozen
 ```
 
-For more detailed development setup and optional dependency installation options, see [CONTRIBUTING.md](CONTRIBUTING.md#development-environment-setup-with-uv).
+编辑 `.env`，至少填入当前 Provider 所需的密钥。当前 `deepsearcher/config.yaml` 默认使用
+DeepSeek 生成模型与 OpenAI Embedding，因此需要：
 
-### Quick start demo
-
-To run this quick start demo, please prepare your `OPENAI_API_KEY` in your environment variables. If you change the LLM in the configuration, make sure to prepare the corresponding API key.
-
-```python
-from deepsearcher.configuration import Configuration, init_config
-from deepsearcher.online_query import query
-
-config = Configuration()
-
-# Customize your config here,
-# more configuration see the Configuration Details section below.
-config.set_provider_config("llm", "OpenAI", {"model": "o1-mini"})
-config.set_provider_config("embedding", "OpenAIEmbedding", {"model": "text-embedding-ada-002"})
-init_config(config = config)
-
-# Load your local data
-from deepsearcher.offline_loading import load_from_local_files
-load_from_local_files(paths_or_directory=your_local_path)
-
-# (Optional) Load from web crawling (`FIRECRAWL_API_KEY` env variable required)
-from deepsearcher.offline_loading import load_from_website
-load_from_website(urls=website_url)
-
-# Query
-result = query("Write a report about xxx.") # Your question here
+```dotenv
+DEEPSEEK_API_KEY=your_deepseek_api_key
+OPENAI_API_KEY=your_openai_api_key
 ```
+
+若切换到其他 Provider，请同时修改 `deepsearcher/config.yaml` 并填写其对应环境变量。可选的联网搜索
+仅在用户为单次问题启用时使用，另需 `TAVILY_API_KEY`；未配置时系统继续只检索本地知识库。
+
+### 2. 一键启动本地工作台
+
+```powershell
+.\start.ps1
+```
+
+启动脚本会检查依赖、启动 Milvus、构建前端，并依次运行核心 API、文档入库 Worker 与用户工作台。
+默认地址是 `http://127.0.0.1:8600`；若端口冲突，脚本会选择可用端口，实际地址以 `status.ps1` 输出为准。
+首次打开工作台时创建管理员账号，然后新建知识库、上传资料并发起带引用的问题。
+
+```powershell
+.\status.ps1              # 查看服务状态与实际地址
+.\stop.ps1                # 停止工作台、API 和 Milvus
+.\start.ps1 -SkipBuild    # 前端未改动时快速重启
+```
+
+### 3. 先验证再修改
+
+快速质量门禁不需要真实模型或 Milvus 密钥，适合在提交前检查当前源码、评测契约和文档：
+
+```powershell
+.\scripts\run-quality-gate.ps1 -Mode Fast
+```
+
+完整评测会重建 Collection 并调用真实 Provider，运行成本与耗时更高；请先阅读
+[评测说明](evaluation/README.md) 和 [质量门禁](#一键质量门禁)。
+
+### 手动启动与 API
+
+需要拆分部署、指定端口或调用底层 API 时，请使用后文的[手动启动](#手动启动)和
+[配置说明](#configuration-details)。所有 HTTP API 都应通过服务令牌访问；不要把 API Key、服务令牌或
+上传资料提交到仓库。
+
 ### Configuration Details:
 #### LLM Configuration
 
@@ -593,7 +615,7 @@ nest_asyncio.apply()
 - [Qdrant](https://qdrant.tech/)
 
 ---
-## 📊 Evaluation 
+## 📊 Evaluation
 See the [Evaluation](./evaluation) directory for more details.
 
 `evaluation/datasets/workspace_v2.json` 当前版本为 `2.2.0`，固定仓库内 3 份 PDF 的 SHA-256，
@@ -673,14 +695,83 @@ PDF 结构与页数检查后再原子落盘；最终文件名不使用用户输�
 独立检索问题，话题切换保持原问题，模型失败或格式非法时也回退原问题。历史内容不能改变当前
 Collection 范围或联网搜索开关，Trace/SSE 只暴露是否改写、历史条数和回退原因，不暴露对话正文。
 
-最终回答要求每个事实声明使用本次证据编号（如 `[E1]`）；Trace v4 确定性校验证据编号并输出
+最终回答要求每个事实声明使用本次证据编号（如 `[E1]`）；Trace v6 确定性校验证据编号并输出
 `fully_grounded`、`partially_grounded`、`conflicting_evidence` 或 `insufficient_evidence`。
 产品数据库持久化 `AnswerClaim` 与 Citation 映射；页面始终保留原始 Markdown 与代码块，并在可展开的
 逐条核验区显示“已有依据/未找到依据/引用无效/证据冲突”。生成模型看到的 `wider_text` 证据窗口
 会以同一编号和同一有界文本写入 Grounding，避免引用抽屉退化为不含目标事实的窄 Chunk。这能拒绝
 伪造或过期证据编号，但不是语义蕴含模型，引用是否真正支持声明仍需用金标引用指标和人工抽查持续评估。
 
-检索结果不会再用含义不明的统一“分数”描述所有向量库返回值。Trace v4 显式携带
+Trace v6 在此基础上提供版本化 Trust Layer：引用结构、语义蕴含、一致性、安全状态、回答策略
+和去密 Trust Provenance 分别建模。当前首版强制执行引用结构与有边界的确定性一致性策略；存在精确生成证据快照时，部分有
+依据的回答会删除无效或明确不一致的声明，完全无依据时转换为保守拒答，冲突证据则明确披露。可选
+Entailment Checker 会批量核验确定性规则未解决的 Claim；高置信矛盾进入同一策略，unknown 则保留
+并披露。安全检查仍标记为 `not_evaluated`，不会伪造置信度。路线和契约见
+[`docs/roadmap/trustworthy-rag-roadmap.md`](docs/roadmap/trustworthy-rag-roadmap.md) 与
+[`docs/adr/0001-trust-layer-contract.md`](docs/adr/0001-trust-layer-contract.md)。
+
+Trust Layer 当前还会执行确定性一致性检查：Claim 中的数字/单位和显式日期必须能在其引用证据
+集合中找到；肯定/否定方向只在核心命题可严格对齐时比较。明确冲突会使结构合法的 Citation Claim
+降为 unsupported，并触发删除或拒答。策略前的错误 Claim 与检查详情会保留在 Trace 和消息
+`trust_details` 中。该检查不等同于语义蕴含，边界见
+[`docs/adr/0003-deterministic-consistency-checker.md`](docs/adr/0003-deterministic-consistency-checker.md)。
+版本号、范围方向和“只有/仅/必须/除非”等显式条件也进入同一确定性检查。Consistency Checker
+1.6 能区分“同时满足”和“满足任一”，阻断 AND 条件缺项、AND→OR 偷换、未支持 OR 分支和前置
+条件的显式否定；还会把受控实体类别与同一子句中的数量/范围绑定，防止用“图片上限 20 MiB”
+错误支持“PDF 上限 20 MiB”。回答中的今天/明天、上/下周、月、季度和年份使用请求级时钟与配置
+时区换算，并要求证据给出明确绝对日期或周期；上传或编辑文档时可以声明
+`published_at/effective_at/superseded_at` 与 `version_family`，只有可信来源的 `published_at` 能解释 Evidence 内的
+“明天/下周”等表达，文件修改时间和上传时间不会冒充业务时间。缺少该锚点时进入 unknown 并由
+策略保守删除或拒答。日期随 Worker 进入 Chunk/索引/Citation，且参与 Manifest 与 Provenance 指纹；
+修改已就绪文档日期会重新排队更新索引。未知实体不会被强行推断，一层以上的混合逻辑仍交给语义核验。对应人工金标集为
+`evaluation/datasets/trust_consistency_v1.json`，快速质量门禁会运行无模型评测，防止规则修改造成
+静默误判。
+
+当原问题要求“当前/现行/最新/近期”时，服务端 Freshness Classifier 会生成不含原问题的时效
+Profile。当前有效版本必须满足 `effective_at <= 查询日期 < superseded_at`；最新政策按当前有效候选
+中的 `effective_at` 排序，最新发布按 `published_at` 排序，并且只比较与被引用资料属于同一
+`version_family` 的 Evidence。最新问题缺少系列、一次 Claim 混用多个系列、引用尚未生效、已经失效、
+同系列快照中存在更新版本，或同系列候选缺少排序日期时，Claim 会被删除或拒答；其他文档系列不会
+制造误拒绝。“近期”没有明确窗口时
+同样不会擅自按 7 天或 30 天解释。该结论只证明最终 Evidence 快照内的时效状态，不冒充全库召回
+完整性；决策与边界见
+[`docs/adr/0008-freshness-policy.md`](docs/adr/0008-freshness-policy.md)。
+
+Claim 引用现在还会保存相对于生成证据快照的精确 `citation_spans`。点击逐条核验中的引用时，
+引用抽屉会直接高亮对应原文；规范化精确命中与句级近似使用不同样式，未找到可靠位置时不伪造
+高亮。持久化前会复核 Evidence ID、偏移和 quote，避免污染 Trace 指向错误文本。该能力的坐标系
+不同于 Citation 在原始文档中的页码/Chunk/全局字符位置，详细决策见
+[`docs/adr/0004-citation-span-mapper.md`](docs/adr/0004-citation-span-mapper.md)。人工金标集
+`evaluation/datasets/citation_span_v1.json` 已加入快速质量门禁。
+
+可插拔语义核验通过 `query_settings.trust.entailment` 配置，默认关闭；原因不是功能不可用，而是当前
+模型尚未完成金标阈值校准，不能默认增加额外调用和误拒答风险。Checker 使用严格 JSON 契约，不保存
+自由推理文本，失败或低置信统一成为 unknown，并将实际 Token 计入线上 Trace 与离线 Benchmark。
+人工金标与 live 评测入口见
+[`docs/adr/0005-entailment-checker.md`](docs/adr/0005-entailment-checker.md)。
+
+Query Risk Profile 会在服务端识别财务、制度合规、权限和健康安全类决策问题。high 风险回答必须
+获得明确语义结论；涉及额度、期限、比例或剂量时，还需要至少两份 Evidence 和两个独立来源，同一
+文档多个 Chunk 不会冒充多来源。客户端不能降低风险等级。契约、边界与金标见
+[`docs/adr/0006-query-risk-profile.md`](docs/adr/0006-query-risk-profile.md)。
+
+Trust Provenance 会为每次回答绑定运行时、去密配置、生成模型、Embedding、显式索引 Manifest、
+Prompt、Checker、Risk 和 Policy 版本，并生成稳定摘要。产品页面可展开查看本次判断谱系；数据库
+保存谱系版本与摘要，便于定位“哪次升级导致质量变化”。Collection 名称、Tenant 原值、原始问题、
+完整 Prompt 和密钥不会进入谱系。动态路由在选库前标记为未绑定，选库后会合并 NaiveRAG、
+ChainOfRAG 或 DeepSearch 各轮真正访问的 Manifest 并更新摘要；Collection 名称仍不会进入输出。
+设计与边界见
+[`docs/adr/0007-trust-trace-provenance.md`](docs/adr/0007-trust-trace-provenance.md)。
+
+Provenance v2 还会绑定最终回答模型实际看到的 Evidence 顺序，以及每段证据的内容、来源和定位
+指纹。Web Evidence 记录 Provider、trusted 状态和 snippet 快照身份，但不会把搜索片段冒充网页
+全文归档。Builder 2.3 同时绑定相对时间判定所用的本地参考日期与时区、Freshness Classifier
+契约版本；参考时刻保留在 Trust Trace，
+谱系只保留日期、时区和指纹。Evidence 文档业务日期使用独立时间指纹，并披露是否绑定发布日期；
+文档系列使用独立去密指纹并披露是否绑定，系列原值、正文、URL 与 Document ID 不进入谱系字段；
+v1 历史记录仍可读取。
+
+检索结果不会再用含义不明的统一“分数”描述所有向量库返回值。Trace v6 显式携带
 `metric_type`，并将数值区分为距离、相似度或排序分；页面会同时说明“越小越近”或“越大越近”。
 L2 等距离值、COSINE/IP 等相似度和 RRF 等排序分保持原生语义，不做跨指标换算或比较。
 

@@ -27,6 +27,7 @@ const productApi = vi.hoisted(() => ({
   deleteKnowledgeBase: vi.fn(),
   listDocuments: vi.fn(),
   uploadDocument: vi.fn(),
+  updateDocumentGovernanceMetadata: vi.fn(),
   retryDocument: vi.fn(),
   deleteDocument: vi.fn(),
   listConversations: vi.fn(),
@@ -113,6 +114,11 @@ beforeEach(() => {
   productApi.getKnowledgeBase.mockResolvedValue(knowledgeBase);
   productApi.reindexKnowledgeBase.mockResolvedValue(knowledgeBase);
   productApi.listDocuments.mockResolvedValue([]);
+  productApi.uploadDocument.mockResolvedValue({ document: {}, job: {} });
+  productApi.updateDocumentGovernanceMetadata.mockResolvedValue({
+    document: {},
+    job: {},
+  });
   productApi.deleteDocument.mockResolvedValue(undefined);
   productApi.deleteKnowledgeBase.mockResolvedValue({
     deleted_id: knowledgeBase.id,
@@ -559,9 +565,165 @@ it("声明级引用区分已有依据和无效引用", async () => {
         id: "msg_assistant_claims",
         role: "assistant",
         content:
-          "Milvus 是向量数据库。[E1]\n\n```python\nprint('preserved')\n```\n\n它支持任意 SQL。[E9]",
+          "Milvus 是向量数据库。[E1]\n\n```python\nprint('preserved')\n```\n\n它支持任意 SQL。[E9]\n\n每份文件最大 100 MB。[E1]",
         status: "succeeded",
         answer_state: "partially_grounded",
+        policy_action: "downgrade",
+        policy_profile: "strict_high_risk",
+        risk_level: "high",
+        query_type: "financial_policy",
+        risk_factors: [
+          "FINANCIAL_DOMAIN",
+          "DECISION_REQUEST",
+          "QUANTITATIVE_DECISION",
+        ],
+        trust_details: {
+          verification_level: "semantic_entailment_partial",
+          evidence_snapshot_available: true,
+          entailment: {
+            version: 1,
+            checker: "llm_nli",
+            checker_version: "1.0.0",
+            status: "partial",
+            token_usage: 18,
+            eligible_claim_count: 2,
+            exact_match_count: 0,
+            checker_claim_count: 2,
+            entailed_count: 0,
+            contradicted_count: 1,
+            unknown_count: 1,
+            not_checked_count: 0,
+          },
+          risk: {
+            version: 1,
+            classifier: "deterministic_query_risk",
+            classifier_version: "1.0.0",
+            risk_level: "high",
+            query_type: "financial_policy",
+            risk_factors: [
+              "FINANCIAL_DOMAIN",
+              "DECISION_REQUEST",
+              "QUANTITATIVE_DECISION",
+            ],
+            requirements: {
+              require_citation: true,
+              require_decisive_entailment: true,
+              minimum_evidence_count: 2,
+              minimum_distinct_source_count: 2,
+              allow_unknown_entailment: false,
+            },
+          },
+          freshness: {
+            version: 1,
+            classifier: "deterministic_freshness_intent",
+            classifier_version: "1.0.0",
+            required: true,
+            mode: "latest_effective",
+            ordering_basis: "effective_at",
+            reason_codes: ["FRESHNESS_LATEST_EFFECTIVE_REQUESTED"],
+          },
+          temporal_context: {
+            version: 1,
+            source: "request_clock",
+            reference_time: "2026-08-11T03:00:00+00:00",
+            reference_date: "2026-08-11",
+            timezone: "Asia/Shanghai",
+          },
+          input: {
+            trust_status: "partially_grounded",
+            claim_count: 2,
+            supported_claim_count: 1,
+            claims: [
+              {
+                index: 1,
+                text: "一个低置信声明。",
+                entailment_status: "unknown",
+                risk_status: "rejected",
+              },
+              {
+                index: 2,
+                text: "一个矛盾声明。",
+                entailment_status: "contradicted",
+              },
+            ],
+          },
+          output: {
+            trust_status: "fully_grounded",
+            claim_count: 1,
+            supported_claim_count: 1,
+            claims: [],
+          },
+          provenance: {
+            version: 2,
+            builder_version: "2.1.0",
+            execution_scope: "online",
+            digest: `sha256:${"a".repeat(64)}`,
+            runtime: {
+              configuration_fingerprint: `sha256:${"b".repeat(64)}`,
+              runtime_version: 7,
+              binding_revision: 3,
+              tenant_fingerprint: `sha256:${"c".repeat(64)}`,
+              model_policy: "OpenAI:gpt-test",
+            },
+            generation_model: {
+              provider: "OpenAI",
+              model: "gpt-test",
+              version: "gpt-test",
+              fingerprint: `sha256:${"d".repeat(64)}`,
+            },
+            embedding: {
+              provider: "FastEmbedEmbedding",
+              model: "bge-small",
+              version: "bge-small-v1",
+              dimension: 384,
+              normalization: "l2",
+              fingerprint: `sha256:${"e".repeat(64)}`,
+            },
+            index: {
+              selection_mode: "dynamic",
+              snapshot_status: "complete",
+              collection_count: 1,
+              manifests: [],
+            },
+            evidence: {
+              snapshot_status: "complete",
+              evidence_count: 2,
+              knowledge_base_count: 1,
+              web_count: 1,
+              snapshot_fingerprint: `sha256:${"1".repeat(64)}`,
+              items: [
+                {
+                  position: 1,
+                  source_type: "knowledge_base",
+                  content_fingerprint: `sha256:${"2".repeat(64)}`,
+                  source_fingerprint: `sha256:${"3".repeat(64)}`,
+                  locator_fingerprint: null,
+                  publication_anchor_bound: true,
+                  version_family_bound: true,
+                  trusted: true,
+                },
+                {
+                  position: 2,
+                  source_type: "web",
+                  content_fingerprint: `sha256:${"4".repeat(64)}`,
+                  source_fingerprint: `sha256:${"5".repeat(64)}`,
+                  locator_fingerprint: null,
+                  publication_anchor_bound: false,
+                  version_family_bound: false,
+                  trusted: true,
+                  provider: "tavily",
+                },
+              ],
+            },
+            prompts: {
+              grounding: { version: "1.0.0", fingerprint: `sha256:${"f".repeat(64)}` },
+              entailment: { version: "1.0.0" },
+            },
+            checkers: {},
+            policy: { trust_contract_version: 1, answer_policy_version: 1 },
+          },
+          limitations: ["SEMANTIC_ENTAILMENT_INCOMPLETE"],
+        },
         created_at: knowledgeBase.created_at,
         citations: [
           {
@@ -595,6 +757,16 @@ it("声明级引用区分已有依据和无效引用", async () => {
             text: "Milvus 是向量数据库。",
             support_status: "supported",
             citation_indices: [1],
+            citation_spans: [
+              {
+                citation_index: 1,
+                start: 0,
+                end: "Milvus 是向量数据库。".length,
+                text: "Milvus 是向量数据库。",
+                match_type: "normalized_exact",
+                score: 1,
+              },
+            ],
           },
           {
             id: "claim_2",
@@ -602,6 +774,51 @@ it("声明级引用区分已有依据和无效引用", async () => {
             text: "它支持任意 SQL。",
             support_status: "invalid_citation",
             citation_indices: [],
+          },
+          {
+            id: "claim_3",
+            index: 3,
+            text: "每份文件最大 100 MB。",
+            support_status: "unsupported",
+            structural_support_status: "supported",
+            citation_status: "valid",
+            entailment_status: "not_checked",
+            consistency_status: "inconsistent",
+            consistency_checks: [
+              {
+                kind: "quantity",
+                status: "inconsistent",
+                reason_code: "QUANTITY_ENTITY_MISMATCH",
+                missing_values: ["100|mb"],
+              },
+              {
+                kind: "range",
+                status: "inconsistent",
+                reason_code: "RANGE_ENTITY_MISMATCH",
+                missing_values: ["lte|100|mb"],
+              },
+              {
+                kind: "condition",
+                status: "inconsistent",
+                reason_code: "CONDITION_RELATION_MISMATCH",
+                missing_values: ["all(审计员,管理员)"],
+              },
+              {
+                kind: "relative_time",
+                status: "unknown",
+                reason_code: "RELATIVE_TIME_EVIDENCE_ANCHOR_MISSING",
+                missing_values: ["date:2026-08-12"],
+              },
+              {
+                kind: "freshness",
+                status: "inconsistent",
+                reason_code: "FRESHNESS_NEWER_EVIDENCE_AVAILABLE",
+                missing_values: ["2026-08-01"],
+              },
+            ],
+            confidence: null,
+            reason_codes: ["CITATION_VALID", "QUANTITY_ENTITY_MISMATCH"],
+            citation_indices: [1],
           },
         ],
       },
@@ -615,13 +832,58 @@ it("声明级引用区分已有依据和无效引用", async () => {
   expect(
     await screen.findByText("回答中只有部分声明找到了可核对依据，未支持内容已单独标记。"),
   ).toBeInTheDocument();
+  expect(
+    screen.getByText("语义核验发现 1 条声明与引用证据矛盾，风险内容已由可信策略移除。"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("1 条声明未得到高置信语义结论；高风险策略不会保留这些内容。"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "本问题已按高风险策略核验：必须有明确语义结论，且额度、期限或比例需要至少两份独立来源。",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "本问题要求核验最新生效版本；系统只使用文档声明的业务日期，不使用上传时间推断。",
+    ),
+  ).toBeInTheDocument();
+  await user.click(screen.getByText("本次可信判断谱系"));
+  expect(screen.getByText("OpenAI / gpt-test")).toBeInTheDocument();
+  expect(screen.getByText("动态路由，已绑定 1 个实际知识库版本")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "2 段已绑定，其中 1 段来自网页 snippet，1 段绑定发布日期，1 段绑定文档系列",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText("v7 · 绑定修订 3")).toBeInTheDocument();
+  expect(screen.getByText("2026-08-11 · Asia/Shanghai")).toBeInTheDocument();
+  expect(screen.getByText("最新生效 · Classifier v1.0.0")).toBeInTheDocument();
+  expect(screen.getByText("aaaaaaaaaaaaaaaa")).toBeInTheDocument();
+  expect(
+    screen.getByText("前置条件的“同时满足/满足任一”关系与证据不一致：需同时满足：审计员、管理员"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("1 条声明未满足高风险证据门槛，已被删除或拒答。"),
+  ).toBeInTheDocument();
   expect(screen.getAllByText("Milvus 是向量数据库。").length).toBeGreaterThan(0);
   expect(screen.getByText("print('preserved')")).toBeInTheDocument();
   expect(screen.queryByText(/\[E9\]/)).not.toBeInTheDocument();
 
-  await user.click(screen.getByText("逐条证据核验（2 条）"));
+  await user.click(screen.getByText("逐条证据核验（3 条）"));
   expect(screen.getByText("已有依据")).toBeInTheDocument();
   expect(screen.getByText("引用无效")).toBeInTheDocument();
+  expect(screen.getByText("证据内容不一致")).toBeInTheDocument();
+  expect(screen.getByText("数字虽然出现，但对应对象与证据不一致：100 mb")).toBeInTheDocument();
+  expect(
+    screen.getByText("范围数值虽然出现，但对应对象与证据不一致：不超过 100 mb"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("证据也使用了相对时间，但缺少可信文档时间锚点：2026-08-12"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("本次证据快照中存在更新的有效资料：2026-08-01"),
+  ).toBeInTheDocument();
 
   const claimCitation = screen.getByRole("button", {
     name: "查看声明 1 的引用 1：grounding.pdf，第 2 页",
@@ -630,6 +892,9 @@ it("声明级引用区分已有依据和无效引用", async () => {
   expect(
     screen.getByRole("button", { name: "选择引用 1：grounding.pdf，第 2 页" }),
   ).toHaveFocus();
+  expect(screen.getByTitle("声明文字在证据中的精确位置")).toHaveTextContent(
+    "Milvus 是向量数据库。",
+  );
 });
 
 it("没有引用的对话会禁用来源切换并说明原因", async () => {
@@ -772,6 +1037,91 @@ it("删除文档前二次确认并在成功后刷新列表", async () => {
   await waitFor(() => {
     expect(productApi.deleteDocument).toHaveBeenCalledWith(document.id);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+});
+
+it("上传文档时声明可信业务日期", async () => {
+  const user = userEvent.setup();
+  window.history.pushState({}, "", `/knowledge/${knowledgeBase.id}`);
+
+  render(<App />);
+
+  const uploadButtons = await screen.findAllByRole("button", { name: "上传 PDF" });
+  await user.click(uploadButtons[0]);
+  const dialog = screen.getByRole("dialog", { name: "上传 PDF" });
+  expect(dialog).toHaveTextContent("不会使用文件名、修改时间或上传时间推断这些信息");
+  const file = new File(["pdf"], "policy.pdf", { type: "application/pdf" });
+  await user.upload(within(dialog).getByLabelText("PDF 文件"), file);
+  await user.type(
+    within(dialog).getByLabelText(/^发布日期（推荐）/),
+    "2026-08-01",
+  );
+  await user.type(
+    within(dialog).getByLabelText(/^文档系列标识/),
+    "Travel Expense Policy",
+  );
+  await user.type(within(dialog).getByLabelText("生效日期（可选）"), "2026-08-05");
+  await user.click(within(dialog).getByRole("button", { name: "上传并处理" }));
+
+  await waitFor(() => {
+    expect(productApi.uploadDocument).toHaveBeenCalledWith(
+      knowledgeBase.id,
+      file,
+      {
+        published_at: "2026-08-01",
+        effective_at: "2026-08-05",
+        superseded_at: null,
+        version_family: "Travel Expense Policy",
+      },
+    );
+  });
+});
+
+it("编辑已就绪文档业务日期并明确更新索引", async () => {
+  const user = userEvent.setup();
+  const document = {
+    id: "doc_temporal",
+    knowledge_base_id: knowledgeBase.id,
+    display_name: "policy.pdf",
+    size_bytes: 2048,
+    page_count: 3,
+    status: "ready",
+    error: null,
+    published_at: "2026-08-01",
+    effective_at: null,
+    superseded_at: null,
+    temporal_metadata_source: "user_declared",
+    version_family: "travel-expense-policy",
+    version_family_source: "user_declared",
+    created_at: knowledgeBase.created_at,
+    updated_at: knowledgeBase.updated_at,
+  };
+  window.history.pushState({}, "", `/knowledge/${knowledgeBase.id}`);
+  productApi.listDocuments.mockResolvedValue([document]);
+
+  render(<App />);
+
+  expect(
+    await screen.findByText("系列 travel-expense-policy · 发布 2026-08-01"),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "治理信息" }));
+  const dialog = screen.getByRole("dialog", { name: "编辑文档治理信息" });
+  const publishedInput = within(dialog).getByLabelText(/^发布日期（推荐）/);
+  expect(publishedInput).toHaveValue("2026-08-01");
+  await user.clear(publishedInput);
+  await user.type(publishedInput, "2026-08-02");
+  await user.click(within(dialog).getByRole("button", { name: "保存并更新索引" }));
+
+  await waitFor(() => {
+    expect(productApi.updateDocumentGovernanceMetadata).toHaveBeenCalledWith(
+      document.id,
+      {
+        published_at: "2026-08-02",
+        effective_at: null,
+        superseded_at: null,
+        version_family: "travel-expense-policy",
+      },
+    );
   });
 });
 

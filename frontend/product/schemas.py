@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from deepsearcher.versioning import normalize_version_family
 
 
 class AuthSetup(BaseModel):
@@ -38,6 +40,35 @@ class MessageCreate(BaseModel):
     use_web_search: bool = False
 
 
+class DocumentTemporalUpdate(BaseModel):
+    published_at: date | None = None
+    effective_at: date | None = None
+    superseded_at: date | None = None
+
+    @model_validator(mode="after")
+    def validate_lifecycle(self):
+        if self.superseded_at is not None:
+            if self.published_at is not None and self.superseded_at < self.published_at:
+                raise ValueError("superseded_at must not precede published_at")
+            if self.effective_at is not None and self.superseded_at < self.effective_at:
+                raise ValueError("superseded_at must not precede effective_at")
+        return self
+
+
+class DocumentGovernanceUpdate(DocumentTemporalUpdate):
+    version_family: str | None = Field(default=None, max_length=128)
+
+    @field_validator("version_family", mode="before")
+    @classmethod
+    def normalize_family(cls, value):
+        if value in (None, ""):
+            return None
+        normalized = normalize_version_family(value)
+        if normalized is None:
+            raise ValueError("version_family is invalid")
+        return normalized
+
+
 class ProductModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,6 +93,12 @@ class CitationResponse(ProductModel):
     source_url: str | None
     source_domain: str | None
     trusted: bool
+    published_at: date | None
+    effective_at: date | None
+    superseded_at: date | None
+    temporal_metadata_source: str | None
+    version_family: str | None
+    version_family_source: str | None
     text: str
     supported: bool
 
@@ -71,7 +108,17 @@ class AnswerClaimResponse(ProductModel):
     index: int
     text: str
     support_status: str
+    structural_support_status: str = "unsupported"
     citation_indices: list[int] = Field(default_factory=list)
+    citation_spans: list[dict] = Field(default_factory=list)
+    citation_status: str = "missing"
+    entailment_status: str = "not_checked"
+    consistency_status: str = "not_checked"
+    consistency_checks: list[dict] = Field(default_factory=list)
+    risk_status: str = "not_assessed"
+    risk_checks: list[dict] = Field(default_factory=list)
+    confidence: float | None = None
+    reason_codes: list[str] = Field(default_factory=list)
 
 
 class MessageResponse(ProductModel):
@@ -80,6 +127,18 @@ class MessageResponse(ProductModel):
     content: str
     status: str
     answer_state: str | None
+    trust_contract_version: int | None = None
+    trust_status: str | None = None
+    safety_status: str | None = None
+    policy_action: str | None = None
+    policy_profile: str | None = None
+    policy_reason_codes: list[str] | None = None
+    risk_level: str | None = None
+    query_type: str | None = None
+    risk_factors: list[str] | None = None
+    provenance_contract_version: int | None = None
+    provenance_digest: str | None = None
+    trust_details: dict | None = None
     created_at: datetime
     citations: list[CitationResponse] = Field(default_factory=list)
     claims: list[AnswerClaimResponse] = Field(default_factory=list)

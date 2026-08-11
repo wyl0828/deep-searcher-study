@@ -832,6 +832,16 @@ class DeepSearch(RAGAgent):
                 total_tokens += consumed_token
                 candidate_groups.append(search_res)
                 if trace_collector is not None:
+                    selected_collections = (
+                        routing_decision.get("selected", [])
+                        if isinstance(routing_decision, dict)
+                        else []
+                    )
+                    trace_collector.record_collections(
+                        selected_collections,
+                        consumed_token,
+                        decision=routing_decision,
+                    )
                     trace_collector.record_selection_event(
                         "collection_routing",
                         routing_decision,

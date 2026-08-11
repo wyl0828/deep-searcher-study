@@ -54,6 +54,79 @@ Tokens 为 `2987.54/15139.17/9163.46`，P95 延迟为
 指标。多来源文件如果在入库时被重命名，必须使用
 `--source-alias 原文件名=实际文件名` 明确映射。
 
+Trust Layer 指标独立使用 `trust_metric_version=1.6.0`，避免改写已有检索基线的指标语义。
+新回答报告会记录策略执行前 Claim 支持率、确定性一致性冲突率、Entailment 覆盖/矛盾/未知率、
+Entailment Token 和 Answer Policy 改写率；
+Provenance 与 Temporal 指标还输出谱系覆盖率、最终 Evidence 快照绑定/完整率、时间身份绑定率、
+Web Evidence 快照数量、知识库 Evidence 发布日期锚点与文档系列覆盖率，以及相对时间与 Freshness
+unknown/拒绝率；Freshness 另外记录 current/latest-effective/latest-published/recent mode 和触发率；
+Benchmark 与线上查询使用同一个 `finalize_answer` 路径。2026-08-09 的存量报告早于 Trust
+Metric，不包含这些字段，不能用于证明当前策略效果。
+
+确定性 Checker 另有不依赖模型和向量库的人工标注集
+`datasets/trust_consistency_v1.json`，当前 v1.6 共 58 例，覆盖数字/单位、受控实体—数量/范围绑定、
+日期、版本、范围方向、AND/OR 条件关系、复合前置条件、“除非”例外、条件省略、否定冲突、
+多 Citation、相对时间和已知语义边界。相对时间用固定请求时钟/时区评测，覆盖跨 UTC 日界线、
+跨季度年份、实体错配、无请求时钟、无文档时间锚点，以及显式 `published_at` 的匹配与冲突；缺少
+可信锚点必须成为 unknown 并触发保守策略，`effective_at` 不能冒充发布日期。
+其中 13 例 Freshness 用固定请求日期覆盖当前有效、已失效、尚未生效、缺少有效日期、最新生效、
+最新发布、存在同系列更新证据、无系列、跨系列干扰、系列歧义、排序覆盖不完整和“近期”窗口未定义；
+“最新”只表示本次完整 Evidence 快照内同一系列的排序结果，不替代 Retrieval Recall 与连接器同步完整性。
+实体绑定采用保守回退：只有声明与证据都识别出互斥实体类别时才判冲突，未知实体不强判。
+运行：
+
+```shell
+python -m evaluation.trust_consistency \
+  --output tmp/trust-consistency/report.json
+```
+
+快速质量门禁会自动运行该评测；任何 case 的状态、reason code 或 Policy 动作偏离金标都会失败。
+
+Claim 到 Evidence 内部位置另有独立人工金标集 `datasets/citation_span_v1.json`，覆盖规范化精确
+命中、句级近似、多 Citation 分布支持、数字冲突、无关证据和明确的语义边界。运行：
+
+```shell
+python -m evaluation.citation_span \
+  --output tmp/citation-span/report.json
+```
+
+该报告同时校验 match type、quote 和半开字符偏移；快速质量门禁会阻断静默误定位。句级近似只
+用于导航，不计作语义蕴含。
+
+语义核验使用人工金标集 `datasets/entailment_v1.json`。快速门禁只运行无模型的数据结构验证：
+
+```shell
+python -m evaluation.entailment --mode validate \
+  --output tmp/entailment-dataset/report.json
+```
+
+真实模型准确率必须显式运行 `--mode live`；报告包含混淆矩阵、逐题置信度和 Token。validate 报告
+固定将 `semantic_accuracy` 写为 `null`，防止把数据集校验或 Stub 测试误报成 NLI 质量。
+
+Risk Profile 使用独立人工金标 `datasets/risk_profile_v1.json`：
+
+```shell
+python -m evaluation.risk_profile \
+  --output tmp/risk-profile/report.json
+```
+
+评测同时固定 risk level、query type 和最小独立来源数。Trust Metric 1.2 另外输出高风险样本率与
+风险 Claim 拒绝率，便于观察严格策略是否因分类漂移突然扩大拒答范围。
+
+Trust Provenance 使用人工定义的安全与可复现性不变量集
+`datasets/trust_provenance_v1.json`。它验证集合顺序不影响摘要、密钥轮换不改变身份、模型变更会
+改变摘要、动态路由必须先披露未知状态并在选库后绑定实际 Manifest、多轮选库必须稳定合并，
+Evidence 内容/顺序和混合 Web 来源必须可验证，相对时间参考日期/时区必须进入摘要，以及嵌套字段
+注入和摘要篡改不会进入持久化；文档发布日期与文档系列会分别进入 Evidence 去密指纹且其变化可检测；当前共
+23 项不变量，并固定 Freshness Classifier 契约与版本：
+
+```shell
+python -m evaluation.provenance \
+  --output tmp/trust-provenance/report.json
+```
+
+该门禁只验证谱系契约，不读取密钥、原始问题或完整 Prompt，也不调用外部模型。
+
 ## 单文档兼容基线
 
 `datasets/milvus_v1.json` 是基于 `examples/data/WhatisMilvus.pdf` 固定的

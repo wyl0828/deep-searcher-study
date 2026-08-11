@@ -1,6 +1,8 @@
-# DeepSearcher 文档
+# DeepSearcher Study 文档
 
-本目录存放 DeepSearcher 的项目文档，文档站点由 MkDocs 构建。
+本目录存放 DeepSearcher Study 的项目文档，文档站点由 MkDocs 构建。该项目是
+[DeepSearcher](https://github.com/zilliztech/deep-searcher) 的独立 Apache-2.0 衍生项目；来源、许可与
+维护边界请参见仓库根目录的 `UPSTREAM.md`。
 
 ## 环境准备
 
@@ -10,11 +12,11 @@
 pip install mkdocs mkdocs-material mkdocs-jupyter pymdown-extensions
 ```
 
-2. 克隆仓库：
+2. 克隆本仓库：
 
 ```bash
-git clone https://github.com/zilliztech/deep-searcher.git
-cd deep-searcher
+git clone https://github.com/wyl0828/deep-searcher-study.git
+cd deep-searcher-study
 ```
 
 ## 本地开发

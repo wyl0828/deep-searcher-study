@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const conversationPath = "/chat/conv_e2e_grounding";
 const evidenceText =
-  "这是传给最终模型并持久化的同一份较宽证据快照，包含被引用事实。";
+  "这是传给最终模型并持久化的同一份较宽证据快照，包含被引用事实。原始回答正文应完整显示。";
 
 function collectPageErrors(page: Page) {
   const errors: string[] = [];
@@ -59,6 +59,9 @@ test("保留原答案和代码块，并把 Claim 作为附加核验展示", asyn
       name: "查看声明 1 的引用 1：grounding-evidence.pdf，第 2 页",
     })
     .click();
+  await expect(page.getByTitle("声明文字在证据中的精确位置")).toHaveText(
+    "原始回答正文应完整显示。",
+  );
   await expect(page.getByText(evidenceText, { exact: true })).toBeVisible();
 
   await page.reload();

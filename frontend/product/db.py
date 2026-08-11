@@ -266,6 +266,102 @@ def ensure_auth_ownership_schema(engine: Engine) -> None:
             )
 
 
+def ensure_trust_layer_columns(engine: Engine) -> None:
+    """Upgrade local databases to the versioned Trust Layer contract."""
+
+    message_columns = {column["name"] for column in inspect(engine).get_columns("messages")}
+    message_definitions = {
+        "trust_contract_version": "INTEGER",
+        "trust_status": "VARCHAR(32)",
+        "safety_status": "VARCHAR(24)",
+        "policy_action": "VARCHAR(24)",
+        "policy_profile": "VARCHAR(32)",
+        "policy_reason_codes": "JSON",
+        "risk_level": "VARCHAR(16)",
+        "query_type": "VARCHAR(32)",
+        "risk_factors": "JSON",
+        "provenance_contract_version": "INTEGER",
+        "provenance_digest": "VARCHAR(71)",
+        "trust_details": "JSON",
+    }
+    for column_name, column_type in message_definitions.items():
+        if column_name in message_columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(text(f"ALTER TABLE messages ADD COLUMN {column_name} {column_type}"))
+    message_indexes = {item["name"] for item in inspect(engine).get_indexes("messages")}
+    if "ix_messages_provenance_digest" not in message_indexes:
+        with engine.begin() as connection:
+            connection.execute(
+                text("CREATE INDEX ix_messages_provenance_digest ON messages (provenance_digest)")
+            )
+
+    claim_columns = {column["name"] for column in inspect(engine).get_columns("answer_claims")}
+    claim_definitions = {
+        "structural_support_status": "VARCHAR(32) NOT NULL DEFAULT 'unsupported'",
+        "citation_status": "VARCHAR(24) NOT NULL DEFAULT 'missing'",
+        "entailment_status": "VARCHAR(24) NOT NULL DEFAULT 'not_checked'",
+        "consistency_status": "VARCHAR(24) NOT NULL DEFAULT 'not_checked'",
+        "consistency_checks": "JSON NOT NULL DEFAULT '[]'",
+        "risk_status": "VARCHAR(24) NOT NULL DEFAULT 'not_assessed'",
+        "risk_checks": "JSON NOT NULL DEFAULT '[]'",
+        "citation_spans": "JSON NOT NULL DEFAULT '[]'",
+        "confidence": "FLOAT",
+        "reason_codes": "JSON NOT NULL DEFAULT '[]'",
+    }
+    for column_name, column_type in claim_definitions.items():
+        if column_name in claim_columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"ALTER TABLE answer_claims ADD COLUMN {column_name} {column_type}")
+            )
+
+
+def ensure_document_temporal_columns(engine: Engine) -> None:
+    """Upgrade local SQLite workspaces with explicit business-time metadata."""
+
+    definitions = {
+        "published_at": "DATE",
+        "effective_at": "DATE",
+        "superseded_at": "DATE",
+        "temporal_metadata_source": "VARCHAR(32)",
+    }
+    for table_name in ("documents", "citations"):
+        columns = {column["name"] for column in inspect(engine).get_columns(table_name)}
+        for column_name, column_type in definitions.items():
+            if column_name in columns:
+                continue
+            with engine.begin() as connection:
+                connection.execute(
+                    text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                )
+
+
+def ensure_document_version_family_columns(engine: Engine) -> None:
+    """Upgrade local SQLite workspaces with explicit document-series identity."""
+
+    definitions = {
+        "version_family": "VARCHAR(128)",
+        "version_family_source": "VARCHAR(32)",
+    }
+    for table_name in ("documents", "citations"):
+        columns = {column["name"] for column in inspect(engine).get_columns(table_name)}
+        for column_name, column_type in definitions.items():
+            if column_name in columns:
+                continue
+            with engine.begin() as connection:
+                connection.execute(
+                    text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                )
+    document_indexes = {item["name"] for item in inspect(engine).get_indexes("documents")}
+    if "ix_documents_version_family" not in document_indexes:
+        with engine.begin() as connection:
+            connection.execute(
+                text("CREATE INDEX ix_documents_version_family ON documents (version_family)")
+            )
+
+
 def init_database() -> None:
     from frontend.product import models  # noqa: F401
 
@@ -275,6 +371,9 @@ def init_database() -> None:
     ensure_citation_locator_columns(ENGINE)
     ensure_ingest_lifecycle_columns(ENGINE)
     ensure_auth_ownership_schema(ENGINE)
+    ensure_trust_layer_columns(ENGINE)
+    ensure_document_temporal_columns(ENGINE)
+    ensure_document_version_family_columns(ENGINE)
     from frontend.product.services.documents import (
         cleanup_orphaned_uploads,
         cleanup_stale_uploads,

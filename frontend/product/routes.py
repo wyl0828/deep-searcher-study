@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -43,6 +44,8 @@ from frontend.product.schemas import (
     AuthLogin,
     AuthSetup,
     ConversationCreate,
+    DocumentGovernanceUpdate,
+    DocumentTemporalUpdate,
     KnowledgeBaseCreate,
     MessageCreate,
     MessageResponse,
@@ -54,6 +57,8 @@ from frontend.product.services.documents import (
     create_document_from_upload,
     delete_document,
     retry_document,
+    update_document_governance_metadata,
+    update_document_temporal_metadata,
 )
 from frontend.product.services.knowledge_bases import (
     delete_knowledge_base,
@@ -284,6 +289,12 @@ def document_response(document: Document) -> dict:
             if document.error_code
             else None
         ),
+        "published_at": document.published_at,
+        "effective_at": document.effective_at,
+        "superseded_at": document.superseded_at,
+        "temporal_metadata_source": document.temporal_metadata_source,
+        "version_family": document.version_family,
+        "version_family_source": document.version_family_source,
         "created_at": document.created_at,
         "updated_at": document.updated_at,
     }
@@ -455,6 +466,10 @@ def document_content(
 async def upload_document(
     knowledge_base_id: str,
     file: UploadFile = File(...),
+    published_at: date | None = Form(default=None),
+    effective_at: date | None = Form(default=None),
+    superseded_at: date | None = Form(default=None),
+    version_family: str | None = Form(default=None),
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
@@ -464,6 +479,10 @@ async def upload_document(
             session,
             knowledge_base=knowledge_base,
             file=file,
+            published_at=published_at,
+            effective_at=effective_at,
+            superseded_at=superseded_at,
+            version_family=version_family,
         )
     finally:
         await file.close()
@@ -481,6 +500,49 @@ def get_document(
 ) -> dict:
     document = _owned_document(session, document_id, user.id)
     return document_response(document)
+
+
+@router.patch("/documents/{document_id}/temporal-metadata", status_code=202)
+def update_document_temporal_metadata_route(
+    document_id: str,
+    payload: DocumentTemporalUpdate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    document = _owned_document(session, document_id, user.id)
+    job = update_document_temporal_metadata(
+        session,
+        document,
+        published_at=payload.published_at,
+        effective_at=payload.effective_at,
+        superseded_at=payload.superseded_at,
+    )
+    return {
+        "document": document_response(document),
+        "job": ingest_job_response(job) if job is not None else None,
+    }
+
+
+@router.patch("/documents/{document_id}/governance-metadata", status_code=202)
+def update_document_governance_metadata_route(
+    document_id: str,
+    payload: DocumentGovernanceUpdate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    document = _owned_document(session, document_id, user.id)
+    job = update_document_governance_metadata(
+        session,
+        document,
+        published_at=payload.published_at,
+        effective_at=payload.effective_at,
+        superseded_at=payload.superseded_at,
+        version_family=payload.version_family,
+    )
+    return {
+        "document": document_response(document),
+        "job": ingest_job_response(job) if job is not None else None,
+    }
 
 
 @router.get("/ingest-jobs/{job_id}")

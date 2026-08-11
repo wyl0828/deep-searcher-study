@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from deepsearcher.agent import NaiveRAG
     from deepsearcher.agent.rag_router import RAGRouter
     from deepsearcher.embedding.base import BaseEmbedding
+    from deepsearcher.entailment import BaseEntailmentChecker
     from deepsearcher.llm.base import BaseLLM
     from deepsearcher.loader.file_loader.base import BaseLoader
     from deepsearcher.loader.web_crawler.base import BaseCrawler
@@ -59,6 +60,7 @@ class RuntimeComponents:
     web_search: BaseWebSearch
     default_searcher: RAGRouter
     naive_rag: NaiveRAG
+    entailment_checker: BaseEntailmentChecker | None
 
 
 class Configuration:
@@ -242,6 +244,7 @@ web_crawler: BaseCrawler = None
 web_search: BaseWebSearch = None
 default_searcher: RAGRouter = None
 naive_rag: NaiveRAG = None
+entailment_checker: BaseEntailmentChecker = None
 
 
 def _create_runtime_component(component: str, factory: Callable):
@@ -260,8 +263,24 @@ def _load_agent_classes():
 
 def build_runtime(config: Configuration) -> RuntimeComponents:
     """Build isolated runtime resources without mutating module globals."""
+    from deepsearcher.trust import temporal_timezone_from_query_settings
+
+    _create_runtime_component(
+        "trust_temporal",
+        lambda: temporal_timezone_from_query_settings(config.query_settings),
+    )
     factory = ModuleFactory(config)
     llm_instance = _create_runtime_component("llm", factory.create_llm)
+    from deepsearcher.entailment import build_entailment_checker
+
+    trust_settings = config.query_settings.get("trust", {})
+    entailment_settings = (
+        trust_settings.get("entailment", {}) if isinstance(trust_settings, dict) else {}
+    )
+    entailment_checker_instance = _create_runtime_component(
+        "entailment_checker",
+        lambda: build_entailment_checker(llm_instance, entailment_settings),
+    )
     embedding_instance = _create_runtime_component("embedding", factory.create_embedding)
     file_loader_instance = _create_runtime_component("file_loader", factory.create_file_loader)
     web_crawler_instance = _create_runtime_component("web_crawler", factory.create_web_crawler)
@@ -339,6 +358,7 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
         web_search=web_search_instance,
         default_searcher=default_searcher_instance,
         naive_rag=naive_rag_instance,
+        entailment_checker=entailment_checker_instance,
     )
 
 
@@ -361,7 +381,8 @@ def init_config(config: Configuration) -> RuntimeComponents:
         web_crawler, \
         web_search, \
         default_searcher, \
-        naive_rag
+        naive_rag, \
+        entailment_checker
     runtime = build_runtime(config)
     module_factory = runtime.module_factory
     llm = runtime.llm
@@ -372,4 +393,5 @@ def init_config(config: Configuration) -> RuntimeComponents:
     vector_db = runtime.vector_db
     default_searcher = runtime.default_searcher
     naive_rag = runtime.naive_rag
+    entailment_checker = runtime.entailment_checker
     return runtime

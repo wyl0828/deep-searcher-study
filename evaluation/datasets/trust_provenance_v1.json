@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "dataset_id": "trust_provenance_v1",
+  "description": "Trust Trace Provenance 的人工定义安全与可复现性不变量。",
+  "cases": [
+    {"id": "stable_explicit_order", "kind": "stable_explicit_order", "expected": true},
+    {"id": "secret_rotation_invariant", "kind": "secret_rotation_invariant", "expected": true},
+    {"id": "model_change_detected", "kind": "model_change_detected", "expected": true},
+    {"id": "consistency_checker_version_bound", "kind": "consistency_checker_version_bound", "expected": true},
+    {"id": "freshness_classifier_version_bound", "kind": "freshness_classifier_version_bound", "expected": true},
+    {"id": "dynamic_scope_disclosed", "kind": "dynamic_scope_disclosed", "expected": true},
+    {"id": "dynamic_scope_resolved", "kind": "dynamic_scope_resolved", "expected": true},
+    {"id": "dynamic_multi_route_merged", "kind": "dynamic_multi_route_merged", "expected": true},
+    {"id": "evidence_snapshot_bound", "kind": "evidence_snapshot_bound", "expected": true},
+    {"id": "web_evidence_redacted", "kind": "web_evidence_redacted", "expected": true},
+    {"id": "evidence_content_change_detected", "kind": "evidence_content_change_detected", "expected": true},
+    {"id": "evidence_order_change_detected", "kind": "evidence_order_change_detected", "expected": true},
+    {"id": "evidence_tamper_rejected", "kind": "evidence_tamper_rejected", "expected": true},
+    {"id": "raw_identity_not_exposed", "kind": "raw_identity_not_exposed", "expected": true},
+    {"id": "nested_injection_removed", "kind": "nested_injection_removed", "expected": true},
+    {"id": "meaningful_tamper_rejected", "kind": "meaningful_tamper_rejected", "expected": true},
+    {"id": "temporal_reference_bound", "kind": "temporal_reference_bound", "expected": true},
+    {"id": "temporal_reference_change_detected", "kind": "temporal_reference_change_detected", "expected": true},
+    {"id": "temporal_tamper_rejected", "kind": "temporal_tamper_rejected", "expected": true},
+    {"id": "evidence_temporal_identity_bound", "kind": "evidence_temporal_identity_bound", "expected": true},
+    {"id": "evidence_temporal_change_detected", "kind": "evidence_temporal_change_detected", "expected": true},
+    {"id": "evidence_version_family_identity_bound", "kind": "evidence_version_family_identity_bound", "expected": true},
+    {"id": "evidence_version_family_change_detected", "kind": "evidence_version_family_change_detected", "expected": true}
+  ]
+}

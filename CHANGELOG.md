@@ -1,0 +1,52 @@
+# 变更记录
+
+本项目按持续维护的开发线记录面向使用者和贡献者的重要变化。条目描述的是已进入当前工作树的功能与验证材料；
+未标注正式版本号的内容仍应在合并、测试与发布标签完成后再视为稳定发布。
+
+格式参考 [Keep a Changelog](https://keepachangelog.com/)，版本号采用语义化版本的意图，而非把尚未完成的
+评测或外部服务验证包装成发布承诺。
+
+## [Unreleased]
+
+### 新增
+
+- 建立版本化 Trust Layer：引用结构、确定性一致性、时效性、风险约束、可选语义蕴含、回答策略与
+  去密 Trust Provenance 分别建模，并贯穿查询、Trace、SSE、持久化与离线 Benchmark。
+- 提供 Citation Span Mapper：Claim 的引用可映射到模型实际看到的证据快照；精确、句级近似与未定位状态
+  分开表达，持久化前校验偏移、引用文本和 Evidence ID。
+- 引入请求级时间语义与 Freshness Policy：对“当前”“最新”“近期”等问题使用文档业务日期和显式
+  `version_family` 保守判断；缺少可信锚点、范围或版本系列时不臆测有效性。
+- 引入服务端 Query Risk Profile：对财务、制度合规、权限和健康安全等决策请求提高证据与语义核验门槛，
+  客户端不能降低风险等级。
+- 增加可插拔 Entailment Checker。其默认关闭，直到真实模型在人工金标集上完成阈值校准；失败、超时和
+  低置信结果明确标为 `unknown`，不会伪装为已核验。
+- 增加文档业务时间与版本系列字段，并在上传、持久 Worker、索引、Citation、Manifest 和谱系间保持一致。
+
+### 变更
+
+- 回答策略以模型实际看到的有界 Evidence 快照为前提：部分有依据的回答移除无效或明确冲突 Claim；
+  完全无依据时交付保守拒答，并保留策略处理前的审计状态。
+- 工作台中的知识库、文档入库、问答与引用核验路径增强了可恢复 Worker、SSE 阶段事件、文档删除同步和
+  可解释的失败分类。
+- 检索与回答评测统一记录质量、拒答、引用、延迟和 Token；Hybrid/RRF 对比与默认 Agent 选择保留
+  可复现报告，而非只依据主观体验调整。
+
+### 质量与验证
+
+- 新增并纳入快速质量门禁的人工数据集：确定性 Trust Consistency、Citation Span、Entailment 契约、
+  Query Risk Profile 和 Trust Provenance 不变量。
+- 快速质量门禁覆盖 Python 静态检查与测试、前端测试/类型检查/构建、Chromium E2E、全新 SQLite 迁移、
+  评测报告校验、MkDocs 构建和 `git diff --check`；完整档额外重建真实评测 Collection。
+
+### 已知边界
+
+- Citation 结构与字符定位不等于语义蕴含；Entailment 的真实模型质量必须通过 `--mode live` 评测证明。
+- “最新”仅在最终 Evidence 快照的同一 `version_family` 内判断，不替代全库召回、外部网页归档或连接器同步完整性。
+- 当前开发线尚未声明为通用生产 SLO。基线报告只覆盖固定数据集与明确的运行配置。
+
+## 变更证据
+
+- 版本路线和每项能力的验收边界：[docs/roadmap/trustworthy-rag-roadmap.md](docs/roadmap/trustworthy-rag-roadmap.md)
+- 架构决策和安全约束：[docs/adr/](docs/adr/)
+- 运行命令、数据集范围与基线报告：[evaluation/README.md](evaluation/README.md)
+- 上游来源与许可：[UPSTREAM.md](UPSTREAM.md)

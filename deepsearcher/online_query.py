@@ -14,6 +14,13 @@ def query(
     *,
     searcher=None,
     initial_tokens: int = 0,
+    enforce_trust: bool = False,
+    entailment_checker=None,
+    provenance=None,
+    provenance_resolver=None,
+    evidence_provenance_resolver=None,
+    temporal_timezone: str = "UTC",
+    reference_time=None,
 ) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
@@ -32,13 +39,36 @@ def query(
             - The number of tokens consumed during the process
     """
     default_searcher = searcher or configuration.default_searcher
+    collector = (
+        TraceCollector(
+            original_query,
+            entailment_checker=entailment_checker,
+            provenance=provenance,
+            provenance_resolver=provenance_resolver,
+            evidence_provenance_resolver=evidence_provenance_resolver,
+            temporal_timezone=temporal_timezone,
+            reference_time=reference_time,
+        )
+        if enforce_trust
+        else None
+    )
     kwargs = {"max_iter": max_iter}
+    if collector is not None:
+        kwargs["trace_collector"] = collector
     if collection_names is not None:
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
     answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
-    return answer, results, int(consume_tokens or 0) + max(int(initial_tokens or 0), 0)
+    trust_tokens = 0
+    if collector is not None:
+        answer = collector.finalize_answer(answer, results, enforce_policy=True)
+        trust_tokens = collector.trust_tokens
+    return (
+        answer,
+        results,
+        int(consume_tokens or 0) + max(int(initial_tokens or 0), 0) + trust_tokens,
+    )
 
 
 def query_with_trace(
@@ -50,9 +80,23 @@ def query_with_trace(
     searcher=None,
     trace_collector=None,
     initial_tokens: int = 0,
+    entailment_checker=None,
+    provenance=None,
+    provenance_resolver=None,
+    evidence_provenance_resolver=None,
+    temporal_timezone: str = "UTC",
+    reference_time=None,
 ):
     """Query the knowledge base and return an additional structured execution trace."""
-    collector = trace_collector or TraceCollector(original_query)
+    collector = trace_collector or TraceCollector(
+        original_query,
+        entailment_checker=entailment_checker,
+        provenance=provenance,
+        provenance_resolver=provenance_resolver,
+        evidence_provenance_resolver=evidence_provenance_resolver,
+        temporal_timezone=temporal_timezone,
+        reference_time=reference_time,
+    )
     default_searcher = searcher or configuration.default_searcher
     kwargs = {"max_iter": max_iter, "trace_collector": collector}
     if collection_names is not None:
@@ -61,6 +105,8 @@ def query_with_trace(
         kwargs["use_web_search"] = True
     answer, results, agent_tokens = default_searcher.query(original_query, **kwargs)
     consume_tokens = int(agent_tokens or 0) + max(int(initial_tokens or 0), 0)
+    answer = collector.finalize_answer(answer, results, enforce_policy=True)
+    consume_tokens += collector.trust_tokens
     return (
         answer,
         results,

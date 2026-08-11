@@ -5,11 +5,26 @@ from __future__ import annotations
 import math
 import re
 import threading
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from datetime import datetime
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 from uuid import uuid4
 
+from deepsearcher.freshness import classify_query_freshness
 from deepsearcher.grounding import MAX_GROUNDING_EVIDENCE_TEXT, build_grounding
+from deepsearcher.provenance import bind_trust_provenance_temporal, sanitize_trust_provenance
+from deepsearcher.risk import classify_query_risk
+from deepsearcher.temporal import extract_document_temporal_metadata
+from deepsearcher.trust import (
+    apply_answer_policy,
+    assess_grounding_consistency,
+    assess_grounding_entailment,
+    assess_grounding_risk,
+    build_temporal_context,
+    build_trust_report,
+    propagate_entailment_findings,
+)
 from deepsearcher.vector_db.base import RetrievalResult
+from deepsearcher.versioning import extract_document_version_metadata
 from deepsearcher.web_search.tavily import canonical_public_url
 
 
@@ -55,7 +70,7 @@ def redact_sensitive_text(value: Any, *, max_length: int) -> Optional[str]:
 class TraceCollector:
     """Collect explicit Agent events without parsing logs or exposing hidden reasoning."""
 
-    VERSION = 4
+    VERSION = 6
     EVENT_VERSION = 1
     MAX_VISIBLE_DOCUMENTS = 5
     MAX_DOCUMENT_TEXT = 600
@@ -67,15 +82,42 @@ class TraceCollector:
         event_callback: Callable[[Dict[str, Any]], None] | None = None,
         cancellation_event: threading.Event | None = None,
         request_id: str | None = None,
+        entailment_checker=None,
+        risk_profile=None,
+        provenance=None,
+        provenance_resolver: Callable[[Sequence[str]], Any] | None = None,
+        evidence_provenance_resolver: Callable[[Sequence[tuple[RetrievalResult, str]]], Any]
+        | None = None,
+        temporal_timezone: str = "UTC",
+        reference_time: datetime | str | None = None,
     ):
+        self.risk_profile = dict(risk_profile or classify_query_risk(original_query))
+        self.freshness_intent = classify_query_freshness(original_query)
         del original_query
         self.agent: Optional[str] = None
         self.routing_decision: Optional[Dict[str, Any]] = None
         self.routing_tokens = 0
         self.final_answer_tokens = 0
+        self.trust_tokens = 0
         self._selection_events: List[Dict[str, Any]] = []
         self.contextualization: Optional[Dict[str, Any]] = None
         self._grounding_evidence_text: Dict[int, str] = {}
+        self._grounding_snapshot_recorded = False
+        self._final_grounding: Dict[str, Any] | None = None
+        self._trust_report: Dict[str, Any] | None = None
+        self._policy_final_answer: str | None = None
+        self._entailment_checker = entailment_checker
+        self._provenance = sanitize_trust_provenance(provenance)
+        self._provenance_resolver = provenance_resolver
+        self._evidence_provenance_resolver = evidence_provenance_resolver
+        self.temporal_context = build_temporal_context(
+            reference_time=reference_time,
+            timezone_name=temporal_timezone,
+        )
+        self._provenance = bind_trust_provenance_temporal(
+            self._provenance,
+            self.temporal_context,
+        )
         self._iterations: List[Dict[str, Any]] = []
         self._current: Optional[Dict[str, Any]] = None
         self._event_callback = event_callback
@@ -191,11 +233,25 @@ class TraceCollector:
         decision: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.raise_if_cancelled()
+        selected_collections = [
+            item for item in collections if isinstance(item, str) and 0 < len(item) <= 128
+        ]
+        if self._provenance_resolver is not None:
+            try:
+                resolved = self._provenance_resolver(selected_collections)
+            except Exception:
+                resolved = None
+            safe_provenance = sanitize_trust_provenance(resolved)
+            if safe_provenance is not None:
+                self._provenance = bind_trust_provenance_temporal(
+                    safe_provenance,
+                    self.temporal_context,
+                )
         if not self._current:
             return
         self._current["collections"] = []
         self._current["collection_routing"] = self._safe_decision(decision)
-        self._current["token_usage"]["collection_routing"] = int(token_usage or 0)
+        self._current["token_usage"]["collection_routing"] += int(token_usage or 0)
 
     def record_documents_retrieved(self, results: Iterable[RetrievalResult]) -> None:
         self.raise_if_cancelled()
@@ -280,9 +336,89 @@ class TraceCollector:
     ) -> None:
         """Retain the exact evidence text shown to the final-answer model."""
         self.raise_if_cancelled()
-        self._grounding_evidence_text = {
-            id(result): str(text) for result, text in evidence_snapshot
-        }
+        snapshot = list(evidence_snapshot)
+        self._grounding_snapshot_recorded = True
+        self._grounding_evidence_text = {id(result): str(text) for result, text in snapshot}
+        if self._evidence_provenance_resolver is not None:
+            try:
+                resolved = self._evidence_provenance_resolver(snapshot)
+            except Exception:
+                resolved = None
+            safe_provenance = sanitize_trust_provenance(resolved)
+            if safe_provenance is not None:
+                self._provenance = bind_trust_provenance_temporal(
+                    safe_provenance,
+                    self.temporal_context,
+                )
+
+    def finalize_answer(
+        self,
+        answer: str,
+        final_results: Iterable[RetrievalResult],
+        *,
+        enforce_policy: bool = True,
+    ) -> str:
+        """Assess an answer and apply the versioned policy before delivery."""
+
+        final_results_list = list(final_results)
+        original_grounding = build_grounding(
+            answer,
+            final_results_list,
+            serialize_evidence=self._serialize_grounding_document,
+        )
+        original_consistency = assess_grounding_consistency(
+            original_grounding,
+            temporal_context=self.temporal_context,
+            freshness_intent=self.freshness_intent,
+        )
+        original_assessment, entailment = assess_grounding_entailment(
+            original_consistency,
+            self._entailment_checker,
+        )
+        original_assessment = assess_grounding_risk(
+            original_assessment,
+            self.risk_profile,
+        )
+        self.trust_tokens = max(int(entailment.get("token_usage") or 0), 0)
+        final_answer, policy = apply_answer_policy(
+            answer,
+            original_assessment,
+            evidence_snapshot_available=self._grounding_snapshot_recorded,
+            enforce=enforce_policy,
+            risk_profile=self.risk_profile,
+        )
+        final_grounding = build_grounding(
+            final_answer,
+            final_results_list,
+            serialize_evidence=self._serialize_grounding_document,
+        )
+        final_consistency = assess_grounding_consistency(
+            final_grounding,
+            temporal_context=self.temporal_context,
+            freshness_intent=self.freshness_intent,
+        )
+        final_assessment = propagate_entailment_findings(
+            final_consistency,
+            original_assessment,
+        )
+        final_assessment = assess_grounding_risk(
+            final_assessment,
+            self.risk_profile,
+        )
+        self._final_grounding = final_grounding
+        self._trust_report = build_trust_report(
+            final_assessment,
+            original_grounding=original_assessment,
+            evidence_snapshot_available=self._grounding_snapshot_recorded,
+            policy=policy,
+            entailment=entailment,
+            risk=self.risk_profile,
+            provenance=self._provenance,
+            temporal_context=self.temporal_context,
+            freshness=self.freshness_intent,
+        )
+        self._policy_final_answer = final_answer
+        return final_answer
 
     def record_selection_event(
         self,
@@ -331,12 +467,13 @@ class TraceCollector:
                 "total_tokens": int(total_tokens or 0),
             },
         }
+        if self.trust_tokens:
+            trace["summary"]["trust_tokens"] = self.trust_tokens
         if answer is not None:
-            trace["grounding"] = build_grounding(
-                answer,
-                final_results_list,
-                serialize_evidence=self._serialize_grounding_document,
-            )
+            if self._policy_final_answer != answer or self._final_grounding is None:
+                self.finalize_answer(answer, final_results_list, enforce_policy=False)
+            trace["grounding"] = self._final_grounding
+            trace["trust"] = self._trust_report
         return trace
 
     def _serialize_iteration(
@@ -401,6 +538,8 @@ class TraceCollector:
         if score_kind not in {"distance", "similarity", "rank_score"}:
             score_kind = None
         source_type = "web" if metadata.get("source_type") == "web" else "knowledge_base"
+        temporal_metadata = extract_document_temporal_metadata(metadata)
+        version_metadata = extract_document_version_metadata(metadata)
         source_url = (
             self._safe_reference(metadata.get("source_url")) if source_type == "web" else None
         )
@@ -444,6 +583,8 @@ class TraceCollector:
                 else None
             ),
             "trusted": bool(metadata.get("trusted", False)) if source_type == "web" else True,
+            **temporal_metadata,
+            **version_metadata,
             "metric_type": metric_type,
             "score_kind": score_kind,
             "distance": safe_retrieval_value(getattr(result, "distance", None)),

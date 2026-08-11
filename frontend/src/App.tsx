@@ -61,6 +61,8 @@ import { useMediaQuery } from "./useMediaQuery";
 import { useModalFocus } from "./useModalFocus";
 import {
   type Citation,
+  type CitationSpan,
+  type DocumentGovernanceInput,
   type KnowledgeBase,
   type Message,
   type ProductDocument,
@@ -88,6 +90,7 @@ import {
   setupWorkspace,
   streamMessage,
   uploadDocument,
+  updateDocumentGovernanceMetadata,
 } from "./product-api";
 import "./workspace.css";
 
@@ -919,6 +922,7 @@ function NewChatPage() {
 function CitationDrawer({
   citations,
   selectedId,
+  selectedSpan,
   focusSelected,
   modal,
   onSelect,
@@ -926,6 +930,7 @@ function CitationDrawer({
 }: {
   citations: Citation[];
   selectedId: string | null;
+  selectedSpan: CitationSpan | null;
   focusSelected: boolean;
   modal: boolean;
   onSelect: (citation: Citation) => void;
@@ -1020,7 +1025,33 @@ function CitationDrawer({
                     <span>域名白名单</span>
                   ) : null}
                 </div>
-                <p>{citation.text || "该来源暂时无法预览。"}</p>
+                <p>
+                  {citation.text &&
+                  citation.id === selectedId &&
+                  selectedSpan?.citation_index === citation.index &&
+                  selectedSpan.start != null &&
+                  selectedSpan.end != null &&
+                  selectedSpan.start >= 0 &&
+                  selectedSpan.end > selectedSpan.start &&
+                  selectedSpan.end <= citation.text.length ? (
+                    <>
+                      {citation.text.slice(0, selectedSpan.start)}
+                      <mark
+                        className={`citation-span citation-span--${selectedSpan.match_type}`}
+                        title={
+                          selectedSpan.match_type === "normalized_exact"
+                            ? "声明文字在证据中的精确位置"
+                            : "与声明最相关的证据句，仅用于定位"
+                        }
+                      >
+                        {citation.text.slice(selectedSpan.start, selectedSpan.end)}
+                      </mark>
+                      {citation.text.slice(selectedSpan.end)}
+                    </>
+                  ) : (
+                    citation.text || "该来源暂时无法预览。"
+                  )}
+                </p>
               </div>
             </button>
             {citation.source_type === "web" &&
@@ -1071,7 +1102,11 @@ function AssistantMessage({
   queryDisabled,
 }: {
   message: Message;
-  onCitation: (citation: Citation, trigger: HTMLButtonElement) => void;
+  onCitation: (
+    citation: Citation,
+    trigger: HTMLButtonElement,
+    span?: CitationSpan,
+  ) => void;
   onRegenerate: () => void;
   queryPending: boolean;
   regenerating: boolean;
@@ -1080,6 +1115,97 @@ function AssistantMessage({
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<"helpful" | "unhelpful" | null>(null);
   const displayedContent = displayAnswerContent(message.content);
+  const trustInputClaims = message.trust_details?.input.claims || [];
+  const contradictedClaimCount = trustInputClaims.filter(
+    (claim) => claim.entailment_status === "contradicted",
+  ).length;
+  const unknownEntailmentCount = trustInputClaims.filter(
+    (claim) => claim.entailment_status === "unknown",
+  ).length;
+  const rejectedRiskClaimCount = trustInputClaims.filter(
+    (claim) => claim.risk_status === "rejected",
+  ).length;
+  const highRiskQuantitative = Boolean(
+    message.risk_level === "high" &&
+      message.risk_factors?.includes("QUANTITATIVE_DECISION"),
+  );
+  const provenance = message.trust_details?.provenance;
+  const provenanceDigest = provenance?.digest.replace("sha256:", "") || "";
+  const evidenceProvenance = provenance?.evidence;
+  const temporalContext = message.trust_details?.temporal_context;
+  const freshness = message.trust_details?.freshness;
+  const formatConsistencyValue = (kind: string, value: string) => {
+    const parts = value.split("|");
+    if (kind === "range" && parts.length === 3) {
+      const operator =
+        ({ lte: "不超过", gte: "不少于", lt: "小于", gt: "大于" } as const)[
+          parts[0] as "lte" | "gte" | "lt" | "gt"
+        ] || parts[0];
+      return `${operator} ${parts[1]}${parts[2] ? ` ${parts[2]}` : ""}`;
+    }
+    if (kind === "quantity" && parts.length === 2) {
+      return `${parts[0]}${parts[1] ? ` ${parts[1]}` : ""}`;
+    }
+    if (kind === "condition") {
+      const relation = value.match(/^(all|any)\((.*)\)$/);
+      if (relation) {
+        return `${relation[1] === "all" ? "需同时满足" : "满足任一"}：${relation[2]
+          .split(",")
+          .join("、")}`;
+      }
+      const negated = value.match(/^negated\((.*)\)$/);
+      if (negated) {
+        return `条件被否定：${negated[1]}`;
+      }
+    }
+    if (kind === "relative_time") {
+      const [period, rawValue] = value.split(":", 2);
+      if (period === "date") return rawValue;
+      if (period === "week") return `${rawValue} 周`;
+      if (period === "month") return `${rawValue} 月`;
+      if (period === "quarter") return `${rawValue.replace("-Q", " 年第 ")} 季度`;
+      if (period === "year") return `${rawValue} 年`;
+      const relativeLabels: Record<string, string> = {
+        "day:-2": "前天",
+        "day:-1": "昨天",
+        "day:0": "今天",
+        "day:1": "明天",
+        "day:2": "后天",
+        "week:-1": "上周",
+        "week:0": "本周",
+        "week:1": "下周",
+        "month:-1": "上月",
+        "month:0": "本月",
+        "month:1": "下月",
+        "quarter:-1": "上季度",
+        "quarter:0": "本季度",
+        "quarter:1": "下季度",
+        "year:-1": "去年",
+        "year:0": "今年",
+        "year:1": "明年",
+      };
+      return relativeLabels[value] || value;
+    }
+    if (kind === "freshness") {
+      const labels: Record<string, string> = {
+        current: "当前有效版本",
+        latest_effective: "最新生效版本",
+        latest_published: "最新发布版本",
+        recent: "近期",
+        effective_at: "生效日期",
+        published_at: "发布日期",
+        request_clock: "请求时间基准",
+        recency_window: "明确的近期时间窗口",
+        active_version: "当前有效版本",
+        eligible_publication: "可用发布日期",
+        "effective_at<=reference_date": "生效日期不晚于查询日期",
+        "reference_date<superseded_at": "查询日期早于失效日期",
+        "published_at<=reference_date": "发布日期不晚于查询日期",
+      };
+      return labels[value] || value;
+    }
+    return value;
+  };
   return (
     <article className="assistant-message">
       <div className="assistant-avatar">
@@ -1101,6 +1227,48 @@ function AssistantMessage({
             检索到的来源存在冲突，请结合对应引用判断。
           </div>
         ) : null}
+        {message.policy_action === "downgrade" ? (
+          <div className="grounding-notice grounding-notice--partial">
+            可信回答策略已移除未获得当前证据支持的声明，仅保留可核对内容。
+          </div>
+        ) : null}
+        {message.risk_level === "high" ? (
+          <div className="grounding-notice grounding-notice--high-risk">
+            本问题已按高风险策略核验：必须有明确语义结论
+            {highRiskQuantitative ? "，且额度、期限或比例需要至少两份独立来源" : ""}。
+          </div>
+        ) : null}
+        {freshness?.required ? (
+          <div className="grounding-notice grounding-notice--freshness">
+            本问题要求核验
+            {freshness.mode === "current"
+              ? "当前有效版本"
+              : freshness.mode === "latest_published"
+                ? "最新发布版本"
+                : freshness.mode === "latest_effective"
+                  ? "最新生效版本"
+                  : "近期资料"}
+            ；系统只使用文档声明的业务日期，不使用上传时间推断。
+          </div>
+        ) : null}
+        {rejectedRiskClaimCount ? (
+          <div className="grounding-notice grounding-notice--risk-rejected">
+            {rejectedRiskClaimCount} 条声明未满足高风险证据门槛，已被删除或拒答。
+          </div>
+        ) : null}
+        {contradictedClaimCount ? (
+          <div className="grounding-notice grounding-notice--entailment-conflict">
+            语义核验发现 {contradictedClaimCount} 条声明与引用证据矛盾，风险内容已由可信策略移除。
+          </div>
+        ) : null}
+        {unknownEntailmentCount ? (
+          <div className="grounding-notice grounding-notice--entailment-unknown">
+            {unknownEntailmentCount} 条声明未得到高置信语义结论；
+            {message.risk_level === "high"
+              ? "高风险策略不会保留这些内容。"
+              : "当前标准策略保留内容并明确标记。"}
+          </div>
+        ) : null}
         {message.answer_state === "failed" ? (
           <div className="query-failure-inline">
             系统没有完成本次检索，这不代表知识库中没有相关资料。
@@ -1119,8 +1287,26 @@ function AssistantMessage({
                     message.citations.find((citation) => citation.index === index),
                   )
                   .filter((citation): citation is Citation => Boolean(citation));
+                const attentionChecks = (claim.consistency_checks || []).filter(
+                  (check) => check.status !== "consistent",
+                );
+                const hasFreshnessAttention = attentionChecks.some(
+                  (check) => check.kind === "freshness",
+                );
                 const statusLabel =
-                  claim.support_status === "supported"
+                  claim.risk_status === "rejected"
+                    ? "高风险门槛未通过"
+                    : claim.entailment_status === "contradicted"
+                    ? "证据语义矛盾"
+                    : claim.entailment_status === "unknown"
+                      ? "语义待确认"
+                      : claim.consistency_status === "unknown"
+                        ? hasFreshnessAttention
+                          ? "时效依据待确认"
+                          : "时间基准待确认"
+                        : claim.consistency_status === "inconsistent"
+                          ? "证据内容不一致"
+                    : claim.support_status === "supported"
                     ? "已有依据"
                     : claim.support_status === "conflicting"
                       ? "来源冲突"
@@ -1144,16 +1330,229 @@ function AssistantMessage({
                           aria-label={`查看声明 ${claim.index} 的引用 ${citation.index}：${citation.display_name}${
                             citation.page_number ? `，第 ${citation.page_number} 页` : ""
                           }`}
-                          onClick={(event) => onCitation(citation, event.currentTarget)}
+                          onClick={(event) =>
+                            onCitation(
+                              citation,
+                              event.currentTarget,
+                              claim.citation_spans?.find(
+                                (span) =>
+                                  span.citation_index === citation.index &&
+                                  span.match_type !== "not_found",
+                              ),
+                            )
+                          }
                         >
                           [{citation.index}]
                         </button>
                       ))}
                     </div>
+                    {attentionChecks.length ? (
+                      <div className="claim-consistency" role="note">
+                        {attentionChecks.map((check) => (
+                          <span key={`${claim.id}-${check.kind}`}>
+                            {check.kind === "freshness"
+                              ? check.reason_code === "FRESHNESS_EVIDENCE_SUPERSEDED"
+                                ? "引用资料在查询日期前已经失效或被替代"
+                                : check.reason_code ===
+                                    "FRESHNESS_EVIDENCE_NOT_YET_EFFECTIVE"
+                                  ? "引用资料在查询日期尚未生效"
+                                  : check.reason_code ===
+                                      "FRESHNESS_NEWER_EVIDENCE_AVAILABLE"
+                                    ? "本次证据快照中存在更新的有效资料"
+                                    : check.reason_code ===
+                                        "FRESHNESS_RECENCY_WINDOW_UNDEFINED"
+                                      ? "“近期”没有明确时间窗口，系统不会自行猜测"
+                                      : check.reason_code ===
+                                          "FRESHNESS_REFERENCE_MISSING"
+                                        ? "本次请求缺少可信日期基准"
+                                        : check.reason_code ===
+                                            "FRESHNESS_PUBLICATION_IN_FUTURE"
+                                          ? "引用资料的发布日期晚于查询日期"
+                                          : check.reason_code ===
+                                              "FRESHNESS_NO_CURRENT_VERSION"
+                                            ? "本次证据中没有当前有效版本"
+                                            : "文档缺少完成时效判断所需的业务日期"
+                              : check.kind === "quantity"
+                              ? check.reason_code === "QUANTITY_ENTITY_MISMATCH"
+                                ? "数字虽然出现，但对应对象与证据不一致"
+                                : "数字或单位与证据不一致"
+                              : check.kind === "date"
+                                ? "日期与证据不一致"
+                                : check.kind === "relative_time"
+                                  ? check.reason_code === "RELATIVE_TIME_REFERENCE_MISSING"
+                                    ? "回答包含相对时间，但本次请求缺少可信时间基准"
+                                    : check.reason_code ===
+                                        "RELATIVE_TIME_EVIDENCE_ANCHOR_MISSING"
+                                      ? "证据也使用了相对时间，但缺少可信文档时间锚点"
+                                      : check.reason_code ===
+                                          "RELATIVE_TIME_ENTITY_MISMATCH"
+                                        ? "时间虽然匹配，但对应对象与证据不一致"
+                                      : "相对时间换算结果与证据不一致"
+                                : check.kind === "version"
+                                  ? "版本与证据不一致"
+                                  : check.kind === "range"
+                                    ? check.reason_code === "RANGE_ENTITY_MISMATCH"
+                                      ? "范围数值虽然出现，但对应对象与证据不一致"
+                                      : "范围约束与证据不一致"
+                                    : check.kind === "condition"
+                                      ? check.reason_code === "CONDITION_RELATION_MISMATCH"
+                                        ? "前置条件的“同时满足/满足任一”关系与证据不一致"
+                                        : check.reason_code === "CONDITION_NEGATED"
+                                          ? "回答否定了证据要求的前置条件"
+                                          : "权限、例外或前置条件与证据不一致"
+                                      : "陈述的肯定/否定方向与证据不一致"}
+                            {check.missing_values?.length
+                              ? `：${check.missing_values
+                                  .map((value) =>
+                                    formatConsistencyValue(check.kind, value),
+                                  )
+                                  .join("、")}`
+                              : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {claim.entailment_status === "unknown" ? (
+                      <div className="claim-entailment" role="note">
+                        语义核验未达到高置信阈值
+                        {claim.confidence != null
+                          ? `（置信度 ${Math.round(claim.confidence * 100)}%）`
+                          : ""}
+                      </div>
+                    ) : null}
+                    {(claim.risk_checks || []).some(
+                      (check) => check.status === "failed",
+                    ) ? (
+                      <div className="claim-risk" role="note">
+                        {(claim.risk_checks || [])
+                          .filter((check) => check.status === "failed")
+                          .map((check) => (
+                            <span key={`${claim.id}-risk-${check.kind}`}>
+                              {check.kind === "entailment"
+                                ? "需要明确的语义核验结论"
+                                : check.kind === "source_count"
+                                  ? `独立来源不足（${check.actual ?? 0}/${check.required ?? 0}）`
+                                  : `证据数量不足（${check.actual ?? 0}/${check.required ?? 0}）`}
+                            </span>
+                          ))}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
+          </details>
+        ) : null}
+        {provenance ? (
+          <details className="trust-provenance">
+            <summary>本次可信判断谱系</summary>
+            <div className="trust-provenance-grid" aria-label="可信判断谱系">
+              <div>
+                <span>生成模型</span>
+                <strong>
+                  {provenance.generation_model.provider} / {provenance.generation_model.model}
+                </strong>
+              </div>
+              <div>
+                <span>向量模型</span>
+                <strong>
+                  {provenance.embedding.provider} / {provenance.embedding.model}
+                </strong>
+              </div>
+              <div>
+                <span>索引快照</span>
+                <strong>
+                  {provenance.index.snapshot_status === "complete"
+                    ? provenance.index.selection_mode === "dynamic"
+                      ? `动态路由，已绑定 ${provenance.index.collection_count} 个实际知识库版本`
+                      : `已绑定 ${provenance.index.collection_count} 个知识库版本`
+                    : provenance.index.snapshot_status === "dynamic_unbound"
+                      ? "动态路由，未绑定固定快照"
+                      : "部分版本信息不可用"}
+                </strong>
+              </div>
+              <div>
+                <span>运行时</span>
+                <strong>
+                  {provenance.runtime.runtime_version
+                    ? `v${provenance.runtime.runtime_version} · 绑定修订 ${provenance.runtime.binding_revision}`
+                    : "本地库调用"}
+                </strong>
+              </div>
+              <div>
+                <span>最终证据快照</span>
+                <strong>
+                  {evidenceProvenance?.snapshot_status === "complete"
+                    ? `${evidenceProvenance.evidence_count} 段已绑定${
+                        evidenceProvenance.web_count
+                          ? `，其中 ${evidenceProvenance.web_count} 段来自网页 snippet`
+                          : ""
+                      }${
+                        (evidenceProvenance.items || []).some(
+                          (item) => item.publication_anchor_bound,
+                        )
+                          ? `，${
+                              (evidenceProvenance.items || []).filter(
+                                (item) =>
+                                  item.source_type === "knowledge_base" &&
+                                  item.publication_anchor_bound,
+                              ).length
+                            } 段绑定发布日期`
+                          : ""
+                      }${
+                        (evidenceProvenance.items || []).some(
+                          (item) => item.version_family_bound,
+                        )
+                          ? `，${
+                              (evidenceProvenance.items || []).filter(
+                                (item) =>
+                                  item.source_type === "knowledge_base" &&
+                                  item.version_family_bound,
+                              ).length
+                            } 段绑定文档系列`
+                          : ""
+                      }`
+                    : evidenceProvenance?.snapshot_status === "partial"
+                      ? "部分证据来源版本不可确认"
+                      : "未绑定模型最终看到的证据快照"}
+                </strong>
+              </div>
+              <div>
+                <span>可信策略</span>
+                <strong>
+                  Trust v{provenance.policy.trust_contract_version} · Policy v
+                  {provenance.policy.answer_policy_version}
+                </strong>
+              </div>
+              {temporalContext ? (
+                <div>
+                  <span>相对时间基准</span>
+                  <strong>
+                    {temporalContext.reference_date} · {temporalContext.timezone}
+                  </strong>
+                </div>
+              ) : null}
+              {freshness?.required ? (
+                <div>
+                  <span>时效意图</span>
+                  <strong>
+                    {freshness.mode === "current"
+                      ? "当前有效"
+                      : freshness.mode === "latest_published"
+                        ? "最新发布"
+                        : freshness.mode === "latest_effective"
+                          ? "最新生效"
+                          : "近期（窗口未定义）"}
+                    {` · Classifier v${freshness.classifier_version}`}
+                  </strong>
+                </div>
+              ) : null}
+              <div>
+                <span>判定摘要</span>
+                <code title={provenance.digest}>{provenanceDigest.slice(0, 16)}</code>
+              </div>
+            </div>
+            <p>该摘要只包含版本与指纹，不保存原始问题、完整提示词或访问密钥。</p>
           </details>
         ) : null}
         {message.citations.length ? (
@@ -1240,6 +1639,8 @@ function ChatPage() {
   const [question, setQuestion] = useState("");
   const [showDeleteConversation, setShowDeleteConversation] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
+  const [selectedCitationSpan, setSelectedCitationSpan] =
+    useState<CitationSpan | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(() => !compactViewport);
   const [focusDrawerSelection, setFocusDrawerSelection] = useState(false);
   const [streamStages, setStreamStages] = useState<QueryStageEvent[]>([]);
@@ -1304,7 +1705,10 @@ function ChatPage() {
   const hasConversation = Boolean(conversation.data);
 
   useEffect(() => {
-    if (!selectedCitation && citations.length) setSelectedCitation(citations[0]);
+    if (!selectedCitation && citations.length) {
+      setSelectedCitation(citations[0]);
+      setSelectedCitationSpan(null);
+    }
   }, [citations, selectedCitation]);
 
   useEffect(() => {
@@ -1332,6 +1736,7 @@ function ChatPage() {
   useEffect(() => {
     setDrawerOpen(!compactViewport);
     setFocusDrawerSelection(false);
+    setSelectedCitationSpan(null);
   }, [compactViewport, conversationId]);
 
   useEffect(() => {
@@ -1435,9 +1840,10 @@ function ChatPage() {
                     .find((candidate) => candidate.role === "user");
                   if (previousUserMessage) mutation.mutate(previousUserMessage.content);
                 }}
-                onCitation={(citation, trigger) => {
+                onCitation={(citation, trigger, span) => {
                   lastCitationTriggerRef.current = trigger;
                   setSelectedCitation(citation);
+                  setSelectedCitationSpan(span || null);
                   setFocusDrawerSelection(true);
                   setDrawerOpen(true);
                 }}
@@ -1494,11 +1900,13 @@ function ChatPage() {
           <CitationDrawer
             citations={citations}
             selectedId={selectedCitation?.id || null}
+            selectedSpan={selectedCitationSpan}
             focusSelected={focusDrawerSelection}
             modal={compactViewport}
             onSelect={(citation) => {
               setFocusDrawerSelection(false);
               setSelectedCitation(citation);
+              setSelectedCitationSpan(null);
             }}
             onClose={closeCitationDrawer}
           />
@@ -1614,13 +2022,191 @@ function DocumentStatusBadge({ status }: { status: string }) {
   );
 }
 
+function DocumentTemporalDialog({
+  open,
+  document,
+  pending,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  document: ProductDocument | null;
+  pending: boolean;
+  error: Error | null;
+  onClose: () => void;
+  onSubmit: (file: File | null, temporal: DocumentGovernanceInput) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [publishedAt, setPublishedAt] = useState("");
+  const [effectiveAt, setEffectiveAt] = useState("");
+  const [supersededAt, setSupersededAt] = useState("");
+  const [versionFamily, setVersionFamily] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const titleId = useId();
+  const editing = Boolean(document);
+  const dialogRef = useModalFocus({
+    open,
+    onDismiss: onClose,
+    dismissBlocked: pending,
+  });
+  useEffect(() => {
+    if (!open) return;
+    setFile(null);
+    setPublishedAt(document?.published_at || "");
+    setEffectiveAt(document?.effective_at || "");
+    setSupersededAt(document?.superseded_at || "");
+    setVersionFamily(document?.version_family || "");
+    setValidationError("");
+  }, [document, open]);
+
+  if (!open) return null;
+  return (
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onMouseDown={() => {
+        if (!pending) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="dialog-card document-temporal-dialog"
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">文档治理</span>
+            <h2 id={titleId}>{editing ? "编辑文档治理信息" : "上传 PDF"}</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={onClose}
+            aria-label="关闭"
+            disabled={pending}
+          >
+            <XMarkIcon aria-hidden="true" />
+          </button>
+        </div>
+        <p className="dialog-description">
+          文档系列用于比较同一制度的不同版本；发布日期用于解释“今天、明天、下周”。系统不会使用文件名、修改时间或上传时间推断这些信息。
+        </p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!editing && !file) {
+              setValidationError("请选择一个 PDF 文件。");
+              return;
+            }
+            if (
+              supersededAt &&
+              ((publishedAt && supersededAt < publishedAt) ||
+                (effectiveAt && supersededAt < effectiveAt))
+            ) {
+              setValidationError("失效日期不能早于发布日期或生效日期。");
+              return;
+            }
+            setValidationError("");
+            onSubmit(file, {
+              published_at: publishedAt || null,
+              effective_at: effectiveAt || null,
+              superseded_at: supersededAt || null,
+              version_family: versionFamily.trim() || null,
+            });
+          }}
+        >
+          {!editing ? (
+            <label className="form-field">
+              <span>PDF 文件</span>
+              <input
+                data-dialog-initial-focus
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) => setFile(event.target.files?.[0] || null)}
+              />
+            </label>
+          ) : (
+            <p className="document-temporal-file">{document?.display_name}</p>
+          )}
+          <label className="form-field">
+            <span>文档系列标识（推荐）</span>
+            <input
+              type="text"
+              value={versionFamily}
+              maxLength={128}
+              placeholder="例如：travel-expense-policy"
+              onChange={(event) => setVersionFamily(event.target.value)}
+            />
+            <small>同一制度的历次版本填写相同标识，最新版本只在同系列内比较</small>
+          </label>
+          <div className="document-temporal-fields">
+            <label className="form-field">
+              <span>发布日期（推荐）</span>
+              <input
+                type="date"
+                data-dialog-initial-focus={editing || undefined}
+                value={publishedAt}
+                onChange={(event) => setPublishedAt(event.target.value)}
+              />
+              <small>文档内相对时间的唯一锚点</small>
+            </label>
+            <label className="form-field">
+              <span>生效日期（可选）</span>
+              <input
+                type="date"
+                value={effectiveAt}
+                onChange={(event) => setEffectiveAt(event.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>失效/被替代日期（可选）</span>
+              <input
+                type="date"
+                value={supersededAt}
+                onChange={(event) => setSupersededAt(event.target.value)}
+              />
+            </label>
+          </div>
+          {validationError ? <p className="dialog-warning">{validationError}</p> : null}
+          {error ? <ErrorState message={error.message} /> : null}
+          <div className="dialog-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onClose}
+              disabled={pending}
+            >
+              取消
+            </button>
+            <button className="product-primary-button" type="submit" disabled={pending}>
+              {pending
+                ? editing
+                  ? "正在保存并排队…"
+                  : "正在上传…"
+                : editing
+                  ? "保存并更新索引"
+                  : "上传并处理"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function KnowledgeDetailPage() {
   const { knowledgeBaseId = "" } = useParams();
   const navigate = useNavigate();
   const queryCache = useQueryClient();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [documentToDelete, setDocumentToDelete] = useState<ProductDocument | null>(null);
   const [showDeleteKnowledgeBase, setShowDeleteKnowledgeBase] = useState(false);
+  const [showTemporalDialog, setShowTemporalDialog] = useState(false);
+  const [documentToEdit, setDocumentToEdit] = useState<ProductDocument | null>(null);
   const knowledgeBase = useQuery({
     queryKey: ["knowledge-base", knowledgeBaseId],
     queryFn: () => getKnowledgeBase(knowledgeBaseId),
@@ -1646,13 +2232,32 @@ function KnowledgeDetailPage() {
     ]);
   }, [documentStatusSignature, documents.data, knowledgeBaseId, queryCache]);
   const upload = useMutation({
-    mutationFn: (file: File) => uploadDocument(knowledgeBaseId, file),
+    mutationFn: ({ file, temporal }: { file: File; temporal: DocumentGovernanceInput }) =>
+      uploadDocument(knowledgeBaseId, file, temporal),
     onSuccess: async () => {
       await Promise.all([
         queryCache.invalidateQueries({ queryKey: ["documents", knowledgeBaseId] }),
         queryCache.invalidateQueries({ queryKey: ["knowledge-base", knowledgeBaseId] }),
         queryCache.invalidateQueries({ queryKey: ["knowledge-bases"] }),
       ]);
+      setShowTemporalDialog(false);
+    },
+  });
+  const updateTemporal = useMutation({
+    mutationFn: ({
+      documentId,
+      temporal,
+    }: {
+      documentId: string;
+      temporal: DocumentGovernanceInput;
+    }) => updateDocumentGovernanceMetadata(documentId, temporal),
+    onSuccess: async () => {
+      await Promise.all([
+        queryCache.invalidateQueries({ queryKey: ["documents", knowledgeBaseId] }),
+        queryCache.invalidateQueries({ queryKey: ["knowledge-base", knowledgeBaseId] }),
+      ]);
+      setShowTemporalDialog(false);
+      setDocumentToEdit(null);
     },
   });
   const select = useMutation({
@@ -1775,23 +2380,16 @@ function KnowledgeDetailPage() {
           <button
             className="product-primary-button"
             type="button"
-            onClick={() => fileInput.current?.click()}
+            onClick={() => {
+              upload.reset();
+              setDocumentToEdit(null);
+              setShowTemporalDialog(true);
+            }}
             disabled={upload.isPending}
           >
             <PaperClipIcon aria-hidden="true" />
             {upload.isPending ? "正在上传…" : "上传 PDF"}
           </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/pdf,.pdf"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) upload.mutate(file);
-              event.target.value = "";
-            }}
-          />
         </div>
       </div>
 
@@ -1932,6 +2530,18 @@ function KnowledgeDetailPage() {
                     <DocumentTextIcon aria-hidden="true" />
                     <span>
                       <strong>{document.display_name}</strong>
+                      {document.version_family || document.published_at || document.effective_at || document.superseded_at ? (
+                        <small className="document-temporal-summary">
+                          {document.version_family ? `系列 ${document.version_family}` : "未设置文档系列"}
+                          {document.published_at ? ` · 发布 ${document.published_at}` : " · 未设置发布日期"}
+                          {document.effective_at ? ` · 生效 ${document.effective_at}` : ""}
+                          {document.superseded_at ? ` · 失效 ${document.superseded_at}` : ""}
+                        </small>
+                      ) : (
+                        <small className="document-temporal-summary document-temporal-summary--missing">
+                          未设置可信发布日期
+                        </small>
+                      )}
                       {document.error ? <small>{document.error.message}</small> : null}
                     </span>
                   </span>
@@ -1942,6 +2552,23 @@ function KnowledgeDetailPage() {
                   <span role="cell">{formatRelativeDate(document.created_at)}</span>
                   <DocumentStatusBadge status={document.status} />
                   <span className="document-actions" role="cell">
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={document.status === "processing"}
+                      title={
+                        document.status === "processing"
+                          ? "文档处理完成后才能修改治理信息"
+                          : "编辑文档系列和业务日期"
+                      }
+                      onClick={() => {
+                        updateTemporal.reset();
+                        setDocumentToEdit(document);
+                        setShowTemporalDialog(true);
+                      }}
+                    >
+                      治理信息
+                    </button>
                     {document.status === "failed" ? (
                       <button className="text-button" type="button" onClick={() => retry.mutate(document.id)}>
                         重试
@@ -1975,12 +2602,40 @@ function KnowledgeDetailPage() {
             <DocumentTextIcon aria-hidden="true" />
             <h2>还没有文档</h2>
             <p>上传第一份 PDF，处理完成后即可开始提问。</p>
-            <button className="product-primary-button" type="button" onClick={() => fileInput.current?.click()}>
+            <button
+              className="product-primary-button"
+              type="button"
+              onClick={() => {
+                upload.reset();
+                setDocumentToEdit(null);
+                setShowTemporalDialog(true);
+              }}
+            >
               上传 PDF
             </button>
           </div>
         )}
       </section>
+      <DocumentTemporalDialog
+        open={showTemporalDialog}
+        document={documentToEdit}
+        pending={documentToEdit ? updateTemporal.isPending : upload.isPending}
+        error={
+          (documentToEdit ? updateTemporal.error : upload.error) as Error | null
+        }
+        onClose={() => {
+          if (upload.isPending || updateTemporal.isPending) return;
+          setShowTemporalDialog(false);
+          setDocumentToEdit(null);
+        }}
+        onSubmit={(file, temporal) => {
+          if (documentToEdit) {
+            updateTemporal.mutate({ documentId: documentToEdit.id, temporal });
+          } else if (file) {
+            upload.mutate({ file, temporal });
+          }
+        }}
+      />
       <DangerConfirmDialog
         open={Boolean(documentToDelete)}
         title="删除文档？"

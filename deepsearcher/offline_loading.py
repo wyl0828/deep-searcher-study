@@ -1,5 +1,6 @@
 import os
-from typing import List, Union
+from collections.abc import Sequence
+from typing import List, Mapping, Union
 
 from tqdm import tqdm
 
@@ -11,6 +12,7 @@ from deepsearcher.vector_db.exceptions import (
     CollectionManifestInvalid,
     CollectionManifestMissing,
 )
+from deepsearcher.versioning import sanitize_document_governance_metadata
 
 
 def _normalize_collection_name(collection_name: str | None, default_collection: str) -> str:
@@ -186,6 +188,7 @@ def load_from_local_files(
     vector_db_instance=None,
     embedding_model_instance=None,
     file_loader_instance=None,
+    document_metadata: Mapping | Sequence[Mapping] | None = None,
 ):
     """
     Load knowledge from local files or directories into the vector database.
@@ -218,13 +221,44 @@ def load_from_local_files(
     for path in paths_or_directory:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Error: File or directory '{path}' does not exist.")
+    if isinstance(document_metadata, Mapping) or document_metadata is None:
+        governance_metadata = sanitize_document_governance_metadata(document_metadata)
+        if governance_metadata is None:
+            raise ValueError("invalid document governance metadata")
+        metadata_items = (
+            [governance_metadata] if governance_metadata else [{} for _ in paths_or_directory]
+        )
+        if governance_metadata and len(paths_or_directory) != 1:
+            raise ValueError("one document metadata object requires exactly one file")
+    elif isinstance(document_metadata, Sequence):
+        if len(document_metadata) != len(paths_or_directory):
+            raise ValueError("document metadata count must match file count")
+        metadata_items = []
+        for item in document_metadata:
+            sanitized = sanitize_document_governance_metadata(item)
+            if sanitized is None:
+                raise ValueError("invalid document governance metadata")
+            metadata_items.append(sanitized)
+    else:
+        raise ValueError("invalid document governance metadata")
+    if any(metadata_items) and any(os.path.isdir(path) for path in paths_or_directory):
+        raise ValueError("document governance metadata cannot be applied to a directory")
 
     all_docs = []
-    for path in tqdm(paths_or_directory, desc="Loading files"):
+    for path, governance_metadata in tqdm(
+        zip(paths_or_directory, metadata_items),
+        total=len(paths_or_directory),
+        desc="Loading files",
+    ):
         if os.path.isdir(path):
             docs = file_loader.load_directory(path)
         else:
             docs = file_loader.load_file(path)
+        if governance_metadata:
+            for document in docs:
+                metadata = dict(document.metadata) if isinstance(document.metadata, dict) else {}
+                metadata.update(governance_metadata)
+                document.metadata = metadata
         all_docs.extend(docs)
     # print("Splitting docs to chunks...")
     chunks = split_docs_to_chunks(

@@ -74,7 +74,7 @@ def test_trace_collector_builds_versioned_safe_trace():
     iteration = trace["iterations"][0]
     document = iteration["retrieved_documents"][0]
 
-    assert trace["version"] == 4
+    assert trace["version"] == 6
     assert trace["agent"] == "ChainOfRAG"
     assert trace["routing"]["fallback_used"] is True
     assert trace["routing"]["reason"] == "invalid_index_format"
@@ -345,6 +345,28 @@ def test_query_with_trace_forwards_explicit_collection_scope(monkeypatch):
     assert captured["original_query"] == "question"
     assert captured["max_iter"] == 1
     assert captured["collection_names"] == ["kb_selected"]
+
+
+def test_legacy_query_can_opt_in_to_trust_policy(monkeypatch):
+    evidence = make_result(text="Milvus 是向量数据库。")
+
+    class Searcher:
+        def query(self, _original_query, **kwargs):
+            collector = kwargs["trace_collector"]
+            from deepsearcher.grounding import format_grounding_evidence
+
+            format_grounding_evidence(
+                [evidence],
+                use_wider_text=False,
+                trace_collector=collector,
+            )
+            return "Milvus 是向量数据库。[E1] 它支持任意 SQL。", [evidence], 1
+
+    monkeypatch.setattr("deepsearcher.configuration.default_searcher", Searcher())
+
+    answer, _, _ = query("question", enforce_trust=True)
+
+    assert answer == "Milvus 是向量数据库。[E1]"
 
 
 def test_trace_events_only_expose_bounded_stage_facts():

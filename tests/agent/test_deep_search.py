@@ -635,6 +635,7 @@ class TestDeepSearch(BaseAgentTest):
 
         self.deep_search._resolve_collections_for_query = route
         collector = TraceCollector("original")
+        collector.record_collections = MagicMock(wraps=collector.record_collections)
 
         asyncio.run(
             self.deep_search.async_retrieve(
@@ -652,6 +653,7 @@ class TestDeepSearch(BaseAgentTest):
         ]
 
         self.assertEqual(routing_sources, ["q1", "q2"])
+        self.assertEqual(collector.record_collections.call_count, 2)
 
     def test_generate_gap_queries(self):
         """Test the _generate_gap_queries method."""

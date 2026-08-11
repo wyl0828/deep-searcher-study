@@ -2,12 +2,16 @@ import asyncio
 import hashlib
 import json
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+from deepsearcher.provenance import build_trust_provenance
+from deepsearcher.trust import build_temporal_context
 from frontend.product.auth import require_user
 from frontend.product.db import Base, create_database_engine, get_session
 from frontend.product.errors import ProductError
@@ -21,6 +25,7 @@ from frontend.product.models import (
 )
 from frontend.product.repositories import get_conversation
 from frontend.product.services import conversations as conversation_service
+from frontend.product.services import documents as document_service
 from frontend.product.services.conversations import (
     _finish_assistant_message,
     _iter_sse_events,
@@ -244,6 +249,24 @@ def test_claim_grounding_persists_partial_support_and_rejects_fake_evidence_ids(
                                     "text": "Milvus 是向量数据库。",
                                     "status": "supported",
                                     "evidence_ids": ["E1"],
+                                    "citation_spans": [
+                                        {
+                                            "evidence_id": "E1",
+                                            "start": 0,
+                                            "end": len("Milvus 是向量数据库。"),
+                                            "text": "Milvus 是向量数据库。",
+                                            "match_type": "normalized_exact",
+                                            "score": 1.0,
+                                        },
+                                        {
+                                            "evidence_id": "E1",
+                                            "start": 0,
+                                            "end": 6,
+                                            "text": "伪造片段",
+                                            "match_type": "normalized_exact",
+                                            "score": 1.0,
+                                        },
+                                    ],
                                 },
                                 {
                                     "index": 2,
@@ -251,6 +274,16 @@ def test_claim_grounding_persists_partial_support_and_rejects_fake_evidence_ids(
                                     "status": "invalid_citation",
                                     "evidence_ids": [],
                                     "invalid_evidence_ids": ["E9"],
+                                    "citation_spans": [
+                                        {
+                                            "evidence_id": "E9",
+                                            "start": 0,
+                                            "end": 999999,
+                                            "text": "不得持久化",
+                                            "match_type": "normalized_exact",
+                                            "score": 1.0,
+                                        }
+                                    ],
                                 },
                             ],
                         }
@@ -268,14 +301,43 @@ def test_claim_grounding_persists_partial_support_and_rejects_fake_evidence_ids(
                 "index": 1,
                 "text": "Milvus 是向量数据库。",
                 "support_status": "supported",
+                "structural_support_status": "supported",
                 "citation_indices": [1],
+                "citation_spans": [
+                    {
+                        "citation_index": 1,
+                        "start": 0,
+                        "end": len("Milvus 是向量数据库。"),
+                        "text": "Milvus 是向量数据库。",
+                        "match_type": "normalized_exact",
+                        "score": 1.0,
+                    }
+                ],
+                "citation_status": "valid",
+                "entailment_status": "not_checked",
+                "consistency_status": "not_checked",
+                "consistency_checks": [],
+                "risk_status": "not_assessed",
+                "risk_checks": [],
+                "confidence": None,
+                "reason_codes": ["CITATION_VALID"],
             },
             {
                 "id": persisted["claims"][1]["id"],
                 "index": 2,
                 "text": "它支持任意 SQL。",
                 "support_status": "invalid_citation",
+                "structural_support_status": "invalid_citation",
                 "citation_indices": [],
+                "citation_spans": [],
+                "citation_status": "invalid",
+                "entailment_status": "not_checked",
+                "consistency_status": "not_checked",
+                "consistency_checks": [],
+                "risk_status": "not_assessed",
+                "risk_checks": [],
+                "confidence": None,
+                "reason_codes": ["CITATION_INVALID"],
             },
         ]
 
@@ -328,6 +390,259 @@ def test_structured_grounding_without_claims_never_falls_back_to_grounded(tmp_pa
         assert persisted["answer_state"] == "insufficient_evidence"
         assert len(persisted["citations"]) == 1
         assert persisted["claims"] == []
+
+
+def test_trust_contract_and_policy_decision_are_persisted(tmp_path):
+    provenance = build_trust_provenance(
+        SimpleNamespace(
+            config=SimpleNamespace(
+                provide_settings={
+                    "llm": {"provider": "TestLLM", "config": {"model": "test-model"}},
+                    "embedding": {
+                        "provider": "TestEmbedding",
+                        "config": {"model": "test-embedding"},
+                    },
+                },
+                query_settings={},
+                load_settings={},
+            ),
+            llm=SimpleNamespace(model="test-model"),
+            embedding_model=None,
+            vector_db=None,
+            entailment_checker=None,
+        ),
+        evidence_snapshot=[],
+        execution_scope="online",
+        temporal_context=build_temporal_context(
+            reference_time="2026-08-11T03:00:00+00:00",
+            timezone_name="Asia/Shanghai",
+        ),
+    )
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "可信策略库", "description": ""},
+        ).json()
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        ).json()
+
+        with client.product_session_factory() as session:
+            assistant = Message(
+                conversation_id=conversation["id"],
+                role="assistant",
+                content="",
+                status="pending",
+            )
+            session.add(assistant)
+            session.commit()
+            _finish_assistant_message(
+                session,
+                assistant_message=assistant,
+                payload={
+                    "result": "根据现有证据，无法给出有充分依据的回答。",
+                    "trace": {
+                        "grounding": {
+                            "version": 1,
+                            "state": "insufficient_evidence",
+                            "evidence": [],
+                            "claims": [],
+                        },
+                        "trust": {
+                            "version": 1,
+                            "trust_status": "insufficient_evidence",
+                            "safety_status": "not_evaluated",
+                            "verification_level": "semantic_entailment_partial",
+                            "evidence_snapshot_available": True,
+                            "entailment": {
+                                "version": 1,
+                                "checker": "llm_nli",
+                                "checker_version": "1.0.0",
+                                "status": "partial",
+                                "token_usage": 17,
+                                "eligible_claim_count": 1,
+                                "exact_match_count": 0,
+                                "checker_claim_count": 1,
+                                "entailed_count": 0,
+                                "contradicted_count": 0,
+                                "unknown_count": 1,
+                                "not_checked_count": 0,
+                                "error_code": None,
+                            },
+                            "risk": {
+                                "version": 1,
+                                "classifier": "deterministic_query_risk",
+                                "classifier_version": "1.0.0",
+                                "risk_level": "high",
+                                "query_type": "financial_policy",
+                                "risk_factors": [
+                                    "FINANCIAL_DOMAIN",
+                                    "DECISION_REQUEST",
+                                    "QUANTITATIVE_DECISION",
+                                ],
+                                "requirements": {
+                                    "require_citation": True,
+                                    "require_decisive_entailment": True,
+                                    "minimum_evidence_count": 2,
+                                    "minimum_distinct_source_count": 2,
+                                    "allow_unknown_entailment": False,
+                                },
+                            },
+                            "freshness": {
+                                "version": 1,
+                                "classifier": "deterministic_freshness_intent",
+                                "classifier_version": "1.0.0",
+                                "required": True,
+                                "mode": "latest_effective",
+                                "ordering_basis": "effective_at",
+                                "reason_codes": ["FRESHNESS_LATEST_EFFECTIVE_REQUESTED"],
+                            },
+                            "temporal_context": {
+                                "version": 1,
+                                "source": "request_clock",
+                                "reference_time": "2026-08-11T03:00:00+00:00",
+                                "reference_date": "2026-08-11",
+                                "timezone": "Asia/Shanghai",
+                            },
+                            "input": {
+                                "trust_status": "insufficient_evidence",
+                                "claim_count": 1,
+                                "supported_claim_count": 0,
+                                "claims": [
+                                    {
+                                        "index": 1,
+                                        "text": "每份 PDF 最大 100 MB。",
+                                        "support_status": "unsupported",
+                                        "structural_support_status": "supported",
+                                        "citation_status": "valid",
+                                        "entailment_status": "not_checked",
+                                        "entailment_method": "semantic_nli",
+                                        "entailment_checker": "llm_nli",
+                                        "entailment_checker_version": "1.0.0",
+                                        "confidence": 0.61,
+                                        "risk_status": "rejected",
+                                        "risk_checks": [
+                                            {
+                                                "kind": "entailment",
+                                                "status": "failed",
+                                                "reason_code": "HIGH_RISK_ENTAILMENT_REQUIRED",
+                                                "actual": "unknown",
+                                                "required": "entailed_or_contradicted",
+                                            }
+                                        ],
+                                        "consistency_status": "inconsistent",
+                                        "consistency_checks": [
+                                            {
+                                                "kind": "quantity",
+                                                "status": "inconsistent",
+                                                "reason_code": "QUANTITY_NOT_IN_EVIDENCE",
+                                                "claim_values": ["100|mb"],
+                                                "missing_values": ["100|mb"],
+                                            }
+                                        ],
+                                        "reason_codes": [
+                                            "CITATION_VALID",
+                                            "QUANTITY_NOT_IN_EVIDENCE",
+                                        ],
+                                    }
+                                ],
+                            },
+                            "output": {
+                                "trust_status": "insufficient_evidence",
+                                "claim_count": 1,
+                                "supported_claim_count": 0,
+                                "claims": [],
+                            },
+                            "claims": [],
+                            "policy": {
+                                "profile": "strict_high_risk",
+                                "risk_level": "high",
+                                "action": "refuse",
+                                "reason_codes": ["EVIDENCE_INSUFFICIENT"],
+                            },
+                            "limitations": [
+                                "SEMANTIC_ENTAILMENT_NOT_CHECKED",
+                                "SAFETY_NOT_EVALUATED",
+                            ],
+                            "provenance": provenance,
+                        },
+                    },
+                },
+            )
+
+        persisted = client.get(f"/api/conversations/{conversation['id']}").json()["messages"][0]
+        assert persisted["trust_contract_version"] == 1
+        assert persisted["trust_status"] == "insufficient_evidence"
+        assert persisted["safety_status"] == "not_evaluated"
+        assert persisted["policy_action"] == "refuse"
+        assert persisted["policy_profile"] == "strict_high_risk"
+        assert persisted["policy_reason_codes"] == ["EVIDENCE_INSUFFICIENT"]
+        assert persisted["risk_level"] == "high"
+        assert persisted["query_type"] == "financial_policy"
+        assert persisted["risk_factors"] == [
+            "FINANCIAL_DOMAIN",
+            "DECISION_REQUEST",
+            "QUANTITATIVE_DECISION",
+        ]
+        assert persisted["provenance_contract_version"] == 2
+        assert persisted["provenance_digest"] == provenance["digest"]
+        assert persisted["trust_details"]["provenance"] == provenance
+        assert persisted["trust_details"]["provenance"]["evidence"] == {
+            "snapshot_status": "complete",
+            "evidence_count": 0,
+            "knowledge_base_count": 0,
+            "web_count": 0,
+            "snapshot_fingerprint": provenance["evidence"]["snapshot_fingerprint"],
+            "items": [],
+        }
+        assert persisted["trust_details"]["verification_level"] == ("semantic_entailment_partial")
+        assert persisted["trust_details"]["entailment"] == {
+            "version": 1,
+            "checker": "llm_nli",
+            "checker_version": "1.0.0",
+            "status": "partial",
+            "token_usage": 17,
+            "eligible_claim_count": 1,
+            "exact_match_count": 0,
+            "checker_claim_count": 1,
+            "entailed_count": 0,
+            "contradicted_count": 0,
+            "unknown_count": 1,
+            "not_checked_count": 0,
+        }
+        assert persisted["trust_details"]["risk"]["requirements"] == {
+            "require_citation": True,
+            "require_decisive_entailment": True,
+            "minimum_evidence_count": 2,
+            "minimum_distinct_source_count": 2,
+            "allow_unknown_entailment": False,
+        }
+        assert persisted["trust_details"]["freshness"] == {
+            "version": 1,
+            "classifier": "deterministic_freshness_intent",
+            "classifier_version": "1.0.0",
+            "required": True,
+            "mode": "latest_effective",
+            "ordering_basis": "effective_at",
+            "reason_codes": ["FRESHNESS_LATEST_EFFECTIVE_REQUESTED"],
+        }
+        assert persisted["trust_details"]["temporal_context"] == {
+            "version": 1,
+            "source": "request_clock",
+            "reference_time": "2026-08-11T03:00:00+00:00",
+            "reference_date": "2026-08-11",
+            "timezone": "Asia/Shanghai",
+        }
+        finding = persisted["trust_details"]["input"]["claims"][0]
+        assert finding["structural_support_status"] == "supported"
+        assert finding["support_status"] == "unsupported"
+        assert finding["consistency_checks"][0]["missing_values"] == ["100|mb"]
+        assert finding["entailment_method"] == "semantic_nli"
+        assert finding["entailment_checker"] == "llm_nli"
+        assert finding["confidence"] == 0.61
+        assert finding["risk_status"] == "rejected"
+        assert finding["risk_checks"][0]["actual"] == "unknown"
 
 
 def test_create_list_and_select_knowledge_bases(tmp_path):
@@ -384,6 +699,160 @@ def test_document_upload_rejects_non_pdf(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "DOCUMENT_UNSUPPORTED_TYPE"
+
+
+def test_document_upload_persists_explicit_business_dates(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "frontend.product.services.documents.UPLOAD_DIR",
+        tmp_path / "uploads",
+    )
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "制度资料", "description": ""},
+        ).json()
+        response = client.post(
+            f"/api/knowledge-bases/{knowledge_base['id']}/documents",
+            files={"file": ("policy.pdf", b"%PDF-1.7\npolicy", "application/pdf")},
+            data={
+                "published_at": "2026-08-11",
+                "effective_at": "2026-08-12",
+                "superseded_at": "2027-01-01",
+                "version_family": "Travel Expense Policy",
+            },
+        )
+
+    assert response.status_code == 202
+    document = response.json()["document"]
+    assert document["published_at"] == "2026-08-11"
+    assert document["effective_at"] == "2026-08-12"
+    assert document["superseded_at"] == "2027-01-01"
+    assert document["temporal_metadata_source"] == "user_declared"
+    assert document["version_family"] == "travel-expense-policy"
+    assert document["version_family_source"] == "user_declared"
+
+
+def test_document_upload_rejects_superseded_date_before_effective_date(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "制度资料", "description": ""},
+        ).json()
+        response = client.post(
+            f"/api/knowledge-bases/{knowledge_base['id']}/documents",
+            files={"file": ("policy.pdf", b"%PDF-1.7\npolicy", "application/pdf")},
+            data={
+                "effective_at": "2026-08-12",
+                "superseded_at": "2026-08-11",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "DOCUMENT_TEMPORAL_METADATA_INVALID"
+
+
+def test_updating_ready_document_business_dates_queues_metadata_reindex(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "frontend.product.services.documents.UPLOAD_DIR",
+        tmp_path / "uploads",
+    )
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "制度资料", "description": ""},
+        ).json()
+        upload = client.post(
+            f"/api/knowledge-bases/{knowledge_base['id']}/documents",
+            files={"file": ("policy.pdf", b"%PDF-1.7\npolicy", "application/pdf")},
+        ).json()
+        document_id = upload["document"]["id"]
+        with client.product_session_factory() as session:
+            stored = session.get(Document, document_id)
+            assert stored is not None
+            stored.status = "ready"
+            session.commit()
+
+        response = client.patch(
+            f"/api/documents/{document_id}/governance-metadata",
+            json={
+                "published_at": "2026-08-11",
+                "effective_at": "2026-08-12",
+                "superseded_at": None,
+                "version_family": "Travel Expense Policy",
+            },
+        )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["document"]["status"] == "queued"
+    assert payload["document"]["published_at"] == "2026-08-11"
+    assert payload["document"]["version_family"] == "travel-expense-policy"
+    assert payload["document"]["version_family_source"] == "user_declared"
+    assert payload["job"]["attempt"] == 2
+
+
+def test_document_worker_sends_temporal_metadata_to_core_ingest(tmp_path, monkeypatch):
+    upload_root = tmp_path / "uploads"
+    source_dir = upload_root / "kb"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "policy.pdf"
+    source.write_bytes(b"%PDF-1.7\npolicy")
+    monkeypatch.setattr(document_service, "UPLOAD_DIR", upload_root)
+    captured = {}
+
+    class Response:
+        is_success = True
+
+        @staticmethod
+        def json():
+            return {"collection": {"manifest": {"schema_version": 2}}}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, *, json):
+            captured["url"] = url
+            captured["json"] = json
+            return Response()
+
+    monkeypatch.setattr(document_service.httpx, "AsyncClient", Client)
+    document = SimpleNamespace(
+        storage_path=str(source),
+        sha256="a" * 64,
+        published_at=date(2026, 8, 11),
+        effective_at=date(2026, 8, 12),
+        superseded_at=None,
+        temporal_metadata_source="user_declared",
+        version_family="travel-expense-policy",
+        version_family_source="user_declared",
+    )
+    knowledge_base = SimpleNamespace(collection_name="kb_" + "a" * 32)
+
+    manifest = asyncio.run(
+        document_service._load_document_into_backend(
+            document=document,
+            knowledge_base=knowledge_base,
+        )
+    )
+
+    assert manifest == {"schema_version": 2}
+    assert captured["json"]["document_metadata"] == {
+        "published_at": "2026-08-11",
+        "effective_at": "2026-08-12",
+        "temporal_metadata_source": "user_declared",
+        "version_family": "travel-expense-policy",
+        "version_family_source": "user_declared",
+    }
 
 
 def test_document_content_returns_inline_original_pdf(tmp_path, monkeypatch):
@@ -831,6 +1300,7 @@ def test_reindex_knowledge_base_sends_all_sources_and_persists_manifest(
     assert captured["headers"] == {"X-Confirm-Collection": collection_name}
     assert captured["json"] == {
         "paths": [source_path],
+        "document_metadata": [{}],
         "collection_description": "完整资料",
         "batch_size": 10,
     }
@@ -1049,7 +1519,13 @@ def test_upload_query_and_citation_flow_uses_internal_collection_scope(
                 "source_url": None,
                 "source_domain": None,
                 "trusted": True,
-                "text": "DeepSearcher 查询流程说明。",
+                "published_at": None,
+                "effective_at": None,
+                    "superseded_at": None,
+                    "temporal_metadata_source": None,
+                    "version_family": None,
+                    "version_family_source": None,
+                    "text": "DeepSearcher 查询流程说明。",
                 "supported": True,
             }
         ]

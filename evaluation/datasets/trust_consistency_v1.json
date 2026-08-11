@@ -1,0 +1,768 @@
+{
+  "schema_version": 1,
+  "id": "deepsearcher-trust-consistency",
+  "version": "1.6.0",
+  "cases": [
+    {
+      "id": "quantity-match",
+      "category": "quantity",
+      "claim": "每份 PDF 最大 20 MiB。",
+      "evidence": ["每份 PDF 最大 20 MiB。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["QUANTITY_VALUES_MATCH", "RANGE_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "quantity-mismatch",
+      "category": "quantity",
+      "claim": "每份 PDF 最大 100 MB。",
+      "evidence": ["每份 PDF 最大 20 MiB。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["QUANTITY_NOT_IN_EVIDENCE", "RANGE_NOT_IN_EVIDENCE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "quantity-entity-mismatch",
+      "category": "entity-quantity",
+      "claim": "每份 PDF 最大 20 MiB。",
+      "evidence": ["每张图片最大 20 MiB。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["QUANTITY_ENTITY_MISMATCH", "RANGE_ENTITY_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "quantity-entity-correct-with-distractor",
+      "category": "entity-quantity",
+      "claim": "每份 PDF 最大 20 MiB。",
+      "evidence": ["每张图片最大 20 MiB。每份文件最大 20 MiB。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["QUANTITY_VALUES_MATCH", "RANGE_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "knowledge-base-organization-entity-mismatch",
+      "category": "entity-quantity",
+      "claim": "每个知识库最多保存 200 份文档。",
+      "evidence": ["每个组织最多保存 200 份文档。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["QUANTITY_ENTITY_MISMATCH", "RANGE_ENTITY_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "unknown-entity-conservative-fallback",
+      "category": "entity-quantity",
+      "claim": "单项上限为 20 MiB。",
+      "evidence": ["该项上限为 20 MiB。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["QUANTITY_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "entity-quantity-multi-citation",
+      "category": "entity-quantity",
+      "claim": "每份 PDF 最大 20 MiB，每个知识库最多 200 份。",
+      "evidence": ["每份文件最大 20 MiB。", "每个知识库最多保存 200 份文档。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["QUANTITY_VALUES_MATCH", "RANGE_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "date-normalized-match",
+      "category": "date",
+      "claim": "制度自 2026年8月10日 生效。",
+      "evidence": ["制度生效日期为 2026-08-10。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["DATE_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "date-mismatch",
+      "category": "date",
+      "claim": "制度自 2026年9月1日 生效。",
+      "evidence": ["制度生效日期为 2026-08-10。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["DATE_NOT_IN_EVIDENCE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "relative-tomorrow-match",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": ["制度生效日期为 2026-08-12。"],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-tomorrow-mismatch",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": ["制度生效日期为 2026-08-13。"],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["RELATIVE_TIME_NOT_IN_EVIDENCE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "relative-time-entity-mismatch",
+      "category": "relative-time",
+      "claim": "索引将在明天发布。",
+      "evidence": ["模型将在 2026-08-12 发布。"],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["RELATIVE_TIME_ENTITY_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "relative-time-entity-correct-with-distractor",
+      "category": "relative-time",
+      "claim": "索引将在明天发布。",
+      "evidence": ["模型将在 2026-08-12 发布。索引将在 2026-08-12 发布。"],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-timezone-day-boundary",
+      "category": "relative-time",
+      "claim": "制度将在今天生效。",
+      "evidence": ["制度生效日期为 2026-08-12。"],
+      "reference_time": "2026-08-11T16:30:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-next-month-match",
+      "category": "relative-time",
+      "claim": "新流程将在下个月启用。",
+      "evidence": ["新流程将在 2026年9月 启用。"],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-next-quarter-cross-year",
+      "category": "relative-time",
+      "claim": "新政策将在下季度执行。",
+      "evidence": ["新政策将在 2027年第1季度 执行。"],
+      "reference_time": "2026-12-15T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-evidence-anchor-missing",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": ["制度将在明天生效。"],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["RELATIVE_TIME_EVIDENCE_ANCHOR_MISSING"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "relative-evidence-published-anchor-match",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": [
+        {
+          "text": "制度将在明天生效。",
+          "published_at": "2026-08-11",
+          "effective_at": "2026-08-12",
+          "temporal_metadata_source": "user_declared"
+        }
+      ],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-evidence-published-anchor-mismatch",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": [
+        {
+          "text": "制度将在明天生效。",
+          "published_at": "2026-08-10",
+          "temporal_metadata_source": "user_declared"
+        }
+      ],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["RELATIVE_TIME_NOT_IN_EVIDENCE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "relative-evidence-effective-date-is-not-anchor",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": [
+        {
+          "text": "制度将在明天生效。",
+          "effective_at": "2026-08-12",
+          "temporal_metadata_source": "user_declared"
+        }
+      ],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["RELATIVE_TIME_EVIDENCE_ANCHOR_MISSING"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "relative-evidence-connector-anchor-match",
+      "category": "relative-time",
+      "claim": "索引将在明天发布。",
+      "evidence": [
+        {
+          "text": "索引将在明天发布。",
+          "published_at": "2026-08-11",
+          "temporal_metadata_source": "connector"
+        }
+      ],
+      "reference_time": "2026-08-11T03:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RELATIVE_TIME_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "relative-request-clock-missing",
+      "category": "relative-time",
+      "claim": "制度将在明天生效。",
+      "evidence": ["制度生效日期为 2026-08-12。"],
+      "expected_status": "unknown",
+      "expected_reason_codes": ["RELATIVE_TIME_REFERENCE_MISSING"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "version-prefix-match",
+      "category": "version",
+      "claim": "当前索引使用版本 2.2.0。",
+      "evidence": ["当前索引使用 v2.2.0。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["VERSION_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "version-mismatch",
+      "category": "version",
+      "claim": "当前索引使用版本 2.3.0。",
+      "evidence": ["当前索引使用 v2.2.0。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["VERSION_NOT_IN_EVIDENCE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "range-alias-match",
+      "category": "range",
+      "claim": "文件大小不超过 20 MiB。",
+      "evidence": ["文件大小最多为 20 MiB。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["RANGE_VALUES_MATCH", "QUANTITY_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "range-direction-mismatch",
+      "category": "range",
+      "claim": "文件大小至少 20 MiB。",
+      "evidence": ["文件大小最多 20 MiB。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["RANGE_NOT_IN_EVIDENCE", "QUANTITY_VALUES_MATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "condition-preserved",
+      "category": "condition",
+      "claim": "管理员可以删除知识库。",
+      "evidence": ["只有管理员才能删除知识库。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["CONDITIONS_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "condition-omitted",
+      "category": "condition",
+      "claim": "普通用户可以删除知识库。",
+      "evidence": ["只有管理员才能删除知识库。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_OMITTED_OR_CHANGED"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "condition-all-reordered",
+      "category": "condition-relation",
+      "claim": "审计员和管理员可以发布制度。",
+      "evidence": ["只有管理员并且审计员才能发布制度。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["CONDITIONS_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "condition-all-missing-term",
+      "category": "condition-relation",
+      "claim": "管理员可以发布制度。",
+      "evidence": ["只有管理员并且审计员才能发布制度。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_RELATION_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "condition-all-weakened-to-any",
+      "category": "condition-relation",
+      "claim": "管理员或审计员可以发布制度。",
+      "evidence": ["只有管理员并且审计员才能发布制度。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_RELATION_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "condition-any-specific-alternative",
+      "category": "condition-relation",
+      "claim": "管理员可以查看报表。",
+      "evidence": ["管理员或审计员任一角色均可查看报表。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["CONDITIONS_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "condition-any-unsupported-alternative",
+      "category": "condition-relation",
+      "claim": "管理员或普通用户可以查看报表。",
+      "evidence": ["管理员或审计员任一角色均可查看报表。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_OMITTED_OR_CHANGED"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "permission-unmentioned-role",
+      "category": "permission",
+      "claim": "管理员和审计员可以删除草稿。",
+      "evidence": ["管理员可以删除草稿。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_RELATION_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "permission-specific-role-name",
+      "category": "permission",
+      "claim": "系统管理员可以删除草稿。",
+      "evidence": ["管理员可以删除草稿。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["CONDITIONS_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "prerequisite-all-preserved",
+      "category": "prerequisite",
+      "claim": "完成安全培训并获得主管批准后可以导出数据。",
+      "evidence": ["只有完成安全培训并获得主管批准后才能导出数据。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["CONDITIONS_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "prerequisite-all-missing",
+      "category": "prerequisite",
+      "claim": "完成安全培训后可以导出数据。",
+      "evidence": ["只有完成安全培训并获得主管批准后才能导出数据。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_RELATION_MISMATCH"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "unless-prerequisite-preserved",
+      "category": "exception",
+      "claim": "主管批准后可以跳过复核。",
+      "evidence": ["除非主管批准，否则不得跳过复核。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["CONDITIONS_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "unless-prerequisite-negated",
+      "category": "exception",
+      "claim": "无需主管批准即可跳过复核。",
+      "evidence": ["除非主管批准，否则不得跳过复核。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_NEGATED"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "unless-prerequisite-omitted",
+      "category": "exception",
+      "claim": "可以跳过复核。",
+      "evidence": ["除非主管批准，否则不得跳过复核。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["CONDITION_OMITTED_OR_CHANGED"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "negation-match",
+      "category": "negation",
+      "claim": "系统不支持匿名删除知识库。",
+      "evidence": ["系统不支持匿名删除知识库。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["NEGATION_POLARITY_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "negation-conflict",
+      "category": "negation",
+      "claim": "系统不支持 PDF 上传。",
+      "evidence": ["系统支持 PDF 上传。"],
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["NEGATION_POLARITY_CONFLICT"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "unrelated-condition",
+      "category": "negative-control",
+      "claim": "系统支持 PDF 上传。",
+      "evidence": ["只有管理员才能删除审计日志。系统支持 PDF 上传。"],
+      "expected_status": "not_applicable",
+      "expected_reason_codes": [],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "multi-citation-union",
+      "category": "multi-citation",
+      "claim": "每份文件最大 20 MiB，每个知识库最多 200 份。",
+      "evidence": ["每份 PDF 最大 20 MiB。", "每个知识库最多保存 200 份文档。"],
+      "expected_status": "consistent",
+      "expected_reason_codes": ["QUANTITY_VALUES_MATCH", "RANGE_VALUES_MATCH"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "semantic-boundary",
+      "category": "known-boundary",
+      "claim": "Milvus 是关系数据库。",
+      "evidence": ["Milvus 是向量数据库。"],
+      "expected_status": "not_applicable",
+      "expected_reason_codes": [],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "freshness-current-active",
+      "category": "freshness",
+      "query": "当前报销政策是什么？",
+      "claim": "差旅报销上限为 5000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 5000 元。",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["FRESHNESS_CURRENT_VERSION_CONFIRMED"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "freshness-current-superseded",
+      "category": "freshness",
+      "query": "现行报销政策是什么？",
+      "claim": "差旅报销上限为 3000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 3000 元。",
+          "published_at": "2025-01-01",
+          "effective_at": "2025-02-01",
+          "superseded_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["FRESHNESS_EVIDENCE_SUPERSEDED"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-current-future",
+      "category": "freshness",
+      "query": "目前有效的报销政策是什么？",
+      "claim": "差旅报销上限为 8000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 8000 元。",
+          "published_at": "2026-08-01",
+          "effective_at": "2026-09-01",
+          "temporal_metadata_source": "admin_verified"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["FRESHNESS_EVIDENCE_NOT_YET_EFFECTIVE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-current-validity-missing",
+      "category": "freshness",
+      "query": "当前报销政策是什么？",
+      "claim": "差旅报销上限为 5000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 5000 元。",
+          "published_at": "2026-01-01",
+          "temporal_metadata_source": "user_declared"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["FRESHNESS_VALIDITY_METADATA_MISSING"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-latest-effective-confirmed",
+      "category": "freshness",
+      "query": "最新报销政策的额度是多少？",
+      "claim": "差旅报销上限为 5000 元。",
+      "evidence": [
+        {
+          "text": "旧制度的差旅报销上限为 3000 元。",
+          "effective_at": "2025-02-01",
+          "superseded_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified"
+        },
+        {
+          "text": "差旅报销上限为 5000 元。",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        }
+      ],
+      "citation_indices": [2],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["FRESHNESS_LATEST_EFFECTIVE_CONFIRMED"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "freshness-newer-effective-available",
+      "category": "freshness",
+      "query": "最新报销政策的额度是多少？",
+      "claim": "差旅报销上限为 3000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 3000 元。",
+          "effective_at": "2025-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        },
+        {
+          "text": "新制度的差旅报销上限为 5000 元。",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        }
+      ],
+      "citation_indices": [1],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["FRESHNESS_NEWER_EVIDENCE_AVAILABLE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-latest-undated-comparison",
+      "category": "freshness",
+      "query": "最新报销政策的额度是多少？",
+      "claim": "差旅报销上限为 5000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 5000 元。",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        },
+        {
+          "text": "另一份报销制度未声明生效日期。",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        }
+      ],
+      "citation_indices": [1],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["FRESHNESS_ORDERING_METADATA_MISSING"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-latest-publication-confirmed",
+      "category": "freshness",
+      "query": "最新发布的产品公告是什么？",
+      "claim": "产品公告宣布支持审计导出。",
+      "evidence": [
+        {
+          "text": "旧公告介绍基础审计功能。",
+          "published_at": "2026-06-01",
+          "temporal_metadata_source": "connector",
+          "version_family": "product-announcement",
+          "version_family_source": "connector"
+        },
+        {
+          "text": "产品公告宣布支持审计导出。",
+          "published_at": "2026-08-01",
+          "temporal_metadata_source": "connector",
+          "version_family": "product-announcement",
+          "version_family_source": "connector"
+        }
+      ],
+      "citation_indices": [2],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["FRESHNESS_LATEST_PUBLICATION_CONFIRMED"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "freshness-newer-publication-available",
+      "category": "freshness",
+      "query": "最近发布的产品公告是什么？",
+      "claim": "旧公告介绍基础审计功能。",
+      "evidence": [
+        {
+          "text": "旧公告介绍基础审计功能。",
+          "published_at": "2026-06-01",
+          "temporal_metadata_source": "connector",
+          "version_family": "product-announcement",
+          "version_family_source": "connector"
+        },
+        {
+          "text": "新公告宣布支持审计导出。",
+          "published_at": "2026-08-01",
+          "temporal_metadata_source": "connector",
+          "version_family": "product-announcement",
+          "version_family_source": "connector"
+        }
+      ],
+      "citation_indices": [1],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "inconsistent",
+      "expected_reason_codes": ["FRESHNESS_NEWER_EVIDENCE_AVAILABLE"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-version-family-missing",
+      "category": "freshness",
+      "query": "最新报销政策是什么？",
+      "claim": "差旅报销上限为 5000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 5000 元。",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["FRESHNESS_VERSION_FAMILY_MISSING"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-unrelated-newer-family-ignored",
+      "category": "freshness",
+      "query": "最新报销政策是什么？",
+      "claim": "差旅报销上限为 5000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限为 5000 元。",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        },
+        {
+          "text": "访问控制制度要求启用双因素认证。",
+          "effective_at": "2026-07-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "access-control-policy",
+          "version_family_source": "admin_verified"
+        }
+      ],
+      "citation_indices": [1],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "consistent",
+      "expected_reason_codes": ["FRESHNESS_LATEST_EFFECTIVE_CONFIRMED"],
+      "expected_policy_action": "allow"
+    },
+    {
+      "id": "freshness-cited-family-ambiguous",
+      "category": "freshness",
+      "query": "最新制度有哪些共同要求？",
+      "claim": "制度要求保留审计记录。",
+      "evidence": [
+        {
+          "text": "报销制度要求保留审计记录。",
+          "effective_at": "2026-02-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "travel-expense-policy",
+          "version_family_source": "admin_verified"
+        },
+        {
+          "text": "访问控制制度要求保留审计记录。",
+          "effective_at": "2026-07-01",
+          "temporal_metadata_source": "admin_verified",
+          "version_family": "access-control-policy",
+          "version_family_source": "admin_verified"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["FRESHNESS_VERSION_FAMILY_AMBIGUOUS"],
+      "expected_policy_action": "refuse"
+    },
+    {
+      "id": "freshness-recent-window-undefined",
+      "category": "freshness",
+      "query": "近期有哪些报销政策变化？",
+      "claim": "差旅报销上限调整为 5000 元。",
+      "evidence": [
+        {
+          "text": "差旅报销上限调整为 5000 元。",
+          "published_at": "2026-08-01",
+          "effective_at": "2026-08-05",
+          "temporal_metadata_source": "admin_verified"
+        }
+      ],
+      "reference_time": "2026-08-11T04:00:00+00:00",
+      "timezone": "Asia/Shanghai",
+      "expected_status": "unknown",
+      "expected_reason_codes": ["FRESHNESS_RECENCY_WINDOW_UNDEFINED"],
+      "expected_policy_action": "refuse"
+    }
+  ]
+}

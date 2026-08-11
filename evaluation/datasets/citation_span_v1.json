@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "deepsearcher-citation-span",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "normalized-exact-cn",
+      "category": "exact",
+      "claim": "每份 PDF 最大 20 MiB。",
+      "evidence": ["上传规则：每份 PDF 最大 20 MiB，超过后拒绝。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "normalized_exact", "text": "每份 PDF 最大 20 MiB"}
+      ]
+    },
+    {
+      "id": "normalized-whitespace",
+      "category": "exact",
+      "claim": "Milvus 是向量数据库。",
+      "evidence": ["Milvus\n是 向量数据库。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "normalized_exact", "text": "Milvus\n是 向量数据库"}
+      ]
+    },
+    {
+      "id": "version-exact",
+      "category": "exact",
+      "claim": "当前索引使用 v2.2.0。",
+      "evidence": ["部署信息：当前索引使用版本 2.2.0。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "sentence_overlap", "text": "部署信息：当前索引使用版本 2.2.0。"}
+      ]
+    },
+    {
+      "id": "numeric-paraphrase",
+      "category": "sentence-overlap",
+      "claim": "PDF 文件大小上限是 20 MiB。",
+      "evidence": ["系统支持 PDF 上传。单个文件的体积不能超过 20 MiB。管理员可调整配置。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "sentence_overlap", "text": "单个文件的体积不能超过 20 MiB。"}
+      ]
+    },
+    {
+      "id": "multi-citation-distributed",
+      "category": "multi-citation",
+      "claim": "系统支持 PDF 上传并限制为 20 MiB。",
+      "evidence": ["系统支持 PDF 上传。", "PDF 大小限制为 20 MiB。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "sentence_overlap", "text": "系统支持 PDF 上传。"},
+        {"evidence_id": "E2", "match_type": "sentence_overlap", "text": "PDF 大小限制为 20 MiB。"}
+      ]
+    },
+    {
+      "id": "numeric-mismatch",
+      "category": "negative-control",
+      "claim": "每份 PDF 最大 100 MiB。",
+      "evidence": ["每份 PDF 最大 20 MiB。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "not_found", "text": ""}
+      ]
+    },
+    {
+      "id": "unrelated-evidence",
+      "category": "negative-control",
+      "claim": "系统支持 PDF 上传。",
+      "evidence": ["管理员可以删除知识库。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "not_found", "text": ""}
+      ]
+    },
+    {
+      "id": "semantic-boundary",
+      "category": "known-boundary",
+      "claim": "该平台能够保存文档。",
+      "evidence": ["文件可以持久化到对象存储。"],
+      "expected": [
+        {"evidence_id": "E1", "match_type": "not_found", "text": ""}
+      ]
+    }
+  ]
+}

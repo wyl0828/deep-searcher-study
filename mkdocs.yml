@@ -1,7 +1,6 @@
-site_name: DeepSearcher
-site_url: https://zilliztech.github.io/deep-searcher/
-repo_name: zilliztech/deep-searcher
-repo_url: https://github.com/zilliztech/deep-searcher
+site_name: DeepSearcher Study
+repo_name: wyl0828/deep-searcher-study
+repo_url: https://github.com/wyl0828/deep-searcher-study
 
 theme:
   name: material
@@ -102,6 +101,17 @@ nav:
     - "集成模块支持": 集成/index.md
   - 后续计划:
     - "后续计划": future_plans.md
+  - 项目维护:
+    - "可信 RAG 路线图": roadmap/trustworthy-rag-roadmap.md
+    - "Trust Layer 契约": adr/0001-trust-layer-contract.md
+    - "Answer Policy": adr/0002-answer-policy-engine.md
+    - "确定性一致性": adr/0003-deterministic-consistency-checker.md
+    - "Citation Span": adr/0004-citation-span-mapper.md
+    - "Entailment Checker": adr/0005-entailment-checker.md
+    - "Query Risk Profile": adr/0006-query-risk-profile.md
+    - "Trust Provenance": adr/0007-trust-trace-provenance.md
+    - "Freshness Policy": adr/0008-freshness-policy.md
+    - "文档版本系列": adr/0009-document-version-family.md
 
 markdown_extensions:
   - pymdownx.superfences

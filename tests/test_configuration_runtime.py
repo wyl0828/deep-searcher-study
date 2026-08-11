@@ -100,6 +100,7 @@ def test_build_runtime_returns_isolated_components_without_publishing_globals(
     assert chain.kwargs["min_evidence_for_stop"] == 2
     assert runtime.naive_rag.kind == "naive"
     assert runtime.naive_rag is routed_agents[2]
+    assert runtime.entailment_checker is None
     assert configuration.vector_db is previous_vector_db
 
 
@@ -111,6 +112,40 @@ def test_build_runtime_allows_an_explicit_default_answer_agent(monkeypatch):
     runtime = configuration.build_runtime(config)
 
     assert runtime.default_searcher.kwargs["fallback_agent_index"] == 1
+
+
+def test_build_runtime_can_enable_the_shared_llm_entailment_checker(monkeypatch):
+    components = install_fake_components(monkeypatch)
+    config = FakeConfig()
+    config.query_settings = {
+        "max_iter": 3,
+        "trust": {"entailment": {"enabled": True, "min_confidence": 0.9}},
+    }
+
+    runtime = configuration.build_runtime(config)
+
+    assert runtime.entailment_checker is not None
+    assert runtime.entailment_checker.llm is components["llm"]
+    assert runtime.entailment_checker.min_confidence == 0.9
+
+
+def test_build_runtime_rejects_invalid_trust_temporal_timezone_before_provider_startup(
+    monkeypatch,
+):
+    install_fake_components(monkeypatch)
+    config = FakeConfig()
+    config.query_settings = {
+        "max_iter": 3,
+        "trust": {"temporal": {"timezone": "Mars/Olympus"}},
+    }
+
+    with pytest.raises(configuration.RuntimeInitializationError) as exc_info:
+        configuration.build_runtime(config)
+
+    assert exc_info.value.component == "trust_temporal"
+    assert exc_info.value.code == "RUNTIME_INITIALIZATION_FAILED"
+    assert "Mars/Olympus" not in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ValueError)
 
 
 def test_init_config_keeps_legacy_global_api_compatible(monkeypatch):
@@ -125,6 +160,7 @@ def test_init_config_keeps_legacy_global_api_compatible(monkeypatch):
         "vector_db",
         "default_searcher",
         "naive_rag",
+        "entailment_checker",
     ):
         monkeypatch.setattr(configuration, name, getattr(configuration, name))
 
@@ -138,6 +174,7 @@ def test_init_config_keeps_legacy_global_api_compatible(monkeypatch):
     assert configuration.vector_db is components["vector_db"]
     assert configuration.default_searcher is runtime.default_searcher
     assert configuration.naive_rag is runtime.naive_rag
+    assert configuration.entailment_checker is runtime.entailment_checker
 
 
 def test_build_runtime_reports_the_failing_component_without_leaking_details(

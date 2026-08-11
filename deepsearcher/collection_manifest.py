@@ -228,6 +228,12 @@ def document_version(chunks: Iterable) -> str:
                         "chunk_index": metadata.get("chunk_index"),
                         "document": str(source_identity),
                         "page_number": metadata.get("page_number"),
+                        "published_at": metadata.get("published_at"),
+                        "effective_at": metadata.get("effective_at"),
+                        "superseded_at": metadata.get("superseded_at"),
+                        "temporal_metadata_source": metadata.get("temporal_metadata_source"),
+                        "version_family": metadata.get("version_family"),
+                        "version_family_source": metadata.get("version_family_source"),
                         "text_hash": _sha256(chunk.text),
                     }
                 )

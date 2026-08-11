@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 import main
@@ -496,9 +497,10 @@ def test_query_stream_emits_safe_incremental_stage_events():
             collector.record_subquery("private generated subquery")
             collector.record_documents_retrieved([result])
             collector.record_documents_supported([result])
+            collector.record_grounding_evidence([(result, result.text)])
             collector.record_reflection(True)
             collector.record_final_answer(4)
-            return "Safe final answer.", [result], 12
+            return "Supported fact. [E1]", [result], 12
 
     with runtime_client(make_runtime(searcher=Searcher())) as client:
         response = client.post(
@@ -531,9 +533,20 @@ def test_query_stream_emits_safe_incremental_stage_events():
     assert [event["sequence"] for event in events] == list(range(1, 9))
     assert {event["request_id"] for event in events} == {"request-sse-safe-1"}
     completed = events[-1]["data"]
-    assert completed["result"] == "Safe final answer."
+    assert completed["result"] == "Supported fact. [E1]"
     assert completed["consume_token"] == 12
-    assert completed["trace"]["version"] == 4
+    assert completed["trace"]["version"] == 6
+    provenance = completed["trace"]["trust"]["provenance"]
+    assert provenance["version"] == 2
+    assert provenance["execution_scope"] == "stream"
+    assert provenance["index"]["selection_mode"] == "explicit"
+    assert provenance["index"]["collection_count"] == 1
+    assert provenance["digest"].startswith("sha256:")
+    assert provenance["evidence"]["snapshot_status"] == "complete"
+    assert provenance["evidence"]["evidence_count"] == 1
+    assert provenance["evidence"]["knowledge_base_count"] == 1
+    assert provenance["evidence"]["web_count"] == 0
+    assert "kb_selected" not in json.dumps(provenance)
     document = completed["trace"]["iterations"][0]["retrieved_documents"][0]
     assert document["metric_type"] == "L2"
     assert document["distance"] == 0.9
@@ -547,6 +560,49 @@ def test_query_stream_emits_safe_incremental_stage_events():
     assert "owner@example.com" not in response.text
     assert "top-secret" not in response.text
     assert r"C:\Users\private" not in response.text
+
+
+def test_query_stream_binds_dynamic_route_to_actual_manifest_without_name_leak():
+    class ManifestVectorDB(FakeVectorDB):
+        def get_collection_manifest(self, collection):
+            assert collection == "kb_selected"
+            return make_collection_manifest()
+
+    class Searcher:
+        def query(self, _original_query, **kwargs):
+            collector = kwargs["trace_collector"]
+            collector.select_agent("NaiveRAG")
+            collector.start_iteration(1)
+            collector.record_collections(
+                ["kb_selected"],
+                decision={
+                    "source": "model",
+                    "selected": ["kb_selected"],
+                    "requested": ["kb_selected"],
+                    "rejected": [],
+                    "fallback_used": False,
+                },
+            )
+            collector.record_reflection(False)
+            collector.record_final_answer(1)
+            return "No relevant information found", [], 1
+
+    runtime = make_runtime(vector_db=ManifestVectorDB(), searcher=Searcher())
+    with runtime_client(runtime) as client:
+        response = client.post(
+            "/query/stream",
+            json={"original_query": "route dynamically", "max_iter": 1},
+        )
+
+    assert response.status_code == 200
+    completed = parse_sse_events(response.text)[-1]["data"]
+    provenance = completed["trace"]["trust"]["provenance"]
+    assert provenance["index"]["selection_mode"] == "dynamic"
+    assert provenance["index"]["snapshot_status"] == "complete"
+    assert provenance["index"]["collection_count"] == 1
+    assert provenance["index"]["manifests"][0]["status"] == "verified"
+    assert "kb_selected" not in json.dumps(provenance)
+    assert "kb_selected" not in response.text
 
 
 def test_query_stream_returns_safe_error_event_without_exception_details():
@@ -717,6 +773,7 @@ def test_collection_rebuild_forwards_complete_safe_version_request(monkeypatch):
         "vector_db_instance": runtime.vector_db,
         "embedding_model_instance": runtime.embedding_model,
         "file_loader_instance": runtime.file_loader,
+        "document_metadata": None,
     }
 
 
@@ -1020,6 +1077,99 @@ def test_ingest_retry_rejects_invalid_document_identifier_before_mutation(monkey
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_DOCUMENT_ID"
     vector_db.delete_by_document_id.assert_not_called()
+    load_files_mock.assert_not_called()
+
+
+def test_ingest_forwards_only_valid_document_temporal_metadata(monkeypatch):
+    captured = {}
+
+    def load(**kwargs):
+        captured.update(kwargs)
+        return {"manifest": {"schema_version": 1}}
+
+    monkeypatch.setattr(main, "load_from_local_files", load)
+    with runtime_client() as client:
+        response = client.post(
+            "/load-files/",
+            json={
+                "paths": "policy.pdf",
+                "collection_name": "kb_private",
+                "document_metadata": {
+                    "published_at": "2026-08-11",
+                    "effective_at": "2026-08-12",
+                    "temporal_metadata_source": "user_declared",
+                    "version_family": "Travel Expense Policy",
+                    "version_family_source": "user_declared",
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured["document_metadata"] == {
+        "published_at": "2026-08-11",
+        "effective_at": "2026-08-12",
+        "temporal_metadata_source": "user_declared",
+        "version_family": "travel-expense-policy",
+        "version_family_source": "user_declared",
+    }
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"published_at": "08/11/2026", "temporal_metadata_source": "user_declared"},
+        {"published_at": "2026-08-11", "temporal_metadata_source": "untrusted"},
+        {
+            "published_at": "2026-08-11",
+            "temporal_metadata_source": "user_declared",
+            "raw_prompt": "inject",
+        },
+    ],
+)
+def test_ingest_rejects_invalid_document_temporal_metadata_before_mutation(
+    monkeypatch,
+    metadata,
+):
+    load_files_mock = Mock()
+    monkeypatch.setattr(main, "load_from_local_files", load_files_mock)
+
+    with runtime_client() as client:
+        response = client.post(
+            "/load-files/",
+            json={
+                "paths": "policy.pdf",
+                "collection_name": "kb_private",
+                "document_metadata": metadata,
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_DOCUMENT_GOVERNANCE_METADATA"
+    load_files_mock.assert_not_called()
+
+
+def test_collection_rebuild_requires_one_temporal_metadata_item_per_path(monkeypatch):
+    load_files_mock = Mock()
+    monkeypatch.setattr(main, "load_from_local_files", load_files_mock)
+    collection_name = "kb_" + "b" * 32
+
+    with runtime_client() as client:
+        response = client.post(
+            f"/collections/{collection_name}/rebuild",
+            headers={"X-Confirm-Collection": collection_name},
+            json={
+                "paths": ["a.pdf", "b.pdf"],
+                "document_metadata": [
+                    {
+                        "published_at": "2026-08-11",
+                        "temporal_metadata_source": "user_declared",
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == ("DOCUMENT_GOVERNANCE_METADATA_COUNT_MISMATCH")
     load_files_mock.assert_not_called()
 
 

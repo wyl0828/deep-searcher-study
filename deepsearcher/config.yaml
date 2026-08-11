@@ -192,6 +192,15 @@ provide_settings:
 
 query_settings:
   max_iter: 3
+  trust:
+    temporal:
+      # Relative dates in answers are resolved against this request-clock timezone.
+      timezone: "Asia/Shanghai"
+    entailment:
+      # Opt-in: one bounded batch call for claims not resolved by deterministic checks.
+      enabled: false
+      provider: "llm"
+      min_confidence: 0.8
   deep_search:
     web_search_queries_per_iteration: 2
     web_search_results_per_query: 5

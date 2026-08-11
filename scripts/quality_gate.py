@@ -174,6 +174,58 @@ def _run_fast_gate(
         environment=migration_environment,
     )
     runner.run(
+        "trust-consistency-gate",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.trust_consistency",
+            "--output",
+            str(runner.output_dir / "trust-consistency.json"),
+        ),
+    )
+    runner.run(
+        "citation-span-gate",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.citation_span",
+            "--output",
+            str(runner.output_dir / "citation-span.json"),
+        ),
+    )
+    runner.run(
+        "entailment-dataset-gate",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.entailment",
+            "--mode",
+            "validate",
+            "--output",
+            str(runner.output_dir / "entailment-dataset.json"),
+        ),
+    )
+    runner.run(
+        "risk-profile-gate",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.risk_profile",
+            "--output",
+            str(runner.output_dir / "risk-profile.json"),
+        ),
+    )
+    runner.run(
+        "trust-provenance-gate",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.provenance",
+            "--output",
+            str(runner.output_dir / "trust-provenance.json"),
+        ),
+    )
+    runner.run(
         "evaluation-report-gate",
         _uv_command(
             "python",

@@ -6,13 +6,19 @@ import math
 import os
 import re
 from collections.abc import AsyncIterator
+from datetime import date
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from deepsearcher.freshness import sanitize_freshness_intent
 from deepsearcher.grounding import MAX_GROUNDING_EVIDENCE_TEXT
+from deepsearcher.provenance import sanitize_trust_provenance
+from deepsearcher.temporal import extract_document_temporal_metadata
 from deepsearcher.trace import redact_sensitive_text
+from deepsearcher.trust import build_temporal_context
+from deepsearcher.versioning import extract_document_version_metadata
 from deepsearcher.web_search.tavily import canonical_public_url
 from frontend.product.backend import backend_request_headers
 from frontend.product.errors import ProductError
@@ -134,6 +140,285 @@ def _safe_string_list(value: object) -> list[str] | None:
         return None
     items = [safe for item in value[:8] if (safe := _safe_text(item, max_length=160)) is not None]
     return items or None
+
+
+def _safe_reason_codes(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return list(
+        dict.fromkeys(
+            code
+            for item in value[:16]
+            if (code := _safe_identifier(item, max_length=64)) is not None
+        )
+    )
+
+
+def _safe_confidence(value: object) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return confidence if math.isfinite(confidence) and 0 <= confidence <= 1 else None
+
+
+def _safe_citation_spans(
+    value: object,
+    *,
+    evidence_to_citation: dict[str, int] | None = None,
+    evidence_text_by_id: dict[str, str] | None = None,
+) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    spans: list[dict] = []
+    for item in value[:MAX_PERSISTED_CITATIONS]:
+        if not isinstance(item, dict):
+            continue
+        evidence_id = _safe_identifier(item.get("evidence_id"), max_length=16)
+        match_type = _safe_identifier(item.get("match_type"), max_length=24)
+        if evidence_id is None or match_type not in {
+            "normalized_exact",
+            "sentence_overlap",
+            "not_found",
+        }:
+            continue
+        start = _safe_optional_int(item.get("start"))
+        end = _safe_optional_int(item.get("end"))
+        quote = _safe_text(item.get("text"), max_length=1200) or ""
+        score = _safe_confidence(item.get("score"))
+        if match_type == "not_found":
+            start = None
+            end = None
+            quote = ""
+            score = 0.0
+        elif (
+            start is None
+            or end is None
+            or end <= start
+            or end > MAX_GROUNDING_EVIDENCE_TEXT
+            or not quote
+            or score is None
+        ):
+            continue
+        if evidence_text_by_id is not None and match_type != "not_found":
+            evidence_text = evidence_text_by_id.get(evidence_id)
+            if (
+                evidence_text is None
+                or end is None
+                or end > len(evidence_text)
+                or evidence_text[start:end] != quote
+            ):
+                continue
+        span = {
+            "evidence_id": evidence_id,
+            "start": start,
+            "end": end,
+            "text": quote,
+            "match_type": match_type,
+            "score": score,
+        }
+        if evidence_to_citation is not None:
+            citation_index = evidence_to_citation.get(evidence_id)
+            if citation_index is None:
+                continue
+            span["citation_index"] = citation_index
+            span.pop("evidence_id")
+        spans.append(span)
+    return spans
+
+
+def _safe_consistency_checks(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    checks: list[dict] = []
+    for item in value[:8]:
+        if not isinstance(item, dict):
+            continue
+        kind = _safe_identifier(item.get("kind"), max_length=24)
+        status = _safe_identifier(item.get("status"), max_length=24)
+        reason_code = _safe_identifier(item.get("reason_code"), max_length=64)
+        if kind is None or status is None or reason_code is None:
+            continue
+        check = {"kind": kind, "status": status, "reason_code": reason_code}
+        for field in ("claim_values", "missing_values"):
+            raw_values = item.get(field)
+            if isinstance(raw_values, list):
+                check[field] = [
+                    text
+                    for raw in raw_values[:16]
+                    if (text := _safe_text(raw, max_length=64)) is not None
+                ]
+        checks.append(check)
+    return checks
+
+
+def _safe_risk_checks(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    checks: list[dict] = []
+    for item in value[:8]:
+        if not isinstance(item, dict):
+            continue
+        kind = _safe_identifier(item.get("kind"), max_length=32)
+        status = _safe_identifier(item.get("status"), max_length=16)
+        reason_code = _safe_identifier(item.get("reason_code"), max_length=64)
+        if kind is None or status not in {"passed", "failed"} or reason_code is None:
+            continue
+        check: dict = {"kind": kind, "status": status, "reason_code": reason_code}
+        for field in ("actual", "required"):
+            raw = item.get(field)
+            if isinstance(raw, bool):
+                continue
+            if isinstance(raw, int):
+                check[field] = max(raw, 0)
+            elif (safe := _safe_identifier(raw, max_length=64)) is not None:
+                check[field] = safe
+        checks.append(check)
+    return checks
+
+
+def _safe_trust_claims(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    claims: list[dict] = []
+    for item in value[:64]:
+        if not isinstance(item, dict):
+            continue
+        text = _safe_text(item.get("text"), max_length=600)
+        if text is None:
+            continue
+        claim = {
+            "index": _safe_nonnegative_int(item.get("index")),
+            "text": text,
+            "support_status": _safe_identifier(item.get("support_status"), max_length=32),
+            "structural_support_status": _safe_identifier(
+                item.get("structural_support_status"), max_length=32
+            ),
+            "citation_status": _safe_identifier(item.get("citation_status"), max_length=24),
+            "entailment_status": _safe_identifier(item.get("entailment_status"), max_length=24),
+            "entailment_method": _safe_identifier(item.get("entailment_method"), max_length=32),
+            "entailment_checker": _safe_identifier(item.get("entailment_checker"), max_length=64),
+            "entailment_checker_version": _safe_identifier(
+                item.get("entailment_checker_version"), max_length=32
+            ),
+            "consistency_status": _safe_identifier(item.get("consistency_status"), max_length=24),
+            "consistency_checks": _safe_consistency_checks(item.get("consistency_checks")),
+            "citation_spans": _safe_citation_spans(item.get("citation_spans")),
+            "confidence": _safe_confidence(item.get("confidence")),
+            "risk_status": _safe_identifier(item.get("risk_status"), max_length=24),
+            "risk_checks": _safe_risk_checks(item.get("risk_checks")),
+            "reason_codes": _safe_reason_codes(item.get("reason_codes")),
+        }
+        claims.append({key: item for key, item in claim.items() if item is not None})
+    return claims
+
+
+def _safe_trust_section(value: object) -> dict:
+    section = value if isinstance(value, dict) else {}
+    return {
+        "trust_status": _safe_identifier(section.get("trust_status"), max_length=32),
+        "claim_count": _safe_nonnegative_int(section.get("claim_count")),
+        "supported_claim_count": _safe_nonnegative_int(section.get("supported_claim_count")),
+        "claims": _safe_trust_claims(section.get("claims")),
+    }
+
+
+def _safe_trust_details(value: object) -> dict | None:
+    if not isinstance(value, dict) or value.get("version") != 1:
+        return None
+    verification_level = _safe_identifier(value.get("verification_level"), max_length=64)
+    if verification_level is None:
+        return None
+    temporal_context = _safe_temporal_context(value.get("temporal_context"))
+    result = {
+        "verification_level": verification_level,
+        "evidence_snapshot_available": bool(value.get("evidence_snapshot_available")),
+        "entailment": _safe_entailment_details(value.get("entailment")),
+        "risk": _safe_risk_details(value.get("risk")),
+        "temporal_context": temporal_context,
+        "input": _safe_trust_section(value.get("input")),
+        "output": _safe_trust_section(value.get("output")),
+        "limitations": _safe_reason_codes(value.get("limitations")),
+    }
+    freshness = sanitize_freshness_intent(value.get("freshness"))
+    if freshness is not None:
+        result["freshness"] = freshness
+    provenance = sanitize_trust_provenance(value.get("provenance"))
+    if provenance is not None:
+        provenance_temporal = provenance.get("temporal")
+        if isinstance(provenance_temporal, dict) and (
+            not temporal_context
+            or provenance_temporal.get("reference_date") != temporal_context.get("reference_date")
+            or provenance_temporal.get("timezone") != temporal_context.get("timezone")
+        ):
+            return None
+        result["provenance"] = provenance
+    return result
+
+
+def _safe_entailment_details(value: object) -> dict:
+    details = value if isinstance(value, dict) else {}
+    result = {
+        "version": _safe_nonnegative_int(details.get("version")),
+        "checker": _safe_identifier(details.get("checker"), max_length=64),
+        "checker_version": _safe_identifier(details.get("checker_version"), max_length=32),
+        "status": _safe_identifier(details.get("status"), max_length=24),
+        "token_usage": _safe_nonnegative_int(details.get("token_usage")),
+        "eligible_claim_count": _safe_nonnegative_int(details.get("eligible_claim_count")),
+        "exact_match_count": _safe_nonnegative_int(details.get("exact_match_count")),
+        "checker_claim_count": _safe_nonnegative_int(details.get("checker_claim_count")),
+        "entailed_count": _safe_nonnegative_int(details.get("entailed_count")),
+        "contradicted_count": _safe_nonnegative_int(details.get("contradicted_count")),
+        "unknown_count": _safe_nonnegative_int(details.get("unknown_count")),
+        "not_checked_count": _safe_nonnegative_int(details.get("not_checked_count")),
+        "error_code": _safe_identifier(details.get("error_code"), max_length=64),
+    }
+    return {key: item for key, item in result.items() if item is not None}
+
+
+def _safe_risk_details(value: object) -> dict:
+    details = value if isinstance(value, dict) else {}
+    requirements = details.get("requirements")
+    requirements = requirements if isinstance(requirements, dict) else {}
+    return {
+        "version": _safe_nonnegative_int(details.get("version")),
+        "classifier": _safe_identifier(details.get("classifier"), max_length=64),
+        "classifier_version": _safe_identifier(details.get("classifier_version"), max_length=32),
+        "risk_level": _safe_identifier(details.get("risk_level"), max_length=16),
+        "query_type": _safe_identifier(details.get("query_type"), max_length=32),
+        "risk_factors": _safe_reason_codes(details.get("risk_factors")),
+        "requirements": {
+            "require_citation": bool(requirements.get("require_citation", True)),
+            "require_decisive_entailment": bool(
+                requirements.get("require_decisive_entailment", False)
+            ),
+            "minimum_evidence_count": _safe_nonnegative_int(
+                requirements.get("minimum_evidence_count")
+            ),
+            "minimum_distinct_source_count": _safe_nonnegative_int(
+                requirements.get("minimum_distinct_source_count")
+            ),
+            "allow_unknown_entailment": bool(requirements.get("allow_unknown_entailment", True)),
+        },
+    }
+
+
+def _safe_temporal_context(value: object) -> dict:
+    details = value if isinstance(value, dict) else {}
+    if details.get("version") != 1 or details.get("source") != "request_clock":
+        return {}
+    try:
+        normalized = build_temporal_context(
+            reference_time=str(details.get("reference_time") or ""),
+            timezone_name=str(details.get("timezone") or ""),
+        )
+    except ValueError:
+        return {}
+    if normalized["reference_date"] != details.get("reference_date"):
+        return {}
+    return normalized
 
 
 def _safe_bbox(value: object) -> list[float] | None:
@@ -273,9 +558,9 @@ def _finish_assistant_message(
     assistant_message.content = str(payload.get("result") or "")
     trace = payload.get("trace") or {}
     grounding = trace.get("grounding") if isinstance(trace, dict) else None
-    has_structured_grounding = (
-        isinstance(grounding, dict) and grounding.get("version") == 1
-    )
+    trust = trace.get("trust") if isinstance(trace, dict) else None
+    has_structured_trust = isinstance(trust, dict) and trust.get("version") == 1
+    has_structured_grounding = isinstance(grounding, dict) and grounding.get("version") == 1
     citations, evidence_to_citation = _collect_supported_citations(
         session,
         message=assistant_message,
@@ -287,23 +572,56 @@ def _finish_assistant_message(
         trace=trace,
         evidence_to_citation=evidence_to_citation,
     )
-    if claims:
-        statuses = {claim.support_status for claim in claims}
-        supported_count = sum(
-            claim.support_status in {"supported", "conflicting"} for claim in claims
+    if has_structured_trust:
+        policy = trust.get("policy") if isinstance(trust.get("policy"), dict) else {}
+        assistant_message.trust_contract_version = 1
+        assistant_message.trust_status = _safe_identifier(trust.get("trust_status"), max_length=32)
+        assistant_message.safety_status = _safe_identifier(
+            trust.get("safety_status"), max_length=24
         )
-        if "conflicting" in statuses:
-            assistant_message.answer_state = "conflicting_evidence"
-        elif supported_count == len(claims):
-            assistant_message.answer_state = "fully_grounded"
-        elif supported_count:
-            assistant_message.answer_state = "partially_grounded"
-        else:
+        assistant_message.policy_action = _safe_identifier(policy.get("action"), max_length=24)
+        assistant_message.policy_profile = _safe_identifier(policy.get("profile"), max_length=32)
+        assistant_message.policy_reason_codes = _safe_reason_codes(policy.get("reason_codes"))
+        risk = trust.get("risk") if isinstance(trust.get("risk"), dict) else {}
+        assistant_message.risk_level = _safe_identifier(risk.get("risk_level"), max_length=16)
+        assistant_message.query_type = _safe_identifier(risk.get("query_type"), max_length=32)
+        assistant_message.risk_factors = _safe_reason_codes(risk.get("risk_factors"))
+        assistant_message.trust_details = _safe_trust_details(trust)
+        provenance = (
+            assistant_message.trust_details.get("provenance")
+            if isinstance(assistant_message.trust_details, dict)
+            else None
+        )
+        if isinstance(provenance, dict):
+            assistant_message.provenance_contract_version = int(provenance["version"])
+            assistant_message.provenance_digest = str(provenance["digest"])
+        output = trust.get("output") if isinstance(trust.get("output"), dict) else {}
+        output_state = _safe_identifier(output.get("trust_status"), max_length=32)
+        if output_state in {
+            "fully_grounded",
+            "partially_grounded",
+            "conflicting_evidence",
+            "insufficient_evidence",
+        }:
+            assistant_message.answer_state = output_state
+    if assistant_message.answer_state is None:
+        if claims:
+            statuses = {claim.support_status for claim in claims}
+            supported_count = sum(
+                claim.support_status in {"supported", "conflicting"} for claim in claims
+            )
+            if "conflicting" in statuses:
+                assistant_message.answer_state = "conflicting_evidence"
+            elif supported_count == len(claims):
+                assistant_message.answer_state = "fully_grounded"
+            elif supported_count:
+                assistant_message.answer_state = "partially_grounded"
+            else:
+                assistant_message.answer_state = "insufficient_evidence"
+        elif has_structured_grounding:
             assistant_message.answer_state = "insufficient_evidence"
-    elif has_structured_grounding:
-        assistant_message.answer_state = "insufficient_evidence"
-    else:
-        assistant_message.answer_state = "grounded" if citations else "insufficient_evidence"
+        else:
+            assistant_message.answer_state = "grounded" if citations else "insufficient_evidence"
     assistant_message.status = "succeeded"
     session.commit()
     session.refresh(assistant_message)
@@ -379,7 +697,8 @@ def _safe_stage_envelope(event_name: str, envelope: dict) -> dict | None:
         reason = str(raw_data.get("reason") or "unknown")
         data["reason"] = (
             reason
-            if reason in {
+            if reason
+            in {
                 "rewritten",
                 "standalone",
                 "invalid_output",
@@ -503,9 +822,9 @@ def _collect_supported_citations(
         page_number = _safe_optional_int(item.get("page_number"), minimum=1)
         chunk_index = _safe_optional_int(item.get("chunk_index"))
         location_id = _safe_identifier(item.get("location_id"))
-        evidence_text = (
-            _safe_text(item.get("text"), max_length=MAX_GROUNDING_EVIDENCE_TEXT) or ""
-        )
+        evidence_text = _safe_text(item.get("text"), max_length=MAX_GROUNDING_EVIDENCE_TEXT) or ""
+        temporal_metadata = extract_document_temporal_metadata(item)
+        version_metadata = extract_document_version_metadata(item)
         key = (
             web_source[0] if web_source else None,
             location_id,
@@ -513,6 +832,8 @@ def _collect_supported_citations(
             page_number,
             chunk_index,
             evidence_text,
+            tuple(temporal_metadata.items()),
+            tuple(version_metadata.items()),
         )
         if key in seen:
             if evidence_id:
@@ -563,6 +884,24 @@ def _collect_supported_citations(
                 if source_type == "web" and web_source
                 else source_type != "web"
             ),
+            published_at=(
+                date.fromisoformat(temporal_metadata["published_at"])
+                if "published_at" in temporal_metadata
+                else None
+            ),
+            effective_at=(
+                date.fromisoformat(temporal_metadata["effective_at"])
+                if "effective_at" in temporal_metadata
+                else None
+            ),
+            superseded_at=(
+                date.fromisoformat(temporal_metadata["superseded_at"])
+                if "superseded_at" in temporal_metadata
+                else None
+            ),
+            temporal_metadata_source=temporal_metadata.get("temporal_metadata_source"),
+            version_family=version_metadata.get("version_family"),
+            version_family_source=version_metadata.get("version_family_source"),
             text=evidence_text,
             supported=True,
         )
@@ -595,17 +934,38 @@ def collect_answer_claims(
     trace: dict,
     evidence_to_citation: dict[str, int],
 ) -> list[AnswerClaim]:
+    trust = trace.get("trust") if isinstance(trace, dict) else None
     grounding = trace.get("grounding") if isinstance(trace, dict) else None
-    raw_claims = grounding.get("claims") if isinstance(grounding, dict) else None
+    raw_claims = (
+        trust.get("claims")
+        if isinstance(trust, dict) and trust.get("version") == 1
+        else grounding.get("claims")
+        if isinstance(grounding, dict)
+        else None
+    )
     if not isinstance(raw_claims, list):
         return []
+    evidence_text_by_id: dict[str, str] = {}
+    if isinstance(grounding, dict) and grounding.get("version") == 1:
+        raw_evidence = grounding.get("evidence")
+        if isinstance(raw_evidence, list):
+            for evidence_item in raw_evidence[:MAX_PERSISTED_CITATIONS]:
+                if not isinstance(evidence_item, dict):
+                    continue
+                evidence_id = _safe_identifier(evidence_item.get("evidence_id"), max_length=16)
+                evidence_text = _safe_text(
+                    evidence_item.get("text"),
+                    max_length=MAX_GROUNDING_EVIDENCE_TEXT,
+                )
+                if evidence_id is not None and evidence_text is not None:
+                    evidence_text_by_id[evidence_id] = evidence_text
     claims: list[AnswerClaim] = []
     allowed_statuses = {"supported", "unsupported", "invalid_citation", "conflicting"}
     for item in raw_claims[:64]:
         if not isinstance(item, dict):
             continue
         text = _safe_text(item.get("text"), max_length=600)
-        status = str(item.get("status") or "unsupported")
+        status = str(item.get("support_status") or item.get("status") or "unsupported")
         if not text or status not in allowed_statuses:
             continue
         raw_evidence_ids = item.get("evidence_ids")
@@ -621,12 +981,49 @@ def collect_answer_claims(
         required_citations = 2 if status == "conflicting" else 1
         if status in {"supported", "conflicting"} and len(citation_indices) < required_citations:
             status = "invalid_citation"
+        default_citation_status = {
+            "supported": "valid",
+            "conflicting": "conflicting",
+            "invalid_citation": "invalid",
+            "unsupported": "missing",
+        }[status]
+        default_reason_code = {
+            "supported": "CITATION_VALID",
+            "conflicting": "EVIDENCE_CONFLICT",
+            "invalid_citation": "CITATION_INVALID",
+            "unsupported": "CITATION_MISSING",
+        }[status]
         claim = AnswerClaim(
             message_id=message.id,
             index=len(claims) + 1,
             text=text,
             support_status=status,
+            structural_support_status=(
+                _safe_identifier(item.get("structural_support_status"), max_length=32) or status
+            ),
             citation_indices=citation_indices,
+            citation_spans=_safe_citation_spans(
+                item.get("citation_spans"),
+                evidence_to_citation=evidence_to_citation,
+                evidence_text_by_id=evidence_text_by_id,
+            ),
+            citation_status=(
+                _safe_identifier(item.get("citation_status"), max_length=24)
+                or default_citation_status
+            ),
+            entailment_status=(
+                _safe_identifier(item.get("entailment_status"), max_length=24) or "not_checked"
+            ),
+            consistency_status=(
+                _safe_identifier(item.get("consistency_status"), max_length=24) or "not_checked"
+            ),
+            consistency_checks=_safe_consistency_checks(item.get("consistency_checks")),
+            risk_status=(
+                _safe_identifier(item.get("risk_status"), max_length=24) or "not_assessed"
+            ),
+            risk_checks=_safe_risk_checks(item.get("risk_checks")),
+            confidence=_safe_confidence(item.get("confidence")),
+            reason_codes=(_safe_reason_codes(item.get("reason_codes")) or [default_reason_code]),
         )
         session.add(claim)
         claims.append(claim)

@@ -76,6 +76,9 @@ print('preserved')
             status="succeeded",
             answer_state="partially_grounded",
         )
+        evidence_text = (
+            "这是传给最终模型并持久化的同一份较宽证据快照，包含被引用事实。原始回答正文应完整显示。"
+        )
         citation = Citation(
             id="citation_e2e_1",
             message=assistant_message,
@@ -84,7 +87,7 @@ print('preserved')
             page_number=2,
             chunk_index=7,
             section_title="证据快照",
-            text="这是传给最终模型并持久化的同一份较宽证据快照，包含被引用事实。",
+            text=evidence_text,
             supported=True,
         )
         claims = [
@@ -95,6 +98,16 @@ print('preserved')
                 text="原始回答正文应完整显示。",
                 support_status="supported",
                 citation_indices=[1],
+                citation_spans=[
+                    {
+                        "citation_index": 1,
+                        "start": evidence_text.index("原始回答正文应完整显示。"),
+                        "end": len(evidence_text),
+                        "text": "原始回答正文应完整显示。",
+                        "match_type": "normalized_exact",
+                        "score": 1.0,
+                    }
+                ],
             ),
             AnswerClaim(
                 id="claim_e2e_2",

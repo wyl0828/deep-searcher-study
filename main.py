@@ -31,6 +31,7 @@ from deepsearcher.configuration import (
     build_runtime,
 )
 from deepsearcher.health import RuntimeHealthMonitor, blocked_checks, failed_check
+from deepsearcher.provenance import TrustProvenanceSession
 from deepsearcher.query_context import ContextualQuery, contextualize_query
 from deepsearcher.runtime_registry import (
     DEFAULT_TENANT_ID,
@@ -43,6 +44,7 @@ from deepsearcher.runtime_registry import (
     close_runtime,
 )
 from deepsearcher.trace import QueryCancelled, TraceCollector
+from deepsearcher.trust import temporal_timezone_from_query_settings
 from deepsearcher.vector_db.exceptions import (
     CollectionIngestionProfileMismatch,
     CollectionManifestInvalid,
@@ -55,6 +57,7 @@ from deepsearcher.vector_db.exceptions import (
     VectorDBUnavailable,
     VectorDimensionMismatch,
 )
+from deepsearcher.versioning import sanitize_document_governance_metadata
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -73,6 +76,7 @@ SAFE_RUNTIME_COMPONENTS = {
     "web_search",
     "searcher",
     "runtime",
+    "trust_temporal",
 }
 REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 QUERY_PATHS = {"/query", "/query/stream"}
@@ -496,6 +500,7 @@ class CollectionRebuildRequest(BaseModel):
     chunk_size: int = Field(default=1500, ge=1, le=100_000)
     chunk_overlap: int = Field(default=100, ge=0, le=99_999)
     batch_size: int = Field(default=256, ge=1, le=4096)
+    document_metadata: List[dict] | None = None
 
 
 async def set_provider_config(
@@ -630,6 +635,10 @@ def load_files(
         None,
         description="Optional SHA-256 identifier used to make a document retry idempotent.",
     ),
+    document_metadata: dict | None = Body(
+        None,
+        description="Optional validated business-time metadata for exactly one file.",
+    ),
     _service_access: None = Depends(require_service_access),
     runtime: RuntimeComponents = Depends(get_runtime),
 ):
@@ -642,6 +651,19 @@ def load_files(
         raise APIError(
             "INVALID_DOCUMENT_ID",
             "The document identifier is invalid.",
+            status_code=400,
+        )
+    safe_document_metadata = sanitize_document_governance_metadata(document_metadata)
+    if safe_document_metadata is None:
+        raise APIError(
+            "INVALID_DOCUMENT_GOVERNANCE_METADATA",
+            "The document governance metadata is invalid.",
+            status_code=400,
+        )
+    if safe_document_metadata and not isinstance(paths, str):
+        raise APIError(
+            "AMBIGUOUS_DOCUMENT_GOVERNANCE_METADATA",
+            "Document governance metadata requires exactly one file path.",
             status_code=400,
         )
     try:
@@ -658,6 +680,7 @@ def load_files(
             vector_db_instance=runtime.vector_db,
             embedding_model_instance=runtime.embedding_model,
             file_loader_instance=runtime.file_loader,
+            document_metadata=safe_document_metadata,
         )
         return {
             "message": "Files loaded successfully.",
@@ -783,6 +806,24 @@ def rebuild_vector_collection(
             "Chunk overlap must be smaller than chunk size.",
             status_code=400,
         )
+    safe_document_metadata = None
+    if payload.document_metadata is not None:
+        if len(payload.document_metadata) != len(payload.paths):
+            raise APIError(
+                "DOCUMENT_GOVERNANCE_METADATA_COUNT_MISMATCH",
+                "Document metadata count must match the path count.",
+                status_code=400,
+            )
+        safe_document_metadata = []
+        for item in payload.document_metadata:
+            sanitized = sanitize_document_governance_metadata(item)
+            if sanitized is None:
+                raise APIError(
+                    "INVALID_DOCUMENT_GOVERNANCE_METADATA",
+                    "The document governance metadata is invalid.",
+                    status_code=400,
+                )
+            safe_document_metadata.append(sanitized)
     logger.warning(
         "collection_rebuild_requested collection=%s documents=%s",
         collection_name,
@@ -799,6 +840,7 @@ def rebuild_vector_collection(
         vector_db_instance=runtime.vector_db,
         embedding_model_instance=runtime.embedding_model,
         file_loader_instance=runtime.file_loader,
+        document_metadata=safe_document_metadata,
     )
     logger.warning(
         "collection_rebuild_completed collection=%s data_version=%s previous=%s",
@@ -939,17 +981,38 @@ def perform_query(
             status_code=400,
         )
     requested_collections = payload.collection_names
-    explicit_collections = get_runtime_context(request).collections_for_query(requested_collections)
+    context = get_runtime_context(request)
+    explicit_collections = context.collections_for_query(requested_collections)
+    provenance_session = TrustProvenanceSession(
+        runtime,
+        context=context,
+        collection_names=explicit_collections,
+        execution_scope="online",
+    )
+    provenance = provenance_session.snapshot()
+    temporal_timezone = temporal_timezone_from_query_settings(
+        getattr(runtime.config, "query_settings", {})
+    )
     try:
         kwargs = {
             "searcher": runtime.default_searcher,
             "use_web_search": payload.use_web_search,
+            "entailment_checker": getattr(runtime, "entailment_checker", None),
+            "temporal_timezone": temporal_timezone,
         }
         if explicit_collections is not None:
             kwargs["collection_names"] = explicit_collections
 
         if payload.include_trace:
-            collector = TraceCollector(original_query, request_id=_request_id(request))
+            collector = TraceCollector(
+                original_query,
+                request_id=_request_id(request),
+                entailment_checker=getattr(runtime, "entailment_checker", None),
+                provenance=provenance,
+                provenance_resolver=provenance_session.bind_collections,
+                evidence_provenance_resolver=provenance_session.bind_evidence,
+                temporal_timezone=temporal_timezone,
+            )
             contextual = _contextualize_request(payload, runtime, collector)
             result_text, _, consume_token, trace = query_with_trace(
                 contextual.query,
@@ -969,6 +1032,10 @@ def perform_query(
             contextual.query,
             payload.max_iter,
             initial_tokens=contextual.token_usage,
+            enforce_trust=True,
+            provenance=provenance,
+            provenance_resolver=provenance_session.bind_collections,
+            evidence_provenance_resolver=provenance_session.bind_evidence,
             **kwargs,
         )
         return {"result": result_text, "consume_token": consume_token}
@@ -1072,11 +1139,24 @@ async def perform_query_stream(
         def publish(envelope: dict) -> None:
             loop.call_soon_threadsafe(queue.put_nowait, envelope)
 
+        provenance_session = TrustProvenanceSession(
+            lease.runtime,
+            context=context,
+            collection_names=collection_names,
+            execution_scope="stream",
+        )
         collector = TraceCollector(
             payload.original_query,
             event_callback=publish,
             cancellation_event=cancellation_event,
             request_id=_request_id(request),
+            entailment_checker=getattr(lease.runtime, "entailment_checker", None),
+            provenance=provenance_session.snapshot(),
+            provenance_resolver=provenance_session.bind_collections,
+            evidence_provenance_resolver=provenance_session.bind_evidence,
+            temporal_timezone=temporal_timezone_from_query_settings(
+                getattr(lease.runtime.config, "query_settings", {})
+            ),
         )
 
         def run_query() -> None:

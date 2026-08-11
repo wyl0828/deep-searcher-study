@@ -56,8 +56,21 @@ export type ProductDocument = {
   page_count: number;
   status: "queued" | "processing" | "ready" | "failed";
   error: { code: string; message: string } | null;
+  published_at: string | null;
+  effective_at: string | null;
+  superseded_at: string | null;
+  temporal_metadata_source: "user_declared" | "connector" | "admin_verified" | null;
+  version_family: string | null;
+  version_family_source: "user_declared" | "connector" | "admin_verified" | null;
   created_at: string;
   updated_at: string;
+};
+
+export type DocumentGovernanceInput = {
+  published_at: string | null;
+  effective_at: string | null;
+  superseded_at: string | null;
+  version_family: string | null;
 };
 
 export type IngestJob = {
@@ -93,8 +106,101 @@ export type Citation = {
   source_url: string | null;
   source_domain: string | null;
   trusted: boolean;
+  published_at: string | null;
+  effective_at: string | null;
+  superseded_at: string | null;
+  temporal_metadata_source: string | null;
+  version_family: string | null;
+  version_family_source: string | null;
   text: string;
   supported: boolean;
+};
+
+export type CitationSpan = {
+  citation_index: number;
+  start: number | null;
+  end: number | null;
+  text: string;
+  match_type: "normalized_exact" | "sentence_overlap" | "not_found";
+  score: number;
+};
+
+export type TrustProvenance = {
+  version: number;
+  builder_version: string;
+  execution_scope: "online" | "stream" | "library" | "evaluation";
+  digest: string;
+  runtime: {
+    configuration_fingerprint: string;
+    runtime_version: number | null;
+    binding_revision: number | null;
+    tenant_fingerprint: string | null;
+    model_policy: string;
+  };
+  generation_model: {
+    provider: string;
+    model: string;
+    version: string;
+    fingerprint: string;
+  };
+  embedding: {
+    provider: string;
+    model: string;
+    version: string;
+    dimension: number | null;
+    normalization: string;
+    fingerprint: string;
+  };
+  index: {
+    selection_mode: "explicit" | "dynamic";
+    snapshot_status: "complete" | "partial" | "dynamic_unbound" | "unavailable";
+    collection_count: number;
+    manifests: Array<{
+      status: "verified" | "legacy_unverified" | "unavailable";
+      schema_version?: number;
+      manifest_fingerprint?: string;
+      data_version?: string;
+      document_version?: string;
+      embedding_fingerprint?: string;
+      chunk_config_version?: string;
+    }>;
+  };
+  evidence?: {
+    snapshot_status: "unbound" | "complete" | "partial";
+    evidence_count: number;
+    knowledge_base_count: number;
+    web_count: number;
+    snapshot_fingerprint: string | null;
+    items: Array<{
+      position: number;
+      source_type: "knowledge_base" | "web";
+      content_fingerprint: string;
+      source_fingerprint: string | null;
+      locator_fingerprint: string | null;
+      temporal_fingerprint?: string | null;
+      publication_anchor_bound?: boolean;
+      version_family_fingerprint?: string | null;
+      version_family_bound?: boolean;
+      trusted: boolean;
+      provider?: string;
+    }>;
+  };
+  temporal?: {
+    version: 1;
+    source: "request_clock";
+    reference_date: string;
+    timezone: string;
+    fingerprint: string;
+  };
+  prompts: {
+    grounding: { version: string; fingerprint: string };
+    entailment: { version: string };
+  };
+  checkers: Record<string, Record<string, string | number | null>>;
+  policy: {
+    trust_contract_version: number;
+    answer_policy_version: number;
+  };
 };
 
 export type AnswerClaim = {
@@ -106,7 +212,69 @@ export type AnswerClaim = {
     | "unsupported"
     | "invalid_citation"
     | "conflicting";
+  structural_support_status:
+    | "supported"
+    | "unsupported"
+    | "invalid_citation"
+    | "conflicting";
   citation_indices: number[];
+  citation_spans: CitationSpan[];
+  citation_status: "valid" | "missing" | "invalid" | "conflicting";
+  entailment_status: "not_checked" | "entailed" | "contradicted" | "unknown";
+  consistency_status:
+    | "not_checked"
+    | "not_applicable"
+    | "consistent"
+    | "inconsistent"
+    | "unknown";
+  consistency_checks: Array<{
+    kind:
+      | "quantity"
+      | "date"
+      | "relative_time"
+      | "negation"
+      | "version"
+      | "range"
+      | "condition"
+      | "freshness";
+    status: "consistent" | "inconsistent" | "unknown";
+    reason_code: string;
+    claim_values?: string[];
+    missing_values?: string[];
+  }>;
+  risk_status: "not_assessed" | "passed" | "rejected" | "conflict_disclosed";
+  risk_checks: Array<{
+    kind: "entailment" | "evidence_count" | "source_count";
+    status: "passed" | "failed";
+    reason_code: string;
+    actual?: string | number;
+    required?: string | number;
+  }>;
+  confidence: number | null;
+  reason_codes: string[];
+};
+
+export type TrustClaimFinding = {
+  index: number;
+  text: string;
+  support_status?: string;
+  structural_support_status?: string;
+  citation_status?: string;
+  entailment_status?: "not_checked" | "entailed" | "contradicted" | "unknown";
+  entailment_method?: "not_checked" | "exact_match" | "semantic_nli";
+  entailment_checker?: string;
+  entailment_checker_version?: string;
+  consistency_status?: string;
+  risk_status?: string;
+  risk_checks?: Array<{
+    kind: string;
+    status: "passed" | "failed";
+    reason_code: string;
+    actual?: string | number;
+    required?: string | number;
+  }>;
+  confidence?: number | null;
+  reason_codes?: string[];
 };
 
 export type Message = {
@@ -122,6 +290,93 @@ export type Message = {
     | "insufficient_evidence"
     | "failed"
     | null;
+  trust_contract_version: number | null;
+  trust_status:
+    | "fully_grounded"
+    | "partially_grounded"
+    | "conflicting_evidence"
+    | "insufficient_evidence"
+    | "not_assessed"
+    | null;
+  safety_status: "not_evaluated" | "safe" | "unsafe" | null;
+  policy_action:
+    | "observe"
+    | "allow"
+    | "downgrade"
+    | "disclose_conflict"
+    | "refuse"
+    | null;
+  policy_profile: "standard" | "strict_high_risk" | null;
+  policy_reason_codes: string[] | null;
+  risk_level: "low" | "medium" | "high" | null;
+  query_type: string | null;
+  risk_factors: string[] | null;
+  provenance_contract_version: number | null;
+  provenance_digest: string | null;
+  trust_details: {
+    verification_level: string;
+    evidence_snapshot_available: boolean;
+    entailment: {
+      version: number;
+      checker?: string;
+      checker_version?: string;
+      status?: "disabled" | "skipped" | "completed" | "partial" | "failed";
+      token_usage: number;
+      eligible_claim_count: number;
+      exact_match_count: number;
+      checker_claim_count: number;
+      entailed_count: number;
+      contradicted_count: number;
+      unknown_count: number;
+      not_checked_count: number;
+      error_code?: string;
+    };
+    risk: {
+      version: number;
+      classifier?: string;
+      classifier_version?: string;
+      risk_level?: "low" | "medium" | "high";
+      query_type?: string;
+      risk_factors: string[];
+      requirements: {
+        require_citation: boolean;
+        require_decisive_entailment: boolean;
+        minimum_evidence_count: number;
+        minimum_distinct_source_count: number;
+        allow_unknown_entailment: boolean;
+      };
+    };
+    freshness?: {
+      version: 1;
+      classifier: "deterministic_freshness_intent";
+      classifier_version: string;
+      required: boolean;
+      mode: "none" | "current" | "latest_effective" | "latest_published" | "recent";
+      ordering_basis: "none" | "effective_at" | "published_at" | "undefined_window";
+      reason_codes: string[];
+    };
+    temporal_context: {
+      version: 1;
+      source: "request_clock";
+      reference_time: string;
+      reference_date: string;
+      timezone: string;
+    };
+    input: {
+      trust_status: string | null;
+      claim_count: number;
+      supported_claim_count: number;
+      claims: TrustClaimFinding[];
+    };
+    output: {
+      trust_status: string | null;
+      claim_count: number;
+      supported_claim_count: number;
+      claims: TrustClaimFinding[];
+    };
+    provenance?: TrustProvenance;
+    limitations: string[];
+  } | null;
   created_at: string;
   citations: Citation[];
   claims: AnswerClaim[];
@@ -369,9 +624,13 @@ export async function listDocuments(id: string): Promise<ProductDocument[]> {
 export async function uploadDocument(
   knowledgeBaseId: string,
   file: File,
+  temporal: DocumentGovernanceInput,
 ): Promise<{ document: ProductDocument; job: IngestJob }> {
   const body = new FormData();
   body.append("file", file);
+  for (const [field, value] of Object.entries(temporal)) {
+    if (value) body.append(field, value);
+  }
   const response = await fetch(
     `/api/knowledge-bases/${knowledgeBaseId}/documents`,
     {
@@ -381,6 +640,16 @@ export async function uploadDocument(
     },
   );
   return readResponse(response);
+}
+
+export function updateDocumentGovernanceMetadata(
+  documentId: string,
+  temporal: DocumentGovernanceInput,
+): Promise<{ document: ProductDocument; job: IngestJob | null }> {
+  return requestJson(`/api/documents/${documentId}/governance-metadata`, {
+    method: "PATCH",
+    body: JSON.stringify(temporal),
+  });
 }
 
 export function getIngestJob(id: string): Promise<IngestJob> {

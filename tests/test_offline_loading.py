@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from langchain_core.documents import Document
 
 from deepsearcher import offline_loading
 from deepsearcher.collection_manifest import CollectionManifest, EmbeddingProfile
@@ -81,6 +82,80 @@ def test_missing_path_is_rejected_before_any_collection_mutation(tmp_path):
     embedding_model.embed_chunks.assert_not_called()
     vector_db.init_collection.assert_not_called()
     vector_db.insert_data.assert_not_called()
+
+
+def test_document_temporal_metadata_reaches_every_chunk_and_manifest(tmp_path, monkeypatch):
+    vector_db, embedding_model, file_loader = make_dependencies()
+    source = tmp_path / "policy.pdf"
+    source.write_bytes(b"%PDF")
+    loaded_document = Document(
+        page_content="The policy starts tomorrow.",
+        metadata={"document_id": "policy-document", "page_number": 1},
+    )
+    file_loader.load_file.return_value = [loaded_document]
+    captured = {}
+
+    def split(documents, **_kwargs):
+        captured["metadata"] = dict(documents[0].metadata)
+        return [
+            SimpleNamespace(
+                text=documents[0].page_content,
+                reference="policy.pdf",
+                metadata=dict(documents[0].metadata),
+                embedding=[0.1, 0.2, 0.3],
+            )
+        ]
+
+    monkeypatch.setattr(offline_loading, "split_docs_to_chunks", split)
+    embedding_model.embed_chunks.side_effect = lambda chunks, **_kwargs: chunks
+
+    result = offline_loading.load_from_local_files(
+        str(source),
+        collection_name="kb_safe",
+        vector_db_instance=vector_db,
+        embedding_model_instance=embedding_model,
+        file_loader_instance=file_loader,
+        document_metadata={
+            "published_at": "2026-08-11",
+            "effective_at": "2026-08-12",
+            "temporal_metadata_source": "user_declared",
+            "version_family": "Travel Expense Policy",
+            "version_family_source": "user_declared",
+        },
+    )
+
+    assert captured["metadata"]["published_at"] == "2026-08-11"
+    inserted_chunk = vector_db.insert_data.call_args.kwargs["chunks"][0]
+    assert inserted_chunk.metadata["effective_at"] == "2026-08-12"
+    assert inserted_chunk.metadata["temporal_metadata_source"] == "user_declared"
+    assert inserted_chunk.metadata["version_family"] == "travel-expense-policy"
+    assert inserted_chunk.metadata["version_family_source"] == "user_declared"
+    assert result["manifest"]["document_version"]
+
+
+def test_document_temporal_metadata_count_must_match_files(tmp_path):
+    vector_db, embedding_model, file_loader = make_dependencies()
+    paths = []
+    for name in ("a.pdf", "b.pdf"):
+        path = tmp_path / name
+        path.write_bytes(b"%PDF")
+        paths.append(str(path))
+
+    with pytest.raises(ValueError, match="count must match"):
+        offline_loading.load_from_local_files(
+            paths,
+            vector_db_instance=vector_db,
+            embedding_model_instance=embedding_model,
+            file_loader_instance=file_loader,
+            document_metadata=[
+                {
+                    "published_at": "2026-08-11",
+                    "temporal_metadata_source": "user_declared",
+                }
+            ],
+        )
+
+    file_loader.load_file.assert_not_called()
 
 
 def test_embedding_failure_leaves_existing_collection_untouched(tmp_path, monkeypatch):

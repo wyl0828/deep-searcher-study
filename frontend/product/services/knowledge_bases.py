@@ -154,6 +154,10 @@ async def reindex_knowledge_base(
                 },
                 json={
                     "paths": paths,
+                    "document_metadata": [
+                        documents.document_governance_payload(document)
+                        for document in documents_to_index
+                    ],
                     "collection_description": knowledge_base.description,
                     "batch_size": documents.EMBEDDING_BATCH_SIZE,
                 },

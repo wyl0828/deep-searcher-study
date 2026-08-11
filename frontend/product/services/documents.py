@@ -8,7 +8,7 @@ import secrets
 import sys
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,6 +18,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from deepsearcher.versioning import normalize_version_family
 from frontend.product.backend import backend_request_headers
 from frontend.product.db import DATA_DIR, SessionLocal
 from frontend.product.errors import ProductError
@@ -46,17 +47,13 @@ KNOWLEDGE_BASE_STORAGE_QUOTA_BYTES = _positive_int_environment(
 TOTAL_STORAGE_QUOTA_BYTES = _positive_int_environment(
     "DEEPSEARCHER_TOTAL_STORAGE_QUOTA_BYTES", 2 * 1024 * 1024 * 1024
 )
-PDF_PROBE_TIMEOUT_SECONDS = _positive_int_environment(
-    "DEEPSEARCHER_PDF_PROBE_TIMEOUT_SECONDS", 10
-)
+PDF_PROBE_TIMEOUT_SECONDS = _positive_int_environment("DEEPSEARCHER_PDF_PROBE_TIMEOUT_SECONDS", 10)
 INGEST_REQUEST_TIMEOUT_SECONDS = _positive_int_environment(
     "DEEPSEARCHER_INGEST_REQUEST_TIMEOUT_SECONDS", 300
 )
 INGEST_LEASE_SECONDS = _positive_int_environment("DEEPSEARCHER_INGEST_LEASE_SECONDS", 360)
 INGEST_MAX_RETRIES = _positive_int_environment("DEEPSEARCHER_INGEST_MAX_RETRIES", 3)
-INGEST_RETRY_BASE_SECONDS = _positive_int_environment(
-    "DEEPSEARCHER_INGEST_RETRY_BASE_SECONDS", 5
-)
+INGEST_RETRY_BASE_SECONDS = _positive_int_environment("DEEPSEARCHER_INGEST_RETRY_BASE_SECONDS", 5)
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 STAGING_MAX_AGE_SECONDS = 60 * 60
 EMBEDDING_BATCH_SIZE = 10
@@ -71,9 +68,72 @@ class StagedUpload:
     sha256: str
 
 
+def validate_document_temporal_metadata(
+    *,
+    published_at: date | None,
+    effective_at: date | None,
+    superseded_at: date | None,
+) -> None:
+    values = (published_at, effective_at, superseded_at)
+    if any(value is not None and not isinstance(value, date) for value in values):
+        raise ProductError(
+            "DOCUMENT_TEMPORAL_METADATA_INVALID",
+            "文档业务日期格式不正确。",
+            status_code=422,
+        )
+    if superseded_at is not None and (
+        (published_at is not None and superseded_at < published_at)
+        or (effective_at is not None and superseded_at < effective_at)
+    ):
+        raise ProductError(
+            "DOCUMENT_TEMPORAL_METADATA_INVALID",
+            "文档的失效日期不能早于发布日期或生效日期。",
+            status_code=422,
+        )
+
+
+def document_temporal_payload(document: Document) -> dict[str, str]:
+    payload = {
+        field: value.isoformat()
+        for field in ("published_at", "effective_at", "superseded_at")
+        if (value := getattr(document, field, None)) is not None
+    }
+    source = str(document.temporal_metadata_source or "")
+    if payload and source:
+        payload["temporal_metadata_source"] = source
+    return payload
+
+
+def validate_document_version_family(value: str | None) -> str | None:
+    if value in (None, ""):
+        return None
+    normalized = normalize_version_family(value)
+    if normalized is None:
+        raise ProductError(
+            "DOCUMENT_VERSION_FAMILY_INVALID",
+            "文档系列标识格式不正确。",
+            status_code=422,
+        )
+    return normalized
+
+
+def document_governance_payload(document: Document) -> dict[str, str]:
+    payload = document_temporal_payload(document)
+    # Keep the worker tolerant of pre-0013 rows and lightweight test doubles while
+    # the additive migration is rolling through an existing deployment.
+    family = str(getattr(document, "version_family", None) or "")
+    source = str(getattr(document, "version_family_source", None) or "")
+    if family and source:
+        payload["version_family"] = family
+        payload["version_family_source"] = source
+    return payload
+
+
 def _safe_display_name(display_name: str) -> str:
     filename = Path(display_name).name.strip()
-    filename = "".join(character for character in filename if character >= " " and character != "\x7f")
+    filename = "".join(
+        character for character in filename if character >= " " and character != "\x7f"
+    )
     return filename[:255]
 
 
@@ -210,9 +270,7 @@ def _enforce_storage_quota(
             status_code=409,
         )
     knowledge_base_usage = session.scalar(
-        select(func.sum(Document.size_bytes)).where(
-            Document.knowledge_base_id == knowledge_base.id
-        )
+        select(func.sum(Document.size_bytes)).where(Document.knowledge_base_id == knowledge_base.id)
     )
     if int(knowledge_base_usage or 0) + incoming_size > KNOWLEDGE_BASE_STORAGE_QUOTA_BYTES:
         raise ProductError(
@@ -234,7 +292,17 @@ async def create_document_from_upload(
     *,
     knowledge_base: KnowledgeBase,
     file: UploadFile,
+    published_at: date | None = None,
+    effective_at: date | None = None,
+    superseded_at: date | None = None,
+    version_family: str | None = None,
 ) -> tuple[Document, IngestJob]:
+    validate_document_temporal_metadata(
+        published_at=published_at,
+        effective_at=effective_at,
+        superseded_at=superseded_at,
+    )
+    normalized_version_family = validate_document_version_family(version_family)
     staged = await stage_pdf_upload(file)
     destination: Path | None = None
     try:
@@ -265,6 +333,18 @@ async def create_document_from_upload(
             page_count=page_count,
             sha256=staged.sha256,
             status="queued",
+            published_at=published_at,
+            effective_at=effective_at,
+            superseded_at=superseded_at,
+            temporal_metadata_source=(
+                "user_declared"
+                if any(value is not None for value in (published_at, effective_at, superseded_at))
+                else None
+            ),
+            version_family=normalized_version_family,
+            version_family_source=(
+                "user_declared" if normalized_version_family is not None else None
+            ),
         )
         session.add(document)
         session.flush()
@@ -421,6 +501,7 @@ async def _load_document_into_backend(
                     "collection_name": knowledge_base.collection_name,
                     "batch_size": EMBEDDING_BATCH_SIZE,
                     "replace_document_id": document.sha256,
+                    "document_metadata": document_governance_payload(document),
                 },
             )
     except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
@@ -432,7 +513,9 @@ async def _load_document_into_backend(
     except httpx.ConnectError as exc:
         raise IngestProcessingError("DOCUMENT_PROCESSING_UNAVAILABLE", retryable=True) from exc
     except httpx.RequestError as exc:
-        raise IngestProcessingError("DOCUMENT_PROCESSING_TRANSPORT_FAILED", retryable=False) from exc
+        raise IngestProcessingError(
+            "DOCUMENT_PROCESSING_TRANSPORT_FAILED", retryable=False
+        ) from exc
     if not response.is_success:
         retryable = response.status_code in {429, 502, 503, 504} or response.status_code >= 500
         raise IngestProcessingError("DOCUMENT_PROCESSING_FAILED", retryable=retryable)
@@ -499,7 +582,9 @@ def _finish_ingest_job(
             job.finished_at = None
         else:
             document.status = "failed"
-            document.error_code = failure.code if failure is not None else "DOCUMENT_PROCESSING_FAILED"
+            document.error_code = (
+                failure.code if failure is not None else "DOCUMENT_PROCESSING_FAILED"
+            )
             document.error_message = "文档处理失败，请确认文件和问答服务状态后重试。"
             job.status = "dead_letter"
             job.error_code = document.error_code
@@ -569,6 +654,106 @@ def retry_document(session: Session, document: Document) -> IngestJob:
     job.max_retries = INGEST_MAX_RETRIES
     session.commit()
     session.refresh(job)
+    return job
+
+
+def update_document_temporal_metadata(
+    session: Session,
+    document: Document,
+    *,
+    published_at: date | None,
+    effective_at: date | None,
+    superseded_at: date | None,
+) -> IngestJob | None:
+    validate_document_temporal_metadata(
+        published_at=published_at,
+        effective_at=effective_at,
+        superseded_at=superseded_at,
+    )
+    if document.status == "processing":
+        raise ProductError(
+            "DOCUMENT_BUSY",
+            "文档正在处理，完成后才能修改业务日期。",
+            status_code=409,
+            retryable=True,
+        )
+    values = (published_at, effective_at, superseded_at)
+    if values == (document.published_at, document.effective_at, document.superseded_at):
+        return None
+    document.published_at = published_at
+    document.effective_at = effective_at
+    document.superseded_at = superseded_at
+    document.temporal_metadata_source = (
+        "user_declared" if any(value is not None for value in values) else None
+    )
+    job = None
+    if document.status == "ready":
+        document.status = "queued"
+        document.error_code = None
+        document.error_message = None
+        job = create_ingest_job(session, document)
+        job.max_retries = INGEST_MAX_RETRIES
+    document.knowledge_base.updated_at = utcnow()
+    session.commit()
+    session.refresh(document)
+    if job is not None:
+        session.refresh(job)
+    return job
+
+
+def update_document_governance_metadata(
+    session: Session,
+    document: Document,
+    *,
+    published_at: date | None,
+    effective_at: date | None,
+    superseded_at: date | None,
+    version_family: str | None,
+) -> IngestJob | None:
+    validate_document_temporal_metadata(
+        published_at=published_at,
+        effective_at=effective_at,
+        superseded_at=superseded_at,
+    )
+    normalized_family = validate_document_version_family(version_family)
+    if document.status == "processing":
+        raise ProductError(
+            "DOCUMENT_BUSY",
+            "文档正在处理，完成后才能修改治理元数据。",
+            status_code=409,
+            retryable=True,
+        )
+    values = (published_at, effective_at, superseded_at, normalized_family)
+    current = (
+        document.published_at,
+        document.effective_at,
+        document.superseded_at,
+        document.version_family,
+    )
+    if values == current:
+        return None
+    document.published_at = published_at
+    document.effective_at = effective_at
+    document.superseded_at = superseded_at
+    document.temporal_metadata_source = (
+        "user_declared"
+        if any(value is not None for value in (published_at, effective_at, superseded_at))
+        else None
+    )
+    document.version_family = normalized_family
+    document.version_family_source = "user_declared" if normalized_family is not None else None
+    job = None
+    if document.status == "ready":
+        document.status = "queued"
+        document.error_code = None
+        document.error_message = None
+        job = create_ingest_job(session, document)
+        job.max_retries = INGEST_MAX_RETRIES
+    document.knowledge_base.updated_at = utcnow()
+    session.commit()
+    session.refresh(document)
+    if job is not None:
+        session.refresh(job)
     return job
 
 

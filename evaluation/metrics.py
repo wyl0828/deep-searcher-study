@@ -9,6 +9,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from evaluation.dataset import EvalSample, EvidenceTarget
 
 METRIC_VERSION = "2.1.0"
+TRUST_METRIC_VERSION = "1.6.0"
 
 REFUSAL_MARKERS = (
     "没有相关信息",
@@ -112,6 +113,7 @@ def evaluate_sample(
     error: str | None = None,
     source_aliases: Mapping[str, Sequence[str]] | None = None,
     grounding: Mapping[str, Any] | None = None,
+    trust: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     views = [result_view(result) for result in results][:top_k]
     unique_keys = {(view.document, view.page, view.chunk, _normalize(view.text)) for view in views}
@@ -137,12 +139,8 @@ def evaluate_sample(
     retrieved_text = "\n".join(view.text for view in views)
     answer_text = answer or ""
     refused = any(marker in _normalize(answer_text) for marker in REFUSAL_MARKERS)
-    grounding_claims = (
-        grounding.get("claims", []) if isinstance(grounding, Mapping) else []
-    )
-    grounding_evidence = (
-        grounding.get("evidence", []) if isinstance(grounding, Mapping) else []
-    )
+    grounding_claims = grounding.get("claims", []) if isinstance(grounding, Mapping) else []
+    grounding_evidence = grounding.get("evidence", []) if isinstance(grounding, Mapping) else []
     claims = [item for item in grounding_claims if isinstance(item, Mapping)]
     evidence_by_id = {
         str(item.get("evidence_id")): item
@@ -154,9 +152,7 @@ def evaluate_sample(
             str(evidence_id)
             for claim in claims
             for evidence_id in (
-                claim.get("evidence_ids", [])
-                if isinstance(claim.get("evidence_ids"), list)
-                else []
+                claim.get("evidence_ids", []) if isinstance(claim.get("evidence_ids"), list) else []
             )
         )
     )
@@ -183,9 +179,7 @@ def evaluate_sample(
             text=str(item.get("text") or ""),
         )
         matching_targets = [
-            target
-            for target in sample.evidence
-            if matches_evidence(view, target, source_aliases)
+            target for target in sample.evidence if matches_evidence(view, target, source_aliases)
         ]
         if matching_targets:
             correctly_cited_ids.append(evidence_id)
@@ -194,6 +188,124 @@ def evaluate_sample(
         claim.get("status") in {"supported", "conflicting"} for claim in claims
     )
     invalid_claim_count = sum(claim.get("status") == "invalid_citation" for claim in claims)
+    trust_input = trust.get("input") if isinstance(trust, Mapping) else None
+    trust_input_claims = trust_input.get("claims", []) if isinstance(trust_input, Mapping) else []
+    input_claims = [item for item in trust_input_claims if isinstance(item, Mapping)]
+    input_supported_count = sum(
+        claim.get("support_status") in {"supported", "conflicting"} for claim in input_claims
+    )
+    consistency_checked_claims = [
+        claim
+        for claim in input_claims
+        if claim.get("consistency_status") in {"consistent", "inconsistent", "unknown"}
+    ]
+    inconsistent_claim_count = sum(
+        claim.get("consistency_status") == "inconsistent" for claim in consistency_checked_claims
+    )
+    consistency_unknown_count = sum(
+        claim.get("consistency_status") == "unknown" for claim in consistency_checked_claims
+    )
+    relative_time_claims = [
+        claim
+        for claim in input_claims
+        if any(
+            isinstance(check, Mapping) and check.get("kind") == "relative_time"
+            for check in claim.get("consistency_checks", [])
+        )
+    ]
+    relative_time_unknown_count = sum(
+        claim.get("consistency_status") == "unknown" for claim in relative_time_claims
+    )
+    relative_time_rejected_count = sum(
+        claim.get("support_status") == "unsupported" for claim in relative_time_claims
+    )
+    freshness_claims = [
+        claim
+        for claim in input_claims
+        if any(
+            isinstance(check, Mapping) and check.get("kind") == "freshness"
+            for check in claim.get("consistency_checks", [])
+        )
+    ]
+    freshness_unknown_count = sum(
+        claim.get("consistency_status") == "unknown" for claim in freshness_claims
+    )
+    freshness_rejected_count = sum(
+        claim.get("support_status") == "unsupported" for claim in freshness_claims
+    )
+    entailment_checked_claims = [
+        claim
+        for claim in input_claims
+        if claim.get("entailment_status") in {"entailed", "contradicted", "unknown"}
+    ]
+    entailment_contradicted_count = sum(
+        claim.get("entailment_status") == "contradicted" for claim in entailment_checked_claims
+    )
+    entailment_unknown_count = sum(
+        claim.get("entailment_status") == "unknown" for claim in entailment_checked_claims
+    )
+    entailment_details = trust.get("entailment") if isinstance(trust, Mapping) else None
+    entailment_token_usage = (
+        int(entailment_details.get("token_usage") or 0)
+        if isinstance(entailment_details, Mapping)
+        else None
+    )
+    risk_details = trust.get("risk") if isinstance(trust, Mapping) else None
+    freshness_details = trust.get("freshness") if isinstance(trust, Mapping) else None
+    freshness_mode = (
+        str(freshness_details.get("mode"))
+        if isinstance(freshness_details, Mapping) and freshness_details.get("mode")
+        else None
+    )
+    freshness_required = (
+        bool(freshness_details.get("required")) if isinstance(freshness_details, Mapping) else None
+    )
+    risk_level = (
+        str(risk_details.get("risk_level"))
+        if isinstance(risk_details, Mapping) and risk_details.get("risk_level")
+        else None
+    )
+    query_type = (
+        str(risk_details.get("query_type"))
+        if isinstance(risk_details, Mapping) and risk_details.get("query_type")
+        else None
+    )
+    risk_rejected_claim_count = sum(
+        claim.get("risk_status") == "rejected" for claim in input_claims
+    )
+    policy = trust.get("policy") if isinstance(trust, Mapping) else None
+    policy_action = str(policy.get("action")) if isinstance(policy, Mapping) else None
+    policy_answer_changed = (
+        bool(policy.get("answer_changed")) if isinstance(policy, Mapping) else None
+    )
+    provenance = trust.get("provenance") if isinstance(trust, Mapping) else None
+    temporal_provenance = provenance.get("temporal") if isinstance(provenance, Mapping) else None
+    evidence_provenance = provenance.get("evidence") if isinstance(provenance, Mapping) else None
+    evidence_provenance_status = (
+        str(evidence_provenance.get("snapshot_status"))
+        if isinstance(evidence_provenance, Mapping) and evidence_provenance.get("snapshot_status")
+        else None
+    )
+    web_evidence_provenance_count = (
+        int(evidence_provenance.get("web_count") or 0)
+        if isinstance(evidence_provenance, Mapping)
+        else None
+    )
+    evidence_provenance_items = (
+        [item for item in evidence_provenance.get("items", []) if isinstance(item, Mapping)]
+        if isinstance(evidence_provenance, Mapping)
+        and isinstance(evidence_provenance.get("items", []), list)
+        else []
+    )
+    publication_anchor_eligible_items = [
+        item for item in evidence_provenance_items if item.get("source_type") == "knowledge_base"
+    ]
+    evidence_publication_anchor_count = sum(
+        item.get("publication_anchor_bound") is True for item in publication_anchor_eligible_items
+    )
+    evidence_version_family_count = sum(
+        item.get("version_family_bound") is True for item in publication_anchor_eligible_items
+    )
     return {
         "sample_id": sample.id,
         "question": sample.question,
@@ -240,14 +352,146 @@ def evaluate_sample(
         ),
         "claim_count": len(claims) if grounding is not None else None,
         "supported_claim_count": supported_claim_count if grounding is not None else None,
-        "claim_support_rate": (
-            supported_claim_count / len(claims) if claims else None
-        ),
+        "claim_support_rate": (supported_claim_count / len(claims) if claims else None),
         "ungrounded_claim_rate": (
             (len(claims) - supported_claim_count) / len(claims) if claims else None
         ),
-        "invalid_claim_citation_rate": (
-            invalid_claim_count / len(claims) if claims else None
+        "invalid_claim_citation_rate": (invalid_claim_count / len(claims) if claims else None),
+        "trust_input_claim_count": len(input_claims) if trust is not None else None,
+        "trust_input_supported_claim_count": (input_supported_count if trust is not None else None),
+        "trust_input_claim_support_rate": (
+            input_supported_count / len(input_claims) if input_claims else None
+        ),
+        "consistency_checked_claim_count": (
+            len(consistency_checked_claims) if trust is not None else None
+        ),
+        "consistency_inconsistent_claim_count": (
+            inconsistent_claim_count if trust is not None else None
+        ),
+        "consistency_inconsistency_rate": (
+            inconsistent_claim_count / len(consistency_checked_claims)
+            if consistency_checked_claims
+            else None
+        ),
+        "consistency_unknown_claim_count": (
+            consistency_unknown_count if trust is not None else None
+        ),
+        "consistency_unknown_rate": (
+            consistency_unknown_count / len(consistency_checked_claims)
+            if consistency_checked_claims
+            else None
+        ),
+        "relative_time_claim_count": len(relative_time_claims) if trust is not None else None,
+        "relative_time_unknown_claim_count": (
+            relative_time_unknown_count if trust is not None else None
+        ),
+        "relative_time_unknown_rate": (
+            relative_time_unknown_count / len(relative_time_claims)
+            if relative_time_claims
+            else None
+        ),
+        "relative_time_rejected_claim_count": (
+            relative_time_rejected_count if trust is not None else None
+        ),
+        "relative_time_rejection_rate": (
+            relative_time_rejected_count / len(relative_time_claims)
+            if relative_time_claims
+            else None
+        ),
+        "freshness_mode": freshness_mode,
+        "freshness_required": freshness_required,
+        "freshness_claim_count": len(freshness_claims) if trust is not None else None,
+        "freshness_unknown_claim_count": (freshness_unknown_count if trust is not None else None),
+        "freshness_unknown_rate": (
+            freshness_unknown_count / len(freshness_claims) if freshness_claims else None
+        ),
+        "freshness_rejected_claim_count": (freshness_rejected_count if trust is not None else None),
+        "freshness_rejection_rate": (
+            freshness_rejected_count / len(freshness_claims) if freshness_claims else None
+        ),
+        "entailment_checked_claim_count": (
+            len(entailment_checked_claims) if trust is not None else None
+        ),
+        "entailment_coverage_rate": (
+            len(entailment_checked_claims) / len(input_claims) if input_claims else None
+        ),
+        "entailment_contradicted_claim_count": (
+            entailment_contradicted_count if trust is not None else None
+        ),
+        "entailment_contradiction_rate": (
+            entailment_contradicted_count / len(entailment_checked_claims)
+            if entailment_checked_claims
+            else None
+        ),
+        "entailment_unknown_claim_count": (entailment_unknown_count if trust is not None else None),
+        "entailment_unknown_rate": (
+            entailment_unknown_count / len(entailment_checked_claims)
+            if entailment_checked_claims
+            else None
+        ),
+        "entailment_token_usage": entailment_token_usage,
+        "risk_level": risk_level,
+        "query_type": query_type,
+        "risk_high": risk_level == "high" if risk_level is not None else None,
+        "risk_rejected_claim_count": (risk_rejected_claim_count if trust is not None else None),
+        "risk_claim_rejection_rate": (
+            risk_rejected_claim_count / len(input_claims) if input_claims else None
+        ),
+        "policy_action": policy_action,
+        "policy_answer_changed": policy_answer_changed,
+        "provenance_available": isinstance(provenance, Mapping) if trust is not None else None,
+        "temporal_provenance_bound": (
+            isinstance(temporal_provenance, Mapping) if trust is not None else None
+        ),
+        "provenance_contract_version": (
+            int(provenance.get("version"))
+            if isinstance(provenance, Mapping)
+            and isinstance(provenance.get("version"), int)
+            and not isinstance(provenance.get("version"), bool)
+            else None
+        ),
+        "provenance_digest": (
+            str(provenance.get("digest"))
+            if isinstance(provenance, Mapping) and provenance.get("digest")
+            else None
+        ),
+        "evidence_provenance_status": evidence_provenance_status,
+        "evidence_provenance_bound": (
+            evidence_provenance_status in {"complete", "partial"}
+            if evidence_provenance_status is not None
+            else None
+        ),
+        "evidence_provenance_complete": (
+            evidence_provenance_status == "complete"
+            if evidence_provenance_status is not None
+            else None
+        ),
+        "web_evidence_provenance_count": web_evidence_provenance_count,
+        "evidence_publication_anchor_count": (
+            evidence_publication_anchor_count if isinstance(evidence_provenance, Mapping) else None
+        ),
+        "evidence_publication_anchor_eligible_count": (
+            len(publication_anchor_eligible_items)
+            if isinstance(evidence_provenance, Mapping)
+            else None
+        ),
+        "evidence_publication_anchor_coverage_rate": (
+            evidence_publication_anchor_count / len(publication_anchor_eligible_items)
+            if publication_anchor_eligible_items
+            else None
+        ),
+        "evidence_version_family_count": (
+            evidence_version_family_count if isinstance(evidence_provenance, Mapping) else None
+        ),
+        "evidence_version_family_eligible_count": (
+            len(publication_anchor_eligible_items)
+            if isinstance(evidence_provenance, Mapping)
+            else None
+        ),
+        "evidence_version_family_coverage_rate": (
+            evidence_version_family_count / len(publication_anchor_eligible_items)
+            if publication_anchor_eligible_items
+            else None
         ),
         "claim_citation_precision": (
             len(correctly_cited_ids) / len(cited_evidence_ids)
@@ -285,7 +529,7 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     latencies = [float(row["latency_ms"]) for row in rows]
     tokens = [int(row["tokens"]) for row in rows]
     llm_calls = [int(row["llm_calls"]) for row in rows]
-    return {
+    summary = {
         "sample_count": len(rows),
         "successful_count": sum(row.get("error") is None for row in rows),
         "error_rate": round(mean(row.get("error") is not None for row in rows), 4) if rows else 0.0,
@@ -301,14 +545,19 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "evidence_source_accuracy": average("evidence_source_correct"),
         "full_evidence_retrieval_rate": average("full_evidence_retrieved"),
         "multi_document_sample_count": sum(
-            bool(row.get("multi_document")) and bool(row.get("answerable"))
-            for row in rows
+            bool(row.get("multi_document")) and bool(row.get("answerable")) for row in rows
         ),
         "full_document_coverage_rate": average("full_document_coverage"),
         "refusal_accuracy": average("refusal_correct"),
         "claim_support_rate": average("claim_support_rate"),
         "ungrounded_claim_rate": average("ungrounded_claim_rate"),
         "invalid_claim_citation_rate": average("invalid_claim_citation_rate"),
+        "trust_input_claim_support_rate": average("trust_input_claim_support_rate"),
+        "consistency_inconsistency_rate": average("consistency_inconsistency_rate"),
+        "consistency_unknown_rate": average("consistency_unknown_rate"),
+        "relative_time_unknown_rate": average("relative_time_unknown_rate"),
+        "relative_time_rejection_rate": average("relative_time_rejection_rate"),
+        "policy_change_rate": average("policy_answer_changed"),
         "claim_citation_precision": average("claim_citation_precision"),
         "claim_citation_recall": average("claim_citation_recall"),
         "context_dependency_accuracy": average("context_dependency_correct"),
@@ -328,3 +577,80 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "average": round(mean(llm_calls), 2) if llm_calls else None,
         },
     }
+    # Committed reports predate Trust Metric 1.1. Do not synthesize new fields
+    # while recomputing those immutable artifacts; new evaluator rows always
+    # carry the keys, including explicit None when no checker ran.
+    if any("entailment_token_usage" in row for row in rows):
+        summary.update(
+            {
+                "entailment_coverage_rate": average("entailment_coverage_rate"),
+                "entailment_contradiction_rate": average("entailment_contradiction_rate"),
+                "entailment_unknown_rate": average("entailment_unknown_rate"),
+                "entailment_tokens": {
+                    "total": sum(
+                        int(row.get("entailment_token_usage") or 0)
+                        for row in rows
+                        if row.get("entailment_token_usage") is not None
+                    ),
+                    "average": average("entailment_token_usage"),
+                },
+            }
+        )
+    if any("risk_level" in row for row in rows):
+        summary.update(
+            {
+                "high_risk_sample_count": sum(row.get("risk_level") == "high" for row in rows),
+                "high_risk_rate": average("risk_high"),
+                "risk_claim_rejection_rate": average("risk_claim_rejection_rate"),
+            }
+        )
+    if any("freshness_mode" in row for row in rows):
+        summary.update(
+            {
+                "freshness_required_sample_count": sum(
+                    row.get("freshness_required") is True for row in rows
+                ),
+                "freshness_required_rate": average("freshness_required"),
+                "freshness_unknown_rate": average("freshness_unknown_rate"),
+                "freshness_rejection_rate": average("freshness_rejection_rate"),
+            }
+        )
+    if any("provenance_available" in row for row in rows):
+        publication_anchor_count = sum(
+            int(row.get("evidence_publication_anchor_count") or 0) for row in rows
+        )
+        publication_anchor_eligible_count = sum(
+            int(row.get("evidence_publication_anchor_eligible_count") or 0) for row in rows
+        )
+        version_family_count = sum(
+            int(row.get("evidence_version_family_count") or 0) for row in rows
+        )
+        version_family_eligible_count = sum(
+            int(row.get("evidence_version_family_eligible_count") or 0) for row in rows
+        )
+        summary.update(
+            {
+                "provenance_coverage_rate": average("provenance_available"),
+                "temporal_provenance_bound_rate": average("temporal_provenance_bound"),
+                "evidence_provenance_bound_rate": average("evidence_provenance_bound"),
+                "evidence_provenance_complete_rate": average("evidence_provenance_complete"),
+                "web_evidence_provenance_count": sum(
+                    int(row.get("web_evidence_provenance_count") or 0) for row in rows
+                ),
+                "evidence_publication_anchor_count": publication_anchor_count,
+                "evidence_publication_anchor_eligible_count": (publication_anchor_eligible_count),
+                "evidence_publication_anchor_coverage_rate": (
+                    round(publication_anchor_count / publication_anchor_eligible_count, 4)
+                    if publication_anchor_eligible_count
+                    else None
+                ),
+                "evidence_version_family_count": version_family_count,
+                "evidence_version_family_eligible_count": version_family_eligible_count,
+                "evidence_version_family_coverage_rate": (
+                    round(version_family_count / version_family_eligible_count, 4)
+                    if version_family_eligible_count
+                    else None
+                ),
+            }
+        )
+    return summary

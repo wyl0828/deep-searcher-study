@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -123,6 +125,12 @@ class Document(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(String(300))
+    published_at: Mapped[date | None] = mapped_column(Date)
+    effective_at: Mapped[date | None] = mapped_column(Date)
+    superseded_at: Mapped[date | None] = mapped_column(Date)
+    temporal_metadata_source: Mapped[str | None] = mapped_column(String(32))
+    version_family: Mapped[str | None] = mapped_column(String(128), index=True)
+    version_family_source: Mapped[str | None] = mapped_column(String(32))
 
     knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="documents")
     jobs: Mapped[list["IngestJob"]] = relationship(
@@ -203,6 +211,18 @@ class Message(TimestampMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     answer_state: Mapped[str | None] = mapped_column(String(32))
+    trust_contract_version: Mapped[int | None] = mapped_column(Integer)
+    trust_status: Mapped[str | None] = mapped_column(String(32))
+    safety_status: Mapped[str | None] = mapped_column(String(24))
+    policy_action: Mapped[str | None] = mapped_column(String(24))
+    policy_profile: Mapped[str | None] = mapped_column(String(32))
+    policy_reason_codes: Mapped[list[str] | None] = mapped_column(JSON)
+    risk_level: Mapped[str | None] = mapped_column(String(16))
+    query_type: Mapped[str | None] = mapped_column(String(32))
+    risk_factors: Mapped[list[str] | None] = mapped_column(JSON)
+    provenance_contract_version: Mapped[int | None] = mapped_column(Integer)
+    provenance_digest: Mapped[str | None] = mapped_column(String(71), index=True)
+    trust_details: Mapped[dict | None] = mapped_column(JSON)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
     citations: Mapped[list["Citation"]] = relationship(
@@ -245,7 +265,23 @@ class AnswerClaim(TimestampMixin, Base):
     index: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     support_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    structural_support_status: Mapped[str] = mapped_column(
+        String(32), default="unsupported", nullable=False
+    )
     citation_indices: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    citation_spans: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    citation_status: Mapped[str] = mapped_column(String(24), default="missing", nullable=False)
+    entailment_status: Mapped[str] = mapped_column(
+        String(24), default="not_checked", nullable=False
+    )
+    consistency_status: Mapped[str] = mapped_column(
+        String(24), default="not_checked", nullable=False
+    )
+    consistency_checks: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    risk_status: Mapped[str] = mapped_column(String(24), default="not_assessed", nullable=False)
+    risk_checks: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
     message: Mapped[Message] = relationship(back_populates="claims")
 
@@ -286,6 +322,12 @@ class Citation(TimestampMixin, Base):
     source_url: Mapped[str | None] = mapped_column(String(2048))
     source_domain: Mapped[str | None] = mapped_column(String(253))
     trusted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    published_at: Mapped[date | None] = mapped_column(Date)
+    effective_at: Mapped[date | None] = mapped_column(Date)
+    superseded_at: Mapped[date | None] = mapped_column(Date)
+    temporal_metadata_source: Mapped[str | None] = mapped_column(String(32))
+    version_family: Mapped[str | None] = mapped_column(String(128))
+    version_family_source: Mapped[str | None] = mapped_column(String(32))
     text: Mapped[str] = mapped_column(Text, default="", nullable=False)
     supported: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
