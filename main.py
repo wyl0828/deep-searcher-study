@@ -31,6 +31,7 @@ from deepsearcher.configuration import (
     build_runtime,
 )
 from deepsearcher.health import RuntimeHealthMonitor, blocked_checks, failed_check
+from deepsearcher.llm.base import chat_with_stage
 from deepsearcher.provenance import TrustProvenanceSession
 from deepsearcher.query_context import ContextualQuery, contextualize_query
 from deepsearcher.runtime_registry import (
@@ -445,7 +446,7 @@ class RuntimeRollbackRequest(BaseModel):
 
 
 class ConversationHistoryMessage(BaseModel):
-    role: Literal["user", "assistant"]
+    role: Literal["system", "user", "assistant"]
     content: str = Field(min_length=1, max_length=1200)
     grounded: bool = False
 
@@ -457,12 +458,68 @@ class QueryStreamRequest(BaseModel):
     use_web_search: bool = False
     conversation_history: List[ConversationHistoryMessage] = Field(
         default_factory=list,
-        max_length=12,
+        max_length=17,
     )
 
 
 class QueryRequest(QueryStreamRequest):
     include_trace: bool = False
+
+
+class ConversationSummaryRequest(BaseModel):
+    existing_summary: str = Field(default="", max_length=4000)
+    messages: List[ConversationHistoryMessage] = Field(max_length=64)
+    max_chars: int = Field(default=600, ge=50, le=4000)
+    prompt_version: str = Field(default="conversation-summary-v1", max_length=32)
+
+
+async def create_conversation_summary(
+    payload: ConversationSummaryRequest,
+    request: Request,
+    tenant_header: str | None = Header(None, alias="X-DeepSearcher-Tenant"),
+    service_token: str | None = Header(None, alias="X-DeepSearcher-Service-Token"),
+    _service_access: None = Depends(require_service_access),
+) -> dict:
+    registry: RuntimeRegistry = request.app.state.runtime_registry
+    tenant_id = _resolve_tenant(request, tenant_header, service_token)
+    lease = await registry.acquire(tenant_id)
+    try:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Summarize only the supplied conversation facts and user goals. "
+                    "Do not invent facts, preserve topic changes, omit citation markers, "
+                    f"return one line of at most {payload.max_chars} characters."
+                ),
+            }
+        ]
+        if payload.existing_summary.strip():
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Existing summary to merge:\n" + payload.existing_summary.strip(),
+                }
+            )
+        messages.extend({"role": item.role, "content": item.content} for item in payload.messages)
+        response = await asyncio.to_thread(
+            chat_with_stage,
+            lease.runtime.llm,
+            messages,
+            stage="conversation_summary",
+            max_tokens=min(payload.max_chars, 1024),
+            thinking=False,
+        )
+        return {
+            "summary": str(response.content or "").strip()[: payload.max_chars],
+            "model": str(
+                response.model
+                or getattr(lease.runtime.llm, "model", lease.runtime.llm.__class__.__name__)
+            ),
+            "prompt_version": payload.prompt_version,
+        }
+    finally:
+        await lease.release()
 
 
 def _contextualize_request(
@@ -1586,6 +1643,11 @@ def create_app(
     application.add_api_route("/load-website/", load_website, methods=["POST"])
     application.add_api_route("/query", perform_query, methods=["POST"])
     application.add_api_route("/query/stream", perform_query_stream, methods=["POST"])
+    application.add_api_route(
+        "/internal/conversation-summary",
+        create_conversation_summary,
+        methods=["POST"],
+    )
     return application
 
 

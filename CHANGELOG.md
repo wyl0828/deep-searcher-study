@@ -18,6 +18,8 @@
   处理消息投递；本地轮询 Worker 继续作为默认模式，不引入 Outbox 或自定义消息状态表。
 - 增加可选的有序 Chat 候选路由、有效首包探测与进程内 `CLOSED/OPEN/HALF_OPEN` 熔断；单模型配置
   保持兼容，Trace 记录最终实际模型和脱敏 fallback 原因。
+- 增加可选持久化滚动会话摘要，保存覆盖消息、实际模型和 Prompt 版本；上下文组合最新摘要与近期可信
+  原文，多 API 摘要模式强制使用带超时的 Redis 会话锁。
 - 增加 Provider-neutral `ChatOptions`、完整 `TokenUsage`、调用前 Token 估算和按阶段 Trace；DeepSeek
   V4 Thinking 通过 `extra_body` 显式启停，reasoning 作为输出 Token 子集统计，不重复计入总量。
 - 增加查询级 LLM 调用、输入、输出、reasoning 预算以及最终回答/必需 Trust 预留；Provider usage

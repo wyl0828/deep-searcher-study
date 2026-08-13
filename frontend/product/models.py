@@ -199,6 +199,26 @@ class Conversation(TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="Message.created_at",
     )
+    summaries: Mapped[list["ConversationSummary"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="ConversationSummary.created_at",
+    )
+
+
+class ConversationSummary(TimestampMixin, Base):
+    __tablename__ = "conversation_summaries"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("sum"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    last_message_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="summaries")
 
 
 class Message(TimestampMixin, Base):

@@ -24,6 +24,10 @@ from frontend.product.backend import backend_request_headers
 from frontend.product.errors import ProductError
 from frontend.product.models import AnswerClaim, Citation, Conversation, Document, Message
 from frontend.product.schemas import MessageResponse
+from frontend.product.services.conversation_summaries import (
+    build_summary_aware_history,
+    summarize_if_needed,
+)
 
 BACKEND_URL = os.environ.get("DEEPSEARCHER_API_URL", "http://127.0.0.1:8500").rstrip("/")
 
@@ -746,8 +750,13 @@ def _safe_stage_envelope(event_name: str, envelope: dict) -> dict | None:
     }
 
 
-def build_conversation_history(conversation: Conversation) -> list[dict]:
+def build_conversation_history(
+    conversation: Conversation,
+    session: Session | None = None,
+) -> list[dict]:
     """Build bounded history without trusting failed or weakly grounded answers."""
+    if session is not None:
+        return build_summary_aware_history(session, conversation)
     history: list[dict] = []
     for message in conversation.messages:
         content = message.content.strip()
@@ -1042,7 +1051,7 @@ async def submit_message(
     if not question:
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
 
-    conversation_history = build_conversation_history(conversation)
+    conversation_history = build_conversation_history(conversation, session)
     user_message, assistant_message = _create_pending_messages(
         session,
         conversation=conversation,
@@ -1074,6 +1083,10 @@ async def submit_message(
             assistant_message=assistant_message,
             payload=payload,
         )
+        try:
+            summarize_if_needed(session, conversation)
+        except Exception:
+            pass
         return user_message, assistant_message
     except (httpx.RequestError, ValueError, ProductError) as exc:
         _fail_assistant_message(
@@ -1106,7 +1119,7 @@ async def stream_message_events(
     if not question:
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
 
-    conversation_history = build_conversation_history(conversation)
+    conversation_history = build_conversation_history(conversation, session)
     user_message, assistant_message = _create_pending_messages(
         session,
         conversation=conversation,
@@ -1157,6 +1170,10 @@ async def stream_message_events(
                             assistant_message=assistant_message,
                             payload=data,
                         )
+                        try:
+                            summarize_if_needed(session, conversation)
+                        except Exception:
+                            pass
                         terminal_emitted = True
                         yield {
                             "version": 1,

@@ -425,6 +425,14 @@ def ensure_document_storage_columns(engine: Engine) -> None:
         )
 
 
+def ensure_conversation_summary_table(engine: Engine) -> None:
+    """Create the additive summary table for local SQLite workspaces."""
+
+    from frontend.product.models import ConversationSummary
+
+    ConversationSummary.__table__.create(bind=engine, checkfirst=True)
+
+
 def init_database() -> None:
     from frontend.product import models  # noqa: F401
 
@@ -439,6 +447,7 @@ def init_database() -> None:
         ensure_document_temporal_columns(ENGINE)
         ensure_document_version_family_columns(ENGINE)
         ensure_document_storage_columns(ENGINE)
+        ensure_conversation_summary_table(ENGINE)
     else:
         validate_alembic_schema(ENGINE)
     from frontend.product.messaging import rocketmq_enabled
