@@ -588,6 +588,18 @@ def evaluate_agent(
         row["llm_reasoning_tokens"] = int(usage_summary.get("reasoning_tokens") or 0)
         row["llm_estimated_input_tokens"] = int(usage_summary.get("estimated_input_tokens") or 0)
         row["llm_stage_usage"] = usage_summary.get("stages") or {}
+        traced_calls = sum(
+            int(stage.get("call_count") or 0)
+            for stage in row["llm_stage_usage"].values()
+            if isinstance(stage, Mapping)
+        )
+        contextualization_calls = int(
+            contextualization is not None and contextualization.token_usage > 0
+        )
+        row["llm_calls"] = max(
+            int(row.get("llm_calls") or 0),
+            traced_calls + contextualization_calls,
+        )
         row["evaluation_attempts"] = previous_attempts + 1
         row["checkpoint_status"] = (
             "recovered"

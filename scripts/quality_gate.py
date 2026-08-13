@@ -353,7 +353,7 @@ def _run_live_gate(runner: QualityGateRunner) -> None:
             "--top-k",
             "8",
             "--max-iter",
-            "3",
+            "2",
             "--llm-timeout-seconds",
             "120",
             "--external-call-timeout-seconds",
