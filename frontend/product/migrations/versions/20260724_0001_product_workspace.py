@@ -33,8 +33,8 @@ def upgrade() -> None:
         sa.Column("is_current", sa.Boolean(), nullable=False),
         *timestamps(),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("collection_name"),
-        sa.UniqueConstraint("name"),
+        sa.UniqueConstraint("collection_name", name="uq_knowledge_bases_collection_name"),
+        sa.UniqueConstraint("name", name="uq_knowledge_bases_name"),
     )
     op.create_table(
         "documents",

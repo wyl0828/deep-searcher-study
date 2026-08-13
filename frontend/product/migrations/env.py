@@ -6,10 +6,17 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from frontend.product import models  # noqa: F401
-from frontend.product.db import DATABASE_URL, Base
+from frontend.product.db import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# Programmatic callers may set sqlalchemy.url explicitly (for example the live
+# PostgreSQL migration test). Only fall back to the application environment
+# when Alembic still has the repository's local SQLite default.
+configured_url = config.get_main_option("sqlalchemy.url")
+if not configured_url or configured_url == "sqlite:///data/product/deepsearcher-product.db":
+    from frontend.product.db import DATABASE_URL
+
+    config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
