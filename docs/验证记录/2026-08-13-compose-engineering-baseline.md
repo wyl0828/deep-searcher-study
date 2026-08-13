@@ -91,9 +91,24 @@ Milvus 日志确认对象数据实际写入 `milvus-bucket`。验证结果：
 - 验证时实际内存约为 MinIO 223 MiB、etcd 21 MiB、Milvus 97 MiB；
 - 分组容器停止后均已移除，MinIO、etcd、Milvus 命名卷保留。
 
+## 本地双 API 真实验证
+
+本阶段启动共享 PostgreSQL、Redis、MinIO、etcd、Milvus、Core API 和两个产品 API，不启动
+RocketMQ/Consumer，也不调用未配置密钥的真实模型。验证结果：
+
+- Alembic 一次性任务退出码为 0，Core API 与两个产品 API 均进入 healthy；
+- API A 初始化用户并创建知识库、会话，API B 使用同一 Session Cookie 立即读取共享状态；
+- 原文对象写入 MinIO并创建对应文档记录后，API B 可跨实例预览完整 PDF 字节；
+- 停止 API A 后 API B 持续提供服务，恢复 API A 后健康检查通过；
+- 两个独立 API 容器同时为同一会话触发摘要，一个获得 Redis 锁并创建摘要，另一个非阻塞跳过；
+- PostgreSQL 最终只有一条有效摘要，锁键在完成后释放；
+- 两个 API 重启后，用户登录、知识库、18 条消息、摘要和原文预览仍然存在；
+- 本阶段专用用户、知识库、会话、文档记录和 MinIO 对象已精确清理；
+- 深度健康中 FastAPI/Milvus 为 ready，未启动 Consumer 和未执行模型探针使总体状态为预期的 degraded；
+- 八个运行进程实测合计约 833 MiB，停止后项目容器和网络均移除，所有命名卷保留。
+
 ## 尚未完成
 
-- 双 API 分项集成验收；
 - 本地短时完整冒烟；
 - Linux 服务器反向代理覆盖与完整多实例验收。
 

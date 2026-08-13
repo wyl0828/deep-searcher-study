@@ -46,6 +46,8 @@
   最大重试进入 DLQ 与 Broker 重启恢复验证；分组停止后保留消息命名卷。
 - Compose Milvus 分组完成真实向量写入、查询、删除、全组件重启恢复和应用镜像环境变量连接验证；
   项目既有 Milvus/Citation/Manifest/Collection 版本集成测试全部通过。
+- Compose 双 API 分组完成共享认证、知识库、会话、MinIO 原文预览、单实例停止接管、应用重启恢复与
+  Redis 摘要锁并发验证；同一会话仅生成一条有效摘要且锁在完成后释放。
 - 使用真实 RocketMQ 5.3.2 Broker/Proxy 完成官方 Python 5.1.1 客户端 Spike：Commit、Rollback、
   Broker 回查、未 ACK 重试、ACK 后停止投递，以及长耗时消费的可见期续租均通过。
 
