@@ -121,7 +121,7 @@ class TraceCollector:
             ),
             "final_answer_max_tokens": max(int(settings.get("final_answer_max_tokens", 4096)), 1),
             "required_trust_output_tokens": max(
-                int(settings.get("required_trust_output_tokens", 512)), 0
+                int(settings.get("required_trust_output_tokens", 3904)), 0
             ),
         }
         self._required_trust_calls = max(

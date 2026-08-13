@@ -199,7 +199,11 @@ class LLMEntailmentChecker(BaseEntailmentChecker):
                 self.llm,
                 [{"role": "user", "content": self._prompt(bounded)}],
                 stage="entailment",
-                max_tokens=512,
+                # Thinking is required to preserve the calibrated Trust quality.
+                # The 512-token stage default truncates batched JSON after the
+                # reasoning stream, which turns successful checks into retries.
+                max_tokens=3904,
+                thinking=True,
             )
             token_usage = max(int(getattr(response, "total_tokens", 0) or 0), 0)
             findings = self._parse(str(getattr(response, "content", "")), bounded)

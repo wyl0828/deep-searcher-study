@@ -207,7 +207,8 @@ query_settings:
     max_total_output_tokens_per_query: 8000
     max_reasoning_tokens_per_query: 2000
     final_answer_max_tokens: 4096
-    required_trust_output_tokens: 512
+    # Leaves the 4096-token final-answer reservation intact under the 8000 cap.
+    required_trust_output_tokens: 3904
   document_aware_query_decomposition:
     # Promoted only after the focused and full v0.3 quality gates pass.
     enabled: false
