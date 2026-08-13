@@ -10,6 +10,8 @@
 
 ### 新增
 
+- 增加可选 PostgreSQL 产品数据库支持；正式 PostgreSQL Schema 只允许通过 Alembic 升级，服务启动时
+  校验当前 revision，SQLite 继续保留本地自动建表和旧库兼容升级。
 - 增加 Provider-neutral `ChatOptions`、完整 `TokenUsage`、调用前 Token 估算和按阶段 Trace；DeepSeek
   V4 Thinking 通过 `extra_body` 显式启停，reasoning 作为输出 Token 子集统计，不重复计入总量。
 - 增加查询级 LLM 调用、输入、输出、reasoning 预算以及最终回答/必需 Trust 预留；Provider usage
@@ -17,6 +19,8 @@
 
 ### 变更
 
+- 入库任务在 PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 抢占，在 SQLite 保持原有条件更新，二者维持相同
+  的单任务单 Worker 业务语义。
 - DeepSearch 默认迭代数由 3 调整为 2；候选、重排、回答证据、单段证据和反思上下文均改为有界输入，
   跨迭代去重查询、文档位置与正文，简单且证据充分的查询可确定性跳过反思。
 - 固定 Prompt 使用稳定 system 前缀，动态问题和证据位于后续消息；缓存命中/未命中按阶段记录，
@@ -26,6 +30,8 @@
 
 ### 验证
 
+- PostgreSQL Schema 校验与抢占分支单测进入 Fast Gate；提供通过 `DEEPSEARCHER_TEST_POSTGRES_URL` 显式
+  启用的真实 PostgreSQL 迁移/抢占集成测试，本地未配置 PostgreSQL 时不会伪造执行结果。
 - Fast Gate、956 项 Python 测试和 DeepSeek Entailment live 校准通过；Entailment 校准准确率
   `0.9683`、稳定率 `1.0`、危险假阳性 `0`。
 - 24 题真实回答复测平均 Token 为 NaiveRAG `2098.46`、DeepSearch `4211.04`、ChainOfRAG

@@ -1,10 +1,15 @@
 import asyncio
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import pytest
 from sqlalchemy import inspect, select, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
 
 from frontend.product.db import (
     Base,
+    DatabaseSchemaError,
     create_database_engine,
     ensure_citation_locator_columns,
     ensure_ingest_lifecycle_columns,
@@ -12,6 +17,8 @@ from frontend.product.db import (
     record_worker_heartbeat,
     recover_interrupted_work,
     repair_citation_display_names,
+    required_alembic_heads,
+    validate_alembic_schema,
     worker_is_ready,
 )
 from frontend.product.models import (
@@ -34,6 +41,82 @@ def make_session(tmp_path) -> Session:
     engine = create_database_engine(f"sqlite:///{(tmp_path / 'product.db').as_posix()}")
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)()
+
+
+def test_required_alembic_revision_matches_repository_head():
+    assert required_alembic_heads() == ("20260811_0013",)
+
+
+def test_postgresql_schema_validation_rejects_missing_revision(monkeypatch):
+    engine = MagicMock()
+    connection = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+    context = MagicMock()
+    context.get_current_heads.return_value = ()
+    monkeypatch.setattr(
+        "frontend.product.db.MigrationContext.configure",
+        lambda _connection: context,
+    )
+    monkeypatch.setattr(
+        "frontend.product.db.required_alembic_heads",
+        lambda: ("20260811_0013",),
+    )
+
+    with pytest.raises(DatabaseSchemaError, match="alembic upgrade head"):
+        validate_alembic_schema(engine)
+
+
+def test_postgresql_schema_validation_accepts_current_revision(monkeypatch):
+    engine = MagicMock()
+    connection = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+    context = MagicMock()
+    context.get_current_heads.return_value = ("20260811_0013",)
+    monkeypatch.setattr(
+        "frontend.product.db.MigrationContext.configure",
+        lambda _connection: context,
+    )
+    monkeypatch.setattr(
+        "frontend.product.db.required_alembic_heads",
+        lambda: ("20260811_0013",),
+    )
+
+    validate_alembic_schema(engine)
+
+
+def test_postgresql_claim_uses_skip_locked_and_preserves_claim_semantics():
+    candidate = IngestJob(document_id="doc-1", status="queued", retry_count=0)
+    candidate.id = "job-1"
+    document = Document(
+        id="doc-1",
+        knowledge_base_id="kb-1",
+        display_name="paper.pdf",
+        storage_path="paper.pdf",
+        size_bytes=1,
+        sha256="a" * 64,
+        status="queued",
+    )
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    captured = {}
+
+    def scalar(query):
+        captured["query"] = query
+        return candidate
+
+    session.scalar.side_effect = scalar
+    session.get.return_value = document
+
+    claimed = document_service.claim_next_ingest_job(session, worker_id="worker-1")
+
+    sql = str(captured["query"].compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE SKIP LOCKED" in sql
+    assert claimed == "job-1"
+    assert candidate.status == "processing"
+    assert candidate.lease_owner == "worker-1"
+    assert candidate.retry_count == 1
+    assert document.status == "processing"
+    session.commit.assert_called_once()
 
 
 def test_knowledge_bases_are_persistent_and_only_one_is_current(tmp_path):

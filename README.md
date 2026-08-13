@@ -707,7 +707,9 @@ PDF 结构与页数检查后再原子落盘；最终文件名不使用用户输�
 中的 `DEEPSEARCHER_*` 变量调整。
 
 文档入库由独立 `frontend.product.worker` 处理，不再依赖 FastAPI `BackgroundTasks`。任务 ID、
-租约、重试次数、下次执行时间和死信状态保存在 SQLite；Worker 异常退出后，过期租约会自动回到
+租约、重试次数、下次执行时间和死信状态保存在产品数据库；本地默认使用 SQLite，工程部署可通过
+`DEEPSEARCHER_DATABASE_URL` 切换 PostgreSQL。PostgreSQL 的表结构只由 Alembic 管理，启动服务前必须先运行
+`python -m alembic upgrade head`；服务启动时只校验版本，不会自动建表或补列。Worker 异常退出后，过期租约会自动回到
 队列。连接失败等可安全重复的故障按指数退避重试，响应超时等完成状态不确定的故障进入死信，
 避免两个入库操作同时改写同一文档。重试前会按 SHA-256 清理同一文档的旧分块，保证最终幂等。
 启动时还会清理过期暂存文件和超过保护期且没有数据库记录的孤儿 PDF。

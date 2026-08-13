@@ -5,12 +5,16 @@ from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, create_engine, event, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "product"
 DATA_DIR = Path(os.environ.get("DEEPSEARCHER_DATA_DIR", DEFAULT_DATA_DIR))
+ALEMBIC_CONFIG_PATH = PROJECT_ROOT / "alembic.ini"
 DATABASE_URL = os.environ.get(
     "DEEPSEARCHER_DATABASE_URL",
     f"sqlite:///{(DATA_DIR / 'deepsearcher-product.db').as_posix()}",
@@ -37,6 +41,43 @@ def create_database_engine(database_url: str = DATABASE_URL) -> Engine:
 
 ENGINE = create_database_engine()
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False)
+
+
+class DatabaseSchemaError(RuntimeError):
+    """Raised when a managed database schema is not at the required Alembic revision."""
+
+
+def is_sqlite_engine(engine: Engine) -> bool:
+    return engine.dialect.name == "sqlite"
+
+
+def is_postgresql_engine(engine: Engine) -> bool:
+    return engine.dialect.name == "postgresql"
+
+
+def required_alembic_heads() -> tuple[str, ...]:
+    config = Config(str(ALEMBIC_CONFIG_PATH))
+    config.set_main_option(
+        "script_location",
+        str(PROJECT_ROOT / "frontend" / "product" / "migrations"),
+    )
+    return tuple(ScriptDirectory.from_config(config).get_heads())
+
+
+def validate_alembic_schema(engine: Engine) -> None:
+    """Require non-SQLite deployments to be migrated explicitly with Alembic."""
+
+    required = required_alembic_heads()
+    with engine.connect() as connection:
+        current = tuple(MigrationContext.configure(connection).get_current_heads())
+    if set(current) != set(required):
+        current_label = ", ".join(current) if current else "<none>"
+        required_label = ", ".join(required) if required else "<none>"
+        raise DatabaseSchemaError(
+            "Database schema is not current. "
+            f"Current Alembic revision: {current_label}; required: {required_label}. "
+            "Run `python -m alembic upgrade head` before starting the service."
+        )
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -365,15 +406,18 @@ def ensure_document_version_family_columns(engine: Engine) -> None:
 def init_database() -> None:
     from frontend.product import models  # noqa: F401
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(ENGINE)
-    ensure_knowledge_base_index_columns(ENGINE)
-    ensure_citation_locator_columns(ENGINE)
-    ensure_ingest_lifecycle_columns(ENGINE)
-    ensure_auth_ownership_schema(ENGINE)
-    ensure_trust_layer_columns(ENGINE)
-    ensure_document_temporal_columns(ENGINE)
-    ensure_document_version_family_columns(ENGINE)
+    if is_sqlite_engine(ENGINE):
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        Base.metadata.create_all(ENGINE)
+        ensure_knowledge_base_index_columns(ENGINE)
+        ensure_citation_locator_columns(ENGINE)
+        ensure_ingest_lifecycle_columns(ENGINE)
+        ensure_auth_ownership_schema(ENGINE)
+        ensure_trust_layer_columns(ENGINE)
+        ensure_document_temporal_columns(ENGINE)
+        ensure_document_version_family_columns(ENGINE)
+    else:
+        validate_alembic_schema(ENGINE)
     from frontend.product.services.documents import (
         cleanup_orphaned_uploads,
         cleanup_stale_uploads,

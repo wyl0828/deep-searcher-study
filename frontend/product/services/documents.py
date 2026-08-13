@@ -442,25 +442,37 @@ def claim_next_ingest_job(
     )
     if document_id is not None:
         query = query.where(IngestJob.document_id == document_id)
-    candidate = session.scalar(query.order_by(IngestJob.created_at, IngestJob.id).limit(1))
+    query = query.order_by(IngestJob.created_at, IngestJob.id).limit(1)
+    dialect_name = session.get_bind().dialect.name
+    if dialect_name == "postgresql":
+        query = query.with_for_update(skip_locked=True)
+    candidate = session.scalar(query)
     if candidate is None:
         return None
     lease_expires_at = now + timedelta(seconds=INGEST_LEASE_SECONDS)
-    result = session.execute(
-        update(IngestJob)
-        .where(IngestJob.id == candidate.id, IngestJob.status == "queued")
-        .values(
-            status="processing",
-            lease_owner=worker_id,
-            lease_expires_at=lease_expires_at,
-            retry_count=IngestJob.retry_count + 1,
-            started_at=now,
-            finished_at=None,
+    if dialect_name == "postgresql":
+        candidate.status = "processing"
+        candidate.lease_owner = worker_id
+        candidate.lease_expires_at = lease_expires_at
+        candidate.retry_count += 1
+        candidate.started_at = now
+        candidate.finished_at = None
+    else:
+        result = session.execute(
+            update(IngestJob)
+            .where(IngestJob.id == candidate.id, IngestJob.status == "queued")
+            .values(
+                status="processing",
+                lease_owner=worker_id,
+                lease_expires_at=lease_expires_at,
+                retry_count=IngestJob.retry_count + 1,
+                started_at=now,
+                finished_at=None,
+            )
         )
-    )
-    if int(result.rowcount or 0) != 1:
-        session.rollback()
-        return None
+        if int(result.rowcount or 0) != 1:
+            session.rollback()
+            return None
     document = session.get(Document, candidate.document_id)
     if document is None:
         session.rollback()
