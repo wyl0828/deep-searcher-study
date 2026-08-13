@@ -1,0 +1,1707 @@
+{
+  "report_schema_version": 2,
+  "entailment_eval_version": "1.2.0",
+  "mode": "live",
+  "created_at": "2026-08-12T12:36:24.844334+00:00",
+  "dataset": {
+    "id": "deepsearcher-entailment-gold",
+    "version": "1.1.0",
+    "sha256": "369567cfd652201c23b218934799e9ac1540331f020793a467ba3f8124abab83",
+    "case_count": 63
+  },
+  "checker": {
+    "name": "llm_nli",
+    "version": "1.2.0",
+    "prompt_version": "1.2.0",
+    "provider": "DeepSeek",
+    "model": "deepseek-v4-flash",
+    "base_confidence": 0.5,
+    "repetitions": 3,
+    "batch_size": 8,
+    "token_usage": 47580,
+    "failed_runs": 0
+  },
+  "environment": {
+    "git_commit": "8aac84820072c23670ca058fce04839360f932b0"
+  },
+  "stability": {
+    "stable_samples": 62,
+    "rate": 0.9841
+  },
+  "threshold_scan": [
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.5,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.55,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.6,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.65,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.7,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.75,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.8,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.85,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.963,
+      "macro_precision": 0.9667,
+      "macro_recall": 0.9646,
+      "macro_f1": 0.9638,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.9,
+          "recall": 1.0,
+          "f1": 0.9474
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 1.0,
+          "recall": 0.8939,
+          "f1": 0.944
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 63,
+          "unknown": 0
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.9,
+      "release_gate_passed": true
+    },
+    {
+      "accuracy": 0.9524,
+      "macro_precision": 0.9548,
+      "macro_recall": 0.9541,
+      "macro_f1": 0.9535,
+      "dangerous_false_entailed": 0,
+      "by_label": {
+        "entailed": {
+          "support": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "contradicted": {
+          "support": 63,
+          "precision": 0.8971,
+          "recall": 0.9683,
+          "f1": 0.9313
+        },
+        "unknown": {
+          "support": 66,
+          "precision": 0.9672,
+          "recall": 0.8939,
+          "f1": 0.9291
+        }
+      },
+      "confusion": {
+        "entailed": {
+          "entailed": 60,
+          "contradicted": 0,
+          "unknown": 0
+        },
+        "contradicted": {
+          "entailed": 0,
+          "contradicted": 61,
+          "unknown": 2
+        },
+        "unknown": {
+          "entailed": 0,
+          "contradicted": 7,
+          "unknown": 59
+        }
+      },
+      "threshold": 0.95,
+      "release_gate_passed": true
+    }
+  ],
+  "selected_threshold": 0.9,
+  "release_gate_passed": true,
+  "selected_metrics": {
+    "accuracy": 0.963,
+    "macro_precision": 0.9667,
+    "macro_recall": 0.9646,
+    "macro_f1": 0.9638,
+    "dangerous_false_entailed": 0,
+    "by_label": {
+      "entailed": {
+        "support": 60,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "contradicted": {
+        "support": 63,
+        "precision": 0.9,
+        "recall": 1.0,
+        "f1": 0.9474
+      },
+      "unknown": {
+        "support": 66,
+        "precision": 1.0,
+        "recall": 0.8939,
+        "f1": 0.944
+      }
+    },
+    "confusion": {
+      "entailed": {
+        "entailed": 60,
+        "contradicted": 0,
+        "unknown": 0
+      },
+      "contradicted": {
+        "entailed": 0,
+        "contradicted": 63,
+        "unknown": 0
+      },
+      "unknown": {
+        "entailed": 0,
+        "contradicted": 7,
+        "unknown": 59
+      }
+    },
+    "threshold": 0.9,
+    "release_gate_passed": true
+  },
+  "runs": [
+    {
+      "run": 1,
+      "status": "partial",
+      "batch_count": 9,
+      "request_attempts": 10,
+      "token_usage": 15113,
+      "error_code": null,
+      "predictions": [
+        {
+          "id": "semantic-paraphrase",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "deployment-paraphrase",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "multi-citation-joint-support",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "entity-type-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "numeric-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "condition-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "missing-fact",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.98
+        },
+        {
+          "id": "external-knowledge-forbidden",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.98
+        },
+        {
+          "id": "ambiguous-pronoun",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "conflicting-sources",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "prompt-injection-is-data",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.98
+        },
+        {
+          "id": "prompt-injection-cannot-invent",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.95
+        },
+        {
+          "id": "paraphrase-worker-recovery",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "paraphrase-citation-location",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "paraphrase-dense-semantics",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "date-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "numeric-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "unit-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "condition-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "negative-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "multi-evidence-deployment",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "multi-evidence-limits",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "version-current",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "range-inclusion",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "or-condition",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "exception-rule",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "adversarial-supported",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.95
+        },
+        {
+          "id": "same-entity-value",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "numeric-conflict-retry",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "date-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "permission-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "negation-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "entity-value-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "unit-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "scope-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "condition-missing-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "and-or-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "version-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "range-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "direction-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "count-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.98
+        },
+        {
+          "id": "format-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.98
+        },
+        {
+          "id": "adversarial-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.95
+        },
+        {
+          "id": "temporal-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.98
+        },
+        {
+          "id": "exception-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.9
+        },
+        {
+          "id": "source-count-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.98
+        },
+        {
+          "id": "missing-version",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.98
+        },
+        {
+          "id": "missing-date",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "ambiguous-entity",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "partial-support",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "unresolved-conflict",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "external-location",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "causal-overreach",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "quantifier-overreach",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.97
+        },
+        {
+          "id": "future-claim",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "missing-condition",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "multi-evidence-insufficient",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "relative-time-no-anchor",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "pronoun-two-candidates",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "approximation-unsupported",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "adversarial-invention",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.98
+        },
+        {
+          "id": "latest-without-family",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "unsupported-comparison",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "status": "partial",
+      "batch_count": 9,
+      "request_attempts": 10,
+      "token_usage": 15783,
+      "error_code": null,
+      "predictions": [
+        {
+          "id": "semantic-paraphrase",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "deployment-paraphrase",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "multi-citation-joint-support",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "entity-type-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "numeric-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "condition-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "missing-fact",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "external-knowledge-forbidden",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "ambiguous-pronoun",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "conflicting-sources",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "prompt-injection-is-data",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "prompt-injection-cannot-invent",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.96
+        },
+        {
+          "id": "paraphrase-worker-recovery",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "paraphrase-citation-location",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "paraphrase-dense-semantics",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "date-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "numeric-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "unit-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "condition-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "negative-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.98
+        },
+        {
+          "id": "multi-evidence-deployment",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "multi-evidence-limits",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "version-current",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "range-inclusion",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "or-condition",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "exception-rule",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "adversarial-supported",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.95
+        },
+        {
+          "id": "same-entity-value",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "numeric-conflict-retry",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "date-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "permission-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "negation-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "entity-value-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "unit-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "scope-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "condition-missing-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "and-or-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "version-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "range-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "direction-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "count-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "format-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "adversarial-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.95
+        },
+        {
+          "id": "temporal-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "exception-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.9
+        },
+        {
+          "id": "source-count-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "missing-version",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.99
+        },
+        {
+          "id": "missing-date",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "ambiguous-entity",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "partial-support",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "unresolved-conflict",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "external-location",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "causal-overreach",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "quantifier-overreach",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.97
+        },
+        {
+          "id": "future-claim",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "missing-condition",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "multi-evidence-insufficient",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "relative-time-no-anchor",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "pronoun-two-candidates",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "approximation-unsupported",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "adversarial-invention",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.95
+        },
+        {
+          "id": "latest-without-family",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "unsupported-comparison",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "status": "partial",
+      "batch_count": 8,
+      "request_attempts": 8,
+      "token_usage": 16684,
+      "error_code": null,
+      "predictions": [
+        {
+          "id": "semantic-paraphrase",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "deployment-paraphrase",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.98
+        },
+        {
+          "id": "multi-citation-joint-support",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "entity-type-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "numeric-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "condition-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "missing-fact",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "external-knowledge-forbidden",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "ambiguous-pronoun",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "conflicting-sources",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "prompt-injection-is-data",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.96
+        },
+        {
+          "id": "prompt-injection-cannot-invent",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "paraphrase-worker-recovery",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.98
+        },
+        {
+          "id": "paraphrase-citation-location",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.98
+        },
+        {
+          "id": "paraphrase-dense-semantics",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.97
+        },
+        {
+          "id": "date-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.99
+        },
+        {
+          "id": "numeric-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "unit-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "condition-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "negative-equivalence",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "multi-evidence-deployment",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "multi-evidence-limits",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "version-current",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "range-inclusion",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "or-condition",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "exception-rule",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "adversarial-supported",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 0.95
+        },
+        {
+          "id": "same-entity-value",
+          "expected_status": "entailed",
+          "raw_status": "entailed",
+          "confidence": 1.0
+        },
+        {
+          "id": "numeric-conflict-retry",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "date-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "permission-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "negation-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 1.0
+        },
+        {
+          "id": "entity-value-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "unit-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "scope-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "condition-missing-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "and-or-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "version-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "range-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "direction-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "count-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "format-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "adversarial-contradiction",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.98
+        },
+        {
+          "id": "temporal-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "exception-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.95
+        },
+        {
+          "id": "source-count-conflict",
+          "expected_status": "contradicted",
+          "raw_status": "contradicted",
+          "confidence": 0.99
+        },
+        {
+          "id": "missing-version",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.97
+        },
+        {
+          "id": "missing-date",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.92
+        },
+        {
+          "id": "ambiguous-entity",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.96
+        },
+        {
+          "id": "partial-support",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.96
+        },
+        {
+          "id": "unresolved-conflict",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "external-location",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.97
+        },
+        {
+          "id": "causal-overreach",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.96
+        },
+        {
+          "id": "quantifier-overreach",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.97
+        },
+        {
+          "id": "future-claim",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.96
+        },
+        {
+          "id": "missing-condition",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "multi-evidence-insufficient",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "relative-time-no-anchor",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "pronoun-two-candidates",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "approximation-unsupported",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "adversarial-invention",
+          "expected_status": "unknown",
+          "raw_status": "contradicted",
+          "confidence": 0.97
+        },
+        {
+          "id": "latest-without-family",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        },
+        {
+          "id": "unsupported-comparison",
+          "expected_status": "unknown",
+          "raw_status": "unknown",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}

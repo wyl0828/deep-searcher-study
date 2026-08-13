@@ -301,6 +301,25 @@ class TestChainOfRAG(BaseAgentTest):
         self.assertEqual(metadata["confidence"], 1.0)
         self.assertEqual(metadata["attempted_queries"], [query])
 
+    def test_retrieve_consumes_internal_context_seed_queries_before_reflection(self):
+        self.chain_of_rag.early_stopping = False
+        self.chain_of_rag._retrieve_and_answer = MagicMock(return_value=("answer", [], 1))
+        self.chain_of_rag._get_supported_docs = MagicMock(return_value=([], 0))
+        self.chain_of_rag._reflect_get_subquery = MagicMock(return_value=("follow-up", 1))
+
+        _results, _tokens, metadata = self.chain_of_rag.retrieve(
+            "current question",
+            max_iter=2,
+            retrieval_queries=("current question", "history anchored question"),
+        )
+
+        assert [call.args[0] for call in self.chain_of_rag._retrieve_and_answer.call_args_list] == [
+            "current question",
+            "history anchored question",
+        ]
+        self.chain_of_rag._reflect_get_subquery.assert_not_called()
+        assert metadata["attempted_queries"] == ["current question", "history anchored question"]
+
     def test_unsupported_answer_never_enters_followup_context(self):
         wrong_answer = "The unsupported launch date was 1999."
         supported_answer = "The document states that the launch date was 2020."

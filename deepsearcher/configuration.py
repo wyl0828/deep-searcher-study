@@ -298,6 +298,11 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
             top_k=10,
             route_collection=True,
             text_window_splitter=True,
+            query_decomposition_enabled=bool(
+                config.query_settings.get("document_aware_query_decomposition", {}).get(
+                    "enabled", False
+                )
+            ),
         )
         agents = {
             "deep_search": deep_search_class(

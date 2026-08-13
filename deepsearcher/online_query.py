@@ -21,6 +21,7 @@ def query(
     evidence_provenance_resolver=None,
     temporal_timezone: str = "UTC",
     reference_time=None,
+    retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
 ) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
@@ -59,6 +60,8 @@ def query(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_queries:
+        kwargs["retrieval_queries"] = tuple(retrieval_queries)
     answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
     trust_tokens = 0
     if collector is not None:
@@ -86,6 +89,7 @@ def query_with_trace(
     evidence_provenance_resolver=None,
     temporal_timezone: str = "UTC",
     reference_time=None,
+    retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
 ):
     """Query the knowledge base and return an additional structured execution trace."""
     collector = trace_collector or TraceCollector(
@@ -103,6 +107,8 @@ def query_with_trace(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_queries:
+        kwargs["retrieval_queries"] = tuple(retrieval_queries)
     answer, results, agent_tokens = default_searcher.query(original_query, **kwargs)
     consume_tokens = int(agent_tokens or 0) + max(int(initial_tokens or 0), 0)
     answer = collector.finalize_answer(answer, results, enforce_policy=True)

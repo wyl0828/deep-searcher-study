@@ -147,11 +147,14 @@ Trust Layer
 
 ### 后续迭代
 
-1. 在真实模型上运行 Entailment Gold Dataset，形成按标签的 Precision、Recall、混淆矩阵和阈值
-   校准；未达到门槛前保持默认关闭。
+1. Entailment Gold 1.1.0 已扩展到 63 条并在 `deepseek-v4-flash` 上完成三次真实校准；Checker 1.2
+   的推荐阈值为 0.90，Accuracy 96.30%、Macro F1 96.38%、contradicted Recall 100%、危险误判 0、
+   稳定率 98.41%。能力继续显式启用，模型、Prompt/Checker 或数据集版本变化后必须重新校准。
 2. LLM Judge 只复核 NLI unknown 与低置信疑难项，不作为唯一裁判。
 3. 基于真实业务误判样本扩展 Risk Profile，并增加仅允许管理员“提升而不能降低”风险的受控覆盖。
-4. 建立 Retrieval Recall 与连接器同步完整性门禁；对需要全文研究的 Web Evidence 增加受控网页归档，并为跨信任域
+4. 多文档默认产品路径已达到 62.5% 完整文档覆盖、Recall@8 87.44%、MRR 71.07% 和 Grounded
+   Coverage 82.35%；共享 document-aware decomposition 的全量实验未胜出，继续默认关闭并保留诊断能力。
+5. 建立 Retrieval Recall 与连接器同步完整性门禁；对需要全文研究的 Web Evidence 增加受控网页归档，并为跨信任域
    审计增加可选服务端签名。
 
 ### 建议质量门槛

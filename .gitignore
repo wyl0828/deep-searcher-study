@@ -228,3 +228,4 @@ pyrightconfig.json
 /evaluation/results/**/checkpoint.history.jsonl
 /evaluation/results/**/run.stdout.log
 /evaluation/results/**/run.stderr.log
+/evaluation/results/_local-*/

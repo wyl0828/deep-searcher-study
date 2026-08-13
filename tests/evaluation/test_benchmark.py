@@ -63,8 +63,30 @@ def test_checkpoint_is_durable_resumable_and_bound_to_run_signature(tmp_path):
     _, resumed_after_provider_widening = prepare_checkpoint(tmp_path / "run", provider_widened)
     assert resumed_after_provider_widening[("naive", "sample-1")]["tokens"] == 12
 
+    legacy_null = tmp_path / "legacy-null"
+    null_signature = {**signature, "llm_timeout_seconds": None}
+    null_path, _ = prepare_checkpoint(legacy_null, null_signature)
+    append_checkpoint_row(
+        null_path,
+        {"agent": "naive", "sample_id": "sample-1", "error": "APITimeoutError"},
+    )
+    _, resumed_after_null_widening = prepare_checkpoint(
+        legacy_null,
+        {**null_signature, "llm_timeout_seconds": 120.0},
+    )
+    assert resumed_after_null_widening[("naive", "sample-1")]["error"] == "APITimeoutError"
+
+    with pytest.raises(ValueError, match="signature"):
+        prepare_checkpoint(tmp_path / "run", {**provider_widened, "llm_timeout_seconds": 30.0})
+
     with pytest.raises(ValueError, match="signature"):
         prepare_checkpoint(tmp_path / "run", {**provider_widened, "agents": ["deep_search"]})
+
+    with pytest.raises(ValueError, match="signature"):
+        prepare_checkpoint(
+            tmp_path / "run",
+            {**provider_widened, "freshness_classifier_version": "different"},
+        )
 
 
 def test_llm_timeout_override_replaces_the_openai_compatible_client():
@@ -213,8 +235,36 @@ def test_evaluate_agent_skips_successful_checkpoint_rows():
         limit=1,
         existing_rows={initial_rows[0]["sample_id"]: initial_rows[0]},
     )
-    assert resumed_rows == initial_rows
+    assert resumed_rows[0]["sample_id"] == initial_rows[0]["sample_id"]
+    assert resumed_rows[0]["retrieval_recall"] == initial_rows[0]["retrieval_recall"]
+    assert resumed_rows[0]["checkpoint_status"] == "reused"
     assert summary["error_rate"] == 0
+    assert summary["checkpoint"]["reused"] == 1
+
+
+def test_evaluate_agent_retries_failed_checkpoint_and_reports_recovery():
+    dataset = load_dataset(DATASET)
+    rows, summary = evaluate_agent(
+        "naive",
+        FakeAgent(),
+        dataset,
+        collection="kb_test",
+        mode="retrieval",
+        top_k=3,
+        limit=1,
+        existing_rows={
+            "milvus-001": {
+                "agent": "naive",
+                "sample_id": "milvus-001",
+                "error": "APITimeoutError",
+                "evaluation_attempts": 1,
+            }
+        },
+    )
+
+    assert rows[0]["checkpoint_status"] == "recovered"
+    assert rows[0]["evaluation_attempts"] == 2
+    assert summary["checkpoint"]["recovered"] == 1
 
 
 def test_evaluate_agent_contextualizes_conversation_and_counts_cost(tmp_path):
@@ -267,7 +317,7 @@ def test_evaluate_agent_contextualizes_conversation_and_counts_cost(tmp_path):
         top_k=3,
     )
 
-    assert captured["query"] == "第一份和第二份资料分别说了什么？"
+    assert captured["query"] == "先说说第一份资料。 两份资料分别说了什么？"
     assert captured["kwargs"]["collection_names"] == ["kb_test"]
     assert rows[0]["context_dependency_correct"] is True
     assert rows[0]["context_query_match"] is True

@@ -103,14 +103,16 @@ class RAGRouter(RAGAgent):
         if use_web_search:
             for index, agent in enumerate(self.rag_agents):
                 if getattr(agent, "supports_web_search", False):
-                    self._record_route_decision({
-                        "source": "request_capability",
-                        "requested": ["web_search"],
-                        "selected": [index],
-                        "rejected": [],
-                        "fallback_used": False,
-                        "reason": "web_search_requested",
-                    })
+                    self._record_route_decision(
+                        {
+                            "source": "request_capability",
+                            "requested": ["web_search"],
+                            "selected": [index],
+                            "rejected": [],
+                            "fallback_used": False,
+                            "reason": "web_search_requested",
+                        }
+                    )
                     log.color_print(
                         f"<route> Selected Web-capable agent [{agent.__class__.__name__}] </route>\n"
                     )

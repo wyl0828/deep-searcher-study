@@ -114,7 +114,7 @@ def test_provenance_is_stable_secret_free_and_does_not_expose_collection_names()
     assert first["checkers"]["consistency_checker"]["version"] == "1.6.0"
     assert first["checkers"]["freshness_classifier"] == {
         "contract_version": 1,
-        "version": "1.0.0",
+        "version": "1.1.0",
     }
     assert all(item["status"] == "verified" for item in first["index"]["manifests"])
     assert sanitize_trust_provenance(first) == first
@@ -321,9 +321,7 @@ def test_evidence_version_family_is_bound_without_exposing_raw_identity():
             "version_family_source": "admin_verified",
         },
     )
-    provenance = build_trust_provenance(
-        make_runtime(), evidence_snapshot=[(result, "policy fact")]
-    )
+    provenance = build_trust_provenance(make_runtime(), evidence_snapshot=[(result, "policy fact")])
     changed = deepcopy(result)
     changed.metadata["version_family"] = "travel-expense-policy-v2"
     changed_provenance = build_trust_provenance(

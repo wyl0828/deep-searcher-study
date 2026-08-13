@@ -163,6 +163,8 @@ class TraceCollector:
         fallback_used: bool,
         reason: str,
         token_usage: int = 0,
+        dependency_status: str | None = None,
+        retrieval_query_count: int = 1,
     ) -> None:
         self.raise_if_cancelled()
         safe_reason = self._safe_identifier(reason) or "unknown"
@@ -172,6 +174,9 @@ class TraceCollector:
             "fallback_used": bool(fallback_used),
             "reason": safe_reason,
             "token_usage": max(int(token_usage or 0), 0),
+            "dependency_status": self._safe_identifier(dependency_status)
+            or ("dependent" if depends_on_history else "standalone"),
+            "retrieval_query_count": max(int(retrieval_query_count or 1), 1),
         }
         if self.contextualization["history_turn_count"]:
             self.emit_event("contextualization", dict(self.contextualization))

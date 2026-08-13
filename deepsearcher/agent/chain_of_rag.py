@@ -15,6 +15,7 @@ from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
 from deepsearcher.llm.base import BaseLLM
+from deepsearcher.query_planner import plan_explicit_queries
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
 from deepsearcher.vector_db.base import BaseVectorDB, deduplicate_results
@@ -514,6 +515,10 @@ class ChainOfRAG(RAGAgent):
             int(kwargs.pop("min_evidence_for_stop", self.min_evidence_for_stop)),
             1,
         )
+        explicit_plan = plan_explicit_queries(
+            query, tuple(kwargs.pop("retrieval_queries", ()) or ())
+        )
+        seed_queries = list(explicit_plan.queries)
         trusted_contexts = []
         intermediate_steps = []
         attempted_queries = []
@@ -526,10 +531,10 @@ class ChainOfRAG(RAGAgent):
             log.color_print(f">> Iteration: {iteration}\n")
             if trace_collector is not None:
                 trace_collector.start_iteration(iteration)
-            if not attempted_queries:
-                generated_query = query
+            if iteration <= len(seed_queries):
+                generated_query = seed_queries[iteration - 1]
                 n_token0 = 0
-                query_source = "original_query"
+                query_source = "original_query" if iteration == 1 else "context_seed"
             else:
                 generated_query, n_token0 = self._reflect_get_subquery(
                     query,

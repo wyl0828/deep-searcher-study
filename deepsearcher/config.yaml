@@ -5,6 +5,7 @@ provide_settings:
       model: "deepseek-v4-flash"
       timeout: 30
       max_retries: 1
+      temperature: 0
 #      api_key: "sk-xxxx"  # Uncomment to override the `DEEPSEEK_API_KEY` set in the environment variable
 #      base_url: "https://api.deepseek.com"
 
@@ -171,6 +172,7 @@ provide_settings:
       hybrid_sparse_weight: 1.0
       hybrid_candidate_multiplier: 1
       hybrid_dense_anchor_count: 2
+      hybrid_diversity_tolerance: 0.0
 
   # vector_db:      
   #   provider: "OracleDB"
@@ -192,6 +194,9 @@ provide_settings:
 
 query_settings:
   max_iter: 3
+  document_aware_query_decomposition:
+    # Promoted only after the focused and full v0.3 quality gates pass.
+    enabled: false
   trust:
     temporal:
       # Relative dates in answers are resolved against this request-clock timezone.
@@ -200,7 +205,8 @@ query_settings:
       # Opt-in: one bounded batch call for claims not resolved by deterministic checks.
       enabled: false
       provider: "llm"
-      min_confidence: 0.8
+      # deepseek-v4-flash / checker 1.2 / Gold 1.1.0 calibration recommendation.
+      min_confidence: 0.90
   deep_search:
     web_search_queries_per_iteration: 2
     web_search_results_per_query: 5

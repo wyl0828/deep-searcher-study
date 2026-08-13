@@ -16,6 +16,7 @@ from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
 from deepsearcher.llm.base import BaseLLM
+from deepsearcher.query_planner import merge_ranked_results, plan_explicit_queries
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
 from deepsearcher.vector_db.base import BaseVectorDB, deduplicate_results
@@ -285,27 +286,7 @@ class DeepSearch(RAGAgent):
         *,
         limit: int,
     ) -> List[RetrievalResult]:
-        merged: List[RetrievalResult] = []
-        seen_candidates = set()
-        max_group_size = max((len(group) for group in result_groups), default=0)
-        for rank in range(max_group_size):
-            for group in result_groups:
-                if rank >= len(group):
-                    continue
-                result = group[rank]
-                metadata = result.metadata if isinstance(result.metadata, dict) else {}
-                identity = (
-                    ("web", result.reference)
-                    if metadata.get("source_type") == "web"
-                    else ("text", result.text)
-                )
-                if identity in seen_candidates:
-                    continue
-                merged.append(result)
-                seen_candidates.add(identity)
-                if len(merged) >= limit:
-                    return merged
-        return merged
+        return merge_ranked_results(result_groups, limit=limit, identity_policy="text")
 
     def _batch_rerank_chunks(
         self,
@@ -710,6 +691,7 @@ class DeepSearch(RAGAgent):
         trace_collector = kwargs.pop("trace_collector", None)
         top_k = max(int(kwargs.pop("top_k", 10)), 1)
         use_web_search = bool(kwargs.pop("use_web_search", False))
+        retrieval_queries = tuple(kwargs.pop("retrieval_queries", ()) or ())
         retrieval_concurrency = max(
             int(kwargs.pop("retrieval_concurrency", self.retrieval_concurrency)),
             1,
@@ -738,6 +720,7 @@ class DeepSearch(RAGAgent):
                 use_web_search=use_web_search,
                 retrieval_concurrency=retrieval_concurrency,
                 external_call_timeout_seconds=external_call_timeout_seconds,
+                retrieval_queries=retrieval_queries,
             ),
             timeout=request_timeout_seconds,
         )
@@ -754,6 +737,7 @@ class DeepSearch(RAGAgent):
         use_web_search: bool,
         retrieval_concurrency: int,
         external_call_timeout_seconds: float,
+        retrieval_queries: tuple[str, ...],
     ) -> Tuple[List[RetrievalResult], int, dict]:
         semaphore = asyncio.Semaphore(retrieval_concurrency)
         self._selection_events = []
@@ -767,12 +751,26 @@ class DeepSearch(RAGAgent):
         total_tokens = 0
         web_search_summaries = []
 
-        sub_queries, used_token = await self._run_blocking_call(
-            self._generate_sub_queries,
-            original_query,
-            semaphore=semaphore,
-            timeout_seconds=external_call_timeout_seconds,
-        )
+        if retrieval_queries:
+            explicit_plan = plan_explicit_queries(original_query, retrieval_queries)
+            sub_queries = list(explicit_plan.queries)
+            used_token = 0
+            selection_events.append(
+                {
+                    "stage": "sub_queries",
+                    "values": sub_queries,
+                    "rejected": [],
+                    "fallback_used": explicit_plan.fallback_used,
+                    "reason": explicit_plan.reason,
+                }
+            )
+        else:
+            sub_queries, used_token = await self._run_blocking_call(
+                self._generate_sub_queries,
+                original_query,
+                semaphore=semaphore,
+                timeout_seconds=external_call_timeout_seconds,
+            )
         if trace_collector is not None:
             trace_collector.record_selection_event(
                 "deep_search.sub_queries",

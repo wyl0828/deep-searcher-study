@@ -238,6 +238,9 @@ class TestRAGRouter(BaseAgentTest):
         self.assertEqual(router.agent_descriptions[0], "Auto description 1")
         self.assertEqual(router.agent_descriptions[1], "Auto description 2")
 
+    def test_builtin_naive_rag_exposes_router_description(self):
+        self.assertTrue(NaiveRAG.__description__)
+
 
 if __name__ == "__main__":
     import unittest

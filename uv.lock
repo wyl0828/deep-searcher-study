@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "deepsearcher"
-version = "0.0.2"
+version = "0.3.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

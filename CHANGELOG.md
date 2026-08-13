@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.3.0-rc.1] - 2026-08-13
+
 ### 新增
 
 - 建立版本化 Trust Layer：引用结构、确定性一致性、时效性、风险约束、可选语义蕴含、回答策略与
@@ -43,6 +45,12 @@
 - Citation 结构与字符定位不等于语义蕴含；Entailment 的真实模型质量必须通过 `--mode live` 评测证明。
 - “最新”仅在最终 Evidence 快照的同一 `version_family` 内判断，不替代全库召回、外部网页归档或连接器同步完整性。
 - 当前开发线尚未声明为通用生产 SLO。基线报告只覆盖固定数据集与明确的运行配置。
+- Entailment 真实校准已通过严格门槛，但仍默认关闭；模型、Prompt/Checker 或 Gold 版本变化后必须重跑。
+- 72 题×3 默认产品路径达到 Hybrid Recall@8 87.44%、MRR 71.07%、Grounded Coverage 82.35%、
+  多文档完整覆盖 62.5%，三类稳定率均为 100%；全量 decomposition 未胜出，继续默认关闭。
+- 上下文 Hybrid Recall 达到 90%；24 题×3 中 Naive Coverage 达到 85.00%，三 Agent 错误率均为 0。
+- 2026-08-13 的 Full Quality Gate 已通过。回答集曾因 Docker Desktop 恢复期间出现 2 次超时和 4 次
+  `VectorDBUnavailable`；获准 checkpoint 重试后均恢复，最终 `recovered=6`、`still_failed=0`。
 
 ## 变更证据
 

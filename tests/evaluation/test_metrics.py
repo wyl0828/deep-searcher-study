@@ -77,6 +77,31 @@ def test_multi_document_sample_requires_every_source_for_full_coverage():
     assert row["matched_document_count"] == 1
     assert row["full_evidence_retrieved"] is False
     assert row["full_document_coverage"] is False
+    assert row["missing_documents"] == ["b.pdf"]
+
+
+def test_document_coverage_does_not_require_gold_page_match():
+    sample = EvalSample(
+        id="multi-pages",
+        question="对比两份资料",
+        answerable=True,
+        reference_answer="A 和 B",
+        evidence=(EvidenceTarget("a.pdf", 1), EvidenceTarget("b.pdf", 2)),
+        criteria=(("A",), ("B",)),
+        tags=("跨文档",),
+    )
+    row = evaluate_sample(
+        sample,
+        [result(document="a.pdf", page=9), result(document="b.pdf", page=8)],
+        answer=None,
+        top_k=5,
+        latency_ms=1,
+        tokens=0,
+    )
+
+    assert row["retrieval_recall"] == 0
+    assert row["full_document_coverage"] is True
+    assert row["missing_documents"] == []
 
 
 def test_full_document_coverage_aggregate_uses_only_multi_document_samples():
@@ -424,6 +449,29 @@ def test_unanswerable_accepts_explicit_absence_of_load_test_data_as_refusal():
     assert row["refusal_correct"] is True
 
 
+def test_unanswerable_accepts_trust_policy_refusal_as_refusal():
+    sample = EvalSample(
+        id="q4",
+        question="资料没有答案的问题？",
+        answerable=False,
+        reference_answer="没有规定",
+        evidence=(),
+        criteria=(),
+        tags=("无答案",),
+    )
+
+    row = evaluate_sample(
+        sample,
+        [],
+        answer="根据现有证据，无法给出有充分依据的回答。",
+        top_k=5,
+        latency_ms=2,
+        tokens=10,
+    )
+
+    assert row["refusal_correct"] is True
+
+
 def test_criteria_coverage_accepts_alternatives_and_aggregate_has_cost():
     assert criteria_coverage("A vector database", (("向量数据库", "vector database"),)) == 1
     rows = [
@@ -454,3 +502,20 @@ def test_criteria_coverage_accepts_alternatives_and_aggregate_has_cost():
     assert summary["tokens"]["total"] == 10
     assert summary["llm_calls"]["total"] == 3
     assert summary["full_evidence_retrieval_rate"] == 0.5
+
+
+def test_policy_input_coverage_is_numeric_and_raw_answer_is_not_persisted():
+    row = evaluate_sample(
+        answerable_sample(),
+        [result()],
+        answer="最终回答",
+        top_k=5,
+        latency_ms=1,
+        tokens=1,
+        policy_input_criteria_coverage=1.0,
+        trust={"policy": {"action": "downgrade", "reason_codes": ["CLAIM_UNSUPPORTED"]}},
+    )
+
+    assert row["policy_input_criteria_coverage"] == 1.0
+    assert row["policy_reason_codes"] == ["CLAIM_UNSUPPORTED"]
+    assert "policy_input_answer" not in row

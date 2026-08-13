@@ -40,6 +40,7 @@ class DeepSeek(BaseLLM):
             base_url = kwargs.pop("base_url")
         else:
             base_url = os.getenv("DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
+        self.temperature = float(kwargs.pop("temperature", 0.0))
         self.client = OpenAI_(api_key=api_key, base_url=base_url, **kwargs)
 
     def chat(self, messages: List[Dict]) -> ChatResponse:
@@ -57,6 +58,7 @@ class DeepSeek(BaseLLM):
         completion = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
+            temperature=self.temperature,
         )
         return ChatResponse(
             content=completion.choices[0].message.content,

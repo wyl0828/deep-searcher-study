@@ -400,10 +400,14 @@ def test_query_api_contextualizes_follow_up_without_changing_scope(monkeypatch):
         )
 
     assert response.status_code == 200
-    assert captured["question"] == "Milvus 的单机部署和集群部署有什么区别？"
+    assert captured["question"] == "Milvus 有哪些部署方式？ 它们有什么区别？"
     assert captured["collection_names"] == ["kb_selected"]
     assert captured["use_web_search"] is True
     assert captured["initial_tokens"] == 9
+    assert captured["retrieval_queries"] == (
+        "Milvus 有哪些部署方式？ 它们有什么区别？",
+        "Milvus 有哪些部署方式？ 包括单机部署和集群部署。 它们有什么区别？",
+    )
     contextualization = response.json()["trace"]["contextualization"]
     assert contextualization == {
         "depends_on_history": True,
@@ -411,8 +415,108 @@ def test_query_api_contextualizes_follow_up_without_changing_scope(monkeypatch):
         "fallback_used": False,
         "reason": "rewritten",
         "token_usage": 9,
+        "dependency_status": "dependent",
+        "retrieval_query_count": 2,
     }
     assert "Milvus 有哪些部署方式" not in str(response.json()["trace"])
+
+
+def test_query_api_non_trace_forwards_internal_dual_queries(monkeypatch):
+    captured = {}
+
+    class ContextLLM:
+        def chat(self, _messages):
+            return ChatResponse(
+                content=(
+                    '{"depends_on_history": true, '
+                    '"standalone_query": "DeepSearch max_iter=1 时为什么没有反思？"}'
+                ),
+                total_tokens=5,
+            )
+
+        @staticmethod
+        def remove_think(content):
+            return content
+
+    def plain_query(question, max_iter, **kwargs):
+        captured.update({"question": question, "max_iter": max_iter, **kwargs})
+        return "答案", [], 8
+
+    monkeypatch.setattr(main, "query", plain_query)
+    with runtime_client(make_runtime(llm=ContextLLM())) as client:
+        response = client.post(
+            "/query",
+            json={
+                "original_query": "如果只跑一轮，为什么看不到它？",
+                "conversation_history": [
+                    {"role": "user", "content": "DeepSearch 每轮检索后会做反思吗？"},
+                    {
+                        "role": "assistant",
+                        "content": "非最后一轮会反思。",
+                        "grounded": True,
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured["question"] == (
+        "DeepSearch 每轮检索后会做反思吗？ 如果只跑一轮，为什么看不到它？ max_iter=1 最后一轮 反思"
+    )
+    assert captured["retrieval_queries"] == (
+        "DeepSearch 每轮检索后会做反思吗？ 如果只跑一轮，为什么看不到它？ max_iter=1 最后一轮 反思",
+        "DeepSearch 每轮检索后会做反思吗？ 非最后一轮会反思。 如果只跑一轮，为什么看不到它？",
+    )
+
+
+def test_query_stream_forwards_internal_dual_queries(monkeypatch):
+    captured = {}
+
+    class ContextLLM:
+        def chat(self, _messages):
+            return ChatResponse(
+                content=(
+                    '{"depends_on_history": true, '
+                    '"standalone_query": "DeepSearcher Trace 如何形成 Citation 和 SSE？"}'
+                ),
+                total_tokens=6,
+            )
+
+        @staticmethod
+        def remove_think(content):
+            return content
+
+    def traced_query(question, max_iter, **kwargs):
+        captured.update({"question": question, "max_iter": max_iter, **kwargs})
+        collector = kwargs["trace_collector"]
+        collector.emit_started()
+        return "答案", [], 9, collector.build(total_tokens=9, final_results=[], answer="答案")
+
+    monkeypatch.setattr(main, "query_with_trace", traced_query)
+    with runtime_client(make_runtime(llm=ContextLLM())) as client:
+        response = client.post(
+            "/query/stream",
+            json={
+                "original_query": "它最后怎么变成引用？",
+                "conversation_history": [
+                    {"role": "user", "content": "DeepSearcher 查询可以返回 Trace。"},
+                    {
+                        "role": "assistant",
+                        "content": "Trace 记录显式事件并脱敏截断。",
+                        "grounded": True,
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured["question"] == (
+        "DeepSearcher 查询可以返回 Trace。 它最后怎么变成引用？ Citation SSE"
+    )
+    assert captured["retrieval_queries"] == (
+        "DeepSearcher 查询可以返回 Trace。 它最后怎么变成引用？ Citation SSE",
+        "DeepSearcher 查询可以返回 Trace。 Trace 记录显式事件并脱敏截断。 它最后怎么变成引用？",
+    )
 
 
 def test_query_api_forwards_explicit_collection_scope(monkeypatch):

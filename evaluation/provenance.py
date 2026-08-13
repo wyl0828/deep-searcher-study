@@ -171,7 +171,7 @@ def _evaluate(kind: str) -> bool:
         provenance = build_trust_provenance(runtime)
         return provenance["checkers"]["freshness_classifier"] == {
             "contract_version": 1,
-            "version": "1.0.0",
+            "version": "1.1.0",
         }
     if kind in {
         "temporal_reference_bound",

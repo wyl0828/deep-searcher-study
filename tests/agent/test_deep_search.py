@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from deepsearcher.agent import DeepSearch
 from deepsearcher.llm.base import ChatResponse
@@ -789,6 +789,26 @@ class TestDeepSearch(BaseAgentTest):
         self.assertEqual(len(results), 1)
         self.assertEqual(tokens, 20)
         self.assertIn("all_sub_queries", metadata)
+
+    def test_explicit_context_queries_seed_first_iteration_without_planner_call(self):
+        self.deep_search._generate_sub_queries = MagicMock(
+            side_effect=AssertionError("must not run")
+        )
+        self.deep_search._retrieve_chunks_from_vectordb = AsyncMock(return_value=([], 0, {}))
+        self.deep_search._async_batch_rerank_chunks = AsyncMock(return_value=([], 0))
+
+        _results, _tokens, metadata = asyncio.run(
+            self.deep_search.async_retrieve(
+                "current question",
+                max_iter=1,
+                retrieval_queries=("current question", "history anchored question"),
+            )
+        )
+
+        assert metadata["all_sub_queries"] == ["current question", "history anchored question"]
+        assert [
+            call.args[0] for call in self.deep_search._retrieve_chunks_from_vectordb.await_args_list
+        ] == ["current question", "history anchored question"]
 
     def test_query(self):
         """Test the query method."""

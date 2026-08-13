@@ -32,7 +32,10 @@
         {"path": "metrics.hybrid.retrieval_recall_at_k", "op": "ge", "value": 0.87},
         {"path": "metrics.hybrid.mrr", "op": "ge", "value": 0.71},
         {"path": "metrics.hybrid.grounded_criteria_coverage", "op": "ge", "value": 0.81},
-        {"path": "metrics.hybrid.full_document_coverage_rate", "op": "ge", "value": 0.375},
+        {"path": "metrics.hybrid.full_document_coverage_rate", "op": "ge", "value": 0.625},
+        {"path": "metrics.hybrid.query_plan_stability_rate", "op": "ge", "value": 1.0},
+        {"path": "metrics.hybrid.retrieval_given_plan_stability_rate", "op": "ge", "value": 1.0},
+        {"path": "metrics.hybrid.end_to_end_ranking_stability_rate", "op": "ge", "value": 1.0},
         {"path": "decision.quality.gain", "op": "ge", "value": 0.01},
         {"path": "decision.recommended_default", "op": "eq", "value": "hybrid"}
       ]
@@ -55,6 +58,9 @@
         {"path": "metrics.dense.retrieval_hit_rate", "op": "ge", "value": 0.85},
         {"path": "metrics.dense.retrieval_recall_at_k", "op": "ge", "value": 0.8},
         {"path": "metrics.hybrid.retrieval_recall_at_k", "op": "ge", "value": 0.85}
+        ,{"path": "metrics.hybrid.query_plan_stability_rate", "op": "ge", "value": 1.0}
+        ,{"path": "metrics.hybrid.retrieval_given_plan_stability_rate", "op": "ge", "value": 1.0}
+        ,{"path": "metrics.hybrid.end_to_end_ranking_stability_rate", "op": "ge", "value": 1.0}
       ]
     },
     "answer": {
@@ -71,6 +77,7 @@
         "claim_citation_recall"
       ],
       "thresholds": [
+        {"path": "freshness_classifier_version", "op": "eq", "value": "1.1.0"},
         {"path": "metrics.naive.error_rate", "op": "le", "value": 0},
         {"path": "run.selection.profile", "op": "eq", "value": "answer_stratified_v1"},
         {"path": "run.selection.strata.sample_count", "op": "eq", "value": 24},

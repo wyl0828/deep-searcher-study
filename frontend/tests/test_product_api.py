@@ -473,7 +473,7 @@ def test_trust_contract_and_policy_decision_are_persisted(tmp_path):
                             "risk": {
                                 "version": 1,
                                 "classifier": "deterministic_query_risk",
-                                "classifier_version": "1.0.0",
+                                "classifier_version": "1.1.0",
                                 "risk_level": "high",
                                 "query_type": "financial_policy",
                                 "risk_factors": [
@@ -492,7 +492,7 @@ def test_trust_contract_and_policy_decision_are_persisted(tmp_path):
                             "freshness": {
                                 "version": 1,
                                 "classifier": "deterministic_freshness_intent",
-                                "classifier_version": "1.0.0",
+                                "classifier_version": "1.1.0",
                                 "required": True,
                                 "mode": "latest_effective",
                                 "ordering_basis": "effective_at",
@@ -621,7 +621,7 @@ def test_trust_contract_and_policy_decision_are_persisted(tmp_path):
         assert persisted["trust_details"]["freshness"] == {
             "version": 1,
             "classifier": "deterministic_freshness_intent",
-            "classifier_version": "1.0.0",
+            "classifier_version": "1.1.0",
             "required": True,
             "mode": "latest_effective",
             "ordering_basis": "effective_at",
@@ -1521,11 +1521,11 @@ def test_upload_query_and_citation_flow_uses_internal_collection_scope(
                 "trusted": True,
                 "published_at": None,
                 "effective_at": None,
-                    "superseded_at": None,
-                    "temporal_metadata_source": None,
-                    "version_family": None,
-                    "version_family_source": None,
-                    "text": "DeepSearcher 查询流程说明。",
+                "superseded_at": None,
+                "temporal_metadata_source": None,
+                "version_family": None,
+                "version_family_source": None,
+                "text": "DeepSearcher 查询流程说明。",
                 "supported": True,
             }
         ]

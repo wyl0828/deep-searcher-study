@@ -477,6 +477,8 @@ def _contextualize_request(
             history_turn_count=0,
             fallback_used=False,
             reason="no_history",
+            retrieval_queries=(payload.original_query.strip(),),
+            dependency_status="standalone",
         )
     context = contextualize_query(
         runtime.llm,
@@ -490,6 +492,8 @@ def _contextualize_request(
             fallback_used=context.fallback_used,
             reason=context.reason,
             token_usage=context.token_usage,
+            dependency_status=context.dependency_status,
+            retrieval_query_count=len(context.retrieval_queries),
         )
     return context
 
@@ -1019,6 +1023,7 @@ def perform_query(
                 payload.max_iter,
                 trace_collector=collector,
                 initial_tokens=contextual.token_usage,
+                retrieval_queries=contextual.retrieval_queries,
                 **kwargs,
             )
             return {
@@ -1032,6 +1037,7 @@ def perform_query(
             contextual.query,
             payload.max_iter,
             initial_tokens=contextual.token_usage,
+            retrieval_queries=contextual.retrieval_queries,
             enforce_trust=True,
             provenance=provenance,
             provenance_resolver=provenance_session.bind_collections,
@@ -1170,6 +1176,8 @@ async def perform_query_stream(
                         fallback_used=contextual.fallback_used,
                         reason=contextual.reason,
                         token_usage=contextual.token_usage,
+                        dependency_status=contextual.dependency_status,
+                        retrieval_query_count=len(contextual.retrieval_queries),
                     )
                 result_text, _, consume_token, trace = query_with_trace(
                     contextual.query,
@@ -1179,6 +1187,7 @@ async def perform_query_stream(
                     searcher=lease.runtime.default_searcher,
                     trace_collector=collector,
                     initial_tokens=contextual.token_usage,
+                    retrieval_queries=contextual.retrieval_queries,
                 )
             except QueryCancelled:
                 collector.emit_event(

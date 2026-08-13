@@ -179,9 +179,7 @@ class CollectionRouter(BaseAgent):
                 requested=selected,
                 selected=selected,
             )
-            log.color_print(
-                "<route> Selected 1 authorized vector collection </route>\n"
-            )
+            log.color_print("<route> Selected 1 authorized vector collection </route>\n")
             return selected, 0
 
         prompt = COLLECTION_ROUTE_PROMPT.format(

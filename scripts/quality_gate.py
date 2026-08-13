@@ -133,13 +133,9 @@ def _run_fast_gate(
             [_executable("npx"), "playwright", "install", "--with-deps", "chromium"],
             cwd=ROOT / "frontend",
         )
-    # The upstream repository has pre-existing formatter drift. Keep the established
-    # `ruff format --diff` evidence without rewriting unrelated files in a quality run.
     runner.run(
-        "ruff-format-diff",
-        _uv_command("ruff", "format", "--diff", "."),
-        echo_output=False,
-        allow_failure=True,
+        "ruff-format-check",
+        _uv_command("ruff", "format", "--check", "."),
     )
     runner.run("ruff-check", _uv_command("ruff", "check", "."))
     runner.run("pytest", _uv_command("pytest", "-q"))
@@ -154,6 +150,11 @@ def _run_fast_gate(
         [_executable("npm"), "run", "build"],
         cwd=ROOT / "frontend",
         echo_output=False,
+    )
+    runner.run(
+        "frontend-bundle-check",
+        [_executable("npm"), "run", "check:bundle"],
+        cwd=ROOT / "frontend",
     )
     runner.run(
         "frontend-e2e",
@@ -203,6 +204,26 @@ def _run_fast_gate(
             "validate",
             "--output",
             str(runner.output_dir / "entailment-dataset.json"),
+        ),
+    )
+    runner.run(
+        "entailment-live-report-gate",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.entailment",
+            "--mode",
+            "report",
+            "--report",
+            str(
+                ROOT
+                / "evaluation"
+                / "results"
+                / "v0.3-entailment-deepseek-20260812"
+                / "report.json"
+            ),
+            "--output",
+            str(runner.output_dir / "entailment-live-report.json"),
         ),
     )
     runner.run(
@@ -257,6 +278,24 @@ def _run_live_gate(runner: QualityGateRunner) -> None:
     retrieval_dir = live_root / "retrieval"
     context_dir = live_root / "context"
     answer_dir = live_root / "answer"
+    entailment_path = live_root / "entailment-calibration.json"
+
+    runner.run(
+        "live-entailment-calibration",
+        _uv_command(
+            "python",
+            "-m",
+            "evaluation.entailment",
+            "--mode",
+            "live",
+            "--repetitions",
+            "3",
+            "--batch-size",
+            "8",
+            "--output",
+            str(entailment_path),
+        ),
+    )
 
     runner.run(
         "live-retrieval",
@@ -315,6 +354,12 @@ def _run_live_gate(runner: QualityGateRunner) -> None:
             "8",
             "--max-iter",
             "3",
+            "--llm-timeout-seconds",
+            "120",
+            "--external-call-timeout-seconds",
+            "180",
+            "--request-timeout-seconds",
+            "600",
             "--sample-ids",
             answer_sample_ids,
             "--sample-profile",
