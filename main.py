@@ -1004,6 +1004,7 @@ def perform_query(
             "use_web_search": payload.use_web_search,
             "entailment_checker": getattr(runtime, "entailment_checker", None),
             "temporal_timezone": temporal_timezone,
+            "token_control": getattr(runtime.config, "query_settings", {}).get("token_control", {}),
         }
         if explicit_collections is not None:
             kwargs["collection_names"] = explicit_collections
@@ -1017,6 +1018,9 @@ def perform_query(
                 provenance_resolver=provenance_session.bind_collections,
                 evidence_provenance_resolver=provenance_session.bind_evidence,
                 temporal_timezone=temporal_timezone,
+                token_control=getattr(runtime.config, "query_settings", {}).get(
+                    "token_control", {}
+                ),
             )
             contextual = _contextualize_request(payload, runtime, collector)
             result_text, _, consume_token, trace = query_with_trace(
@@ -1163,6 +1167,9 @@ async def perform_query_stream(
             evidence_provenance_resolver=provenance_session.bind_evidence,
             temporal_timezone=temporal_timezone_from_query_settings(
                 getattr(lease.runtime.config, "query_settings", {})
+            ),
+            token_control=getattr(lease.runtime.config, "query_settings", {}).get(
+                "token_control", {}
             ),
         )
 

@@ -91,6 +91,8 @@ class TraceCollector:
         | None = None,
         temporal_timezone: str = "UTC",
         reference_time: datetime | str | None = None,
+        token_control: Dict[str, Any] | None = None,
+        required_trust_calls: int = 0,
     ):
         self.risk_profile = dict(risk_profile or classify_query_risk(original_query))
         self.freshness_intent = classify_query_freshness(original_query)
@@ -102,6 +104,40 @@ class TraceCollector:
         self.trust_tokens = 0
         self._selection_events: List[Dict[str, Any]] = []
         self._llm_calls: List[Dict[str, Any]] = []
+        settings = token_control if isinstance(token_control, dict) else {}
+        self._budget_limits = {
+            "max_llm_calls": max(int(settings.get("max_llm_calls_per_query", 8)), 1),
+            "max_input_tokens_per_call": max(
+                int(settings.get("max_input_tokens_per_call", 24000)), 1
+            ),
+            "max_total_input_tokens": max(
+                int(settings.get("max_total_input_tokens_per_query", 32000)), 1
+            ),
+            "max_total_output_tokens": max(
+                int(settings.get("max_total_output_tokens_per_query", 8000)), 1
+            ),
+            "max_reasoning_tokens": max(
+                int(settings.get("max_reasoning_tokens_per_query", 2000)), 0
+            ),
+            "final_answer_max_tokens": max(int(settings.get("final_answer_max_tokens", 4096)), 1),
+            "required_trust_output_tokens": max(
+                int(settings.get("required_trust_output_tokens", 512)), 0
+            ),
+        }
+        self._required_trust_calls = max(
+            int(required_trust_calls or (1 if entailment_checker is not None else 0)), 0
+        )
+        self._budget_state = {
+            "llm_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "pending_calls": 0,
+            "pending_input_tokens": 0,
+            "pending_output_tokens": 0,
+            "exhausted": False,
+            "exhausted_reason": None,
+        }
         self.contextualization: Optional[Dict[str, Any]] = None
         self._grounding_evidence_text: Dict[int, str] = {}
         self._grounding_snapshot_recorded = False
@@ -353,6 +389,27 @@ class TraceCollector:
 
         self.raise_if_cancelled()
         with self._event_lock:
+            self._budget_state["pending_calls"] = max(
+                int(self._budget_state["pending_calls"]) - 1, 0
+            )
+            self._budget_state["pending_input_tokens"] = max(
+                int(self._budget_state["pending_input_tokens"])
+                - max(int(usage.estimated_input_tokens or 0), 0),
+                0,
+            )
+            self._budget_state["pending_output_tokens"] = max(
+                int(self._budget_state["pending_output_tokens"]) - max(int(max_tokens or 0), 0),
+                0,
+            )
+            actual_input = (
+                usage.input_tokens
+                if usage.usage_source == "provider" and usage.input_tokens
+                else usage.estimated_input_tokens
+            )
+            self._budget_state["llm_calls"] += 1
+            self._budget_state["input_tokens"] += actual_input
+            self._budget_state["output_tokens"] += usage.output_tokens
+            self._budget_state["reasoning_tokens"] += usage.reasoning_tokens
             call_index = len(self._llm_calls) + 1
             self._llm_calls.append(
                 {
@@ -376,6 +433,81 @@ class TraceCollector:
                     },
                 }
             )
+
+    def reserve_llm_call(
+        self,
+        *,
+        stage: str,
+        estimated_input_tokens: int,
+        requested_max_tokens: int,
+        optional: bool,
+    ) -> int:
+        """Reserve one call atomically and return its budget-adjusted output cap."""
+
+        estimated = max(int(estimated_input_tokens or 0), 0)
+        requested = max(int(requested_max_tokens or 0), 1)
+        limits = self._budget_limits
+        with self._event_lock:
+            state = self._budget_state
+            if stage == "final_answer":
+                requested = min(requested, limits["final_answer_max_tokens"])
+            if estimated > limits["max_input_tokens_per_call"]:
+                self._mark_budget_exhausted("max_input_tokens_per_call")
+                return 0
+            if (
+                state["input_tokens"] + state["pending_input_tokens"] + estimated
+                > limits["max_total_input_tokens"]
+            ):
+                self._mark_budget_exhausted("max_total_input_tokens")
+                return 0
+            reserved_calls = 0 if stage == "final_answer" else 1 + self._required_trust_calls
+            calls_after = state["llm_calls"] + state["pending_calls"] + 1
+            if calls_after + reserved_calls > limits["max_llm_calls"]:
+                self._mark_budget_exhausted("max_llm_calls")
+                return 0
+            reserved_output = (
+                0
+                if stage == "final_answer"
+                else limits["final_answer_max_tokens"]
+                + limits["required_trust_output_tokens"] * self._required_trust_calls
+            )
+            available_output = (
+                limits["max_total_output_tokens"]
+                - state["output_tokens"]
+                - state["pending_output_tokens"]
+                - reserved_output
+            )
+            effective = min(requested, max(available_output, 0))
+            if effective <= 0:
+                self._mark_budget_exhausted("max_total_output_tokens")
+                return 0
+            if state["reasoning_tokens"] >= limits["max_reasoning_tokens"] and optional:
+                self._mark_budget_exhausted("max_reasoning_tokens")
+                return 0
+            state["pending_calls"] += 1
+            state["pending_input_tokens"] += estimated
+            state["pending_output_tokens"] += effective
+            return effective
+
+    def release_llm_reservation(self, max_tokens: int, estimated_input_tokens: int = 0) -> None:
+        with self._event_lock:
+            self._budget_state["pending_calls"] = max(
+                int(self._budget_state["pending_calls"]) - 1, 0
+            )
+            self._budget_state["pending_input_tokens"] = max(
+                int(self._budget_state["pending_input_tokens"])
+                - max(int(estimated_input_tokens or 0), 0),
+                0,
+            )
+            self._budget_state["pending_output_tokens"] = max(
+                int(self._budget_state["pending_output_tokens"]) - max(int(max_tokens or 0), 0),
+                0,
+            )
+
+    def _mark_budget_exhausted(self, reason: str) -> None:
+        self._budget_state["exhausted"] = True
+        if self._budget_state["exhausted_reason"] is None:
+            self._budget_state["exhausted_reason"] = reason
 
     def record_grounding_evidence(
         self,
@@ -505,6 +637,11 @@ class TraceCollector:
             "llm_usage": {
                 "calls": list(self._llm_calls),
                 "summary": self._llm_usage_summary(),
+            },
+            "budget": {
+                key: value
+                for key, value in self._budget_state.items()
+                if key not in {"pending_calls", "pending_input_tokens", "pending_output_tokens"}
             },
             "summary": {
                 "iteration_count": len(iterations),

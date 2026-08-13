@@ -69,7 +69,26 @@ class DeepSeek(BaseLLM):
         options: ChatOptions | None = None,
     ) -> ChatResponse:
         options = options or ChatOptions()
-        request: Dict = {"model": self.model, "messages": messages}
+        stable_system = {
+            "agent_router": "Select exactly one valid agent index. Return only the index.",
+            "collection_router": "Select authorized collection names. Return only a JSON array.",
+            "history_rewrite": "Rewrite conversational questions using the required JSON contract.",
+            "query_decomposition": "Return only the requested bounded JSON query list.",
+            "rerank": "Return only valid zero-based evidence indices as a JSON array.",
+            "support_filter": "Return only fully supported evidence indices as a JSON array.",
+            "reflection": "Assess evidence gaps and return only the requested constrained output.",
+            "followup_query": "Return one concise follow-up search query without explanation.",
+            "intermediate_answer": "Answer only from supplied evidence and stay concise.",
+            "entailment": "Apply the strict entailment JSON contract without explanation.",
+            "final_answer": "Answer only from supplied evidence and preserve citation markers.",
+        }.get(options.stage)
+        request_messages = list(messages)
+        if stable_system and not (request_messages and request_messages[0].get("role") == "system"):
+            request_messages = [
+                {"role": "system", "content": stable_system},
+                *request_messages,
+            ]
+        request: Dict = {"model": self.model, "messages": request_messages}
         if options.thinking is None:
             request["temperature"] = self.temperature
         else:

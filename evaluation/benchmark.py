@@ -521,6 +521,9 @@ def evaluate_agent(
                     temporal_timezone=temporal_timezone_from_query_settings(
                         agent.runtime_components.config.query_settings
                     ),
+                    token_control=agent.runtime_components.config.query_settings.get(
+                        "token_control", {}
+                    ),
                 )
                 if contextualization is not None:
                     collector.record_contextualization(

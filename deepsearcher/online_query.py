@@ -22,6 +22,7 @@ def query(
     temporal_timezone: str = "UTC",
     reference_time=None,
     retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
+    token_control: Optional[dict] = None,
 ) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
@@ -49,6 +50,7 @@ def query(
             evidence_provenance_resolver=evidence_provenance_resolver,
             temporal_timezone=temporal_timezone,
             reference_time=reference_time,
+            token_control=token_control,
         )
         if enforce_trust
         else None
@@ -90,6 +92,7 @@ def query_with_trace(
     temporal_timezone: str = "UTC",
     reference_time=None,
     retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
+    token_control: Optional[dict] = None,
 ):
     """Query the knowledge base and return an additional structured execution trace."""
     collector = trace_collector or TraceCollector(
@@ -100,6 +103,7 @@ def query_with_trace(
         evidence_provenance_resolver=evidence_provenance_resolver,
         temporal_timezone=temporal_timezone,
         reference_time=reference_time,
+        token_control=token_control,
     )
     default_searcher = searcher or configuration.default_searcher
     kwargs = {"max_iter": max_iter, "trace_collector": collector}

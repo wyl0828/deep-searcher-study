@@ -72,6 +72,13 @@ def _legacy_chat(llm: Any, messages: List[Dict]) -> "ChatResponse":
     return chat(messages=messages) if supports_messages_keyword else chat(messages)
 
 
+def estimate_message_tokens(llm: Any, messages: List[Dict]) -> int:
+    estimator = getattr(llm, "estimate_tokens", None)
+    if callable(estimator):
+        return max(int(estimator(messages) or 0), 1)
+    return BaseLLM.estimate_tokens(llm, messages)
+
+
 class ChatResponse(ABC):
     """
     Represents a response from a chat model.
@@ -257,24 +264,66 @@ def chat_with_stage(
 ) -> ChatResponse:
     """Invoke a model with a named cost policy and record sanitized telemetry."""
 
+    optional_stages = {
+        "agent_router",
+        "collection_router",
+        "history_rewrite",
+        "query_decomposition",
+        "rerank",
+        "support_filter",
+        "reflection",
+        "followup_query",
+        "intermediate_answer",
+    }
+    estimated_input = estimate_message_tokens(llm, messages)
+    effective_max_tokens = max_tokens
+    reserve = getattr(trace_collector, "reserve_llm_call", None)
+    if callable(reserve):
+        effective_max_tokens = reserve(
+            stage=stage,
+            estimated_input_tokens=estimated_input,
+            requested_max_tokens=max_tokens,
+            optional=stage in optional_stages,
+        )
+        if effective_max_tokens <= 0:
+            fallback = {
+                "agent_router": "invalid",
+                "collection_router": "[]",
+                "history_rewrite": "{}",
+                "query_decomposition": "[]",
+                "rerank": "[]",
+                "support_filter": "[]",
+                "reflection": "[]",
+                "followup_query": "",
+                "intermediate_answer": "No relevant information found",
+            }.get(stage)
+            if fallback is not None:
+                return ChatResponse(content=fallback, total_tokens=0)
+            raise RuntimeError("LLM token budget exhausted before required stage")
     options = ChatOptions(
         stage=stage,
         thinking=thinking,
-        max_tokens=max_tokens,
+        max_tokens=effective_max_tokens,
         response_format=response_format,
         iteration=iteration,
     )
     option_chat = getattr(llm, "chat_with_options", None)
-    response = (
-        option_chat(messages, options) if callable(option_chat) else _legacy_chat(llm, messages)
-    )
+    try:
+        response = (
+            option_chat(messages, options) if callable(option_chat) else _legacy_chat(llm, messages)
+        )
+    except BaseException:
+        release = getattr(trace_collector, "release_llm_reservation", None)
+        if callable(release):
+            release(effective_max_tokens, estimated_input)
+        raise
     if trace_collector is not None:
         trace_collector.record_llm_call(
             stage=stage,
             iteration=iteration,
             model=str(getattr(llm, "model", llm.__class__.__name__)),
             thinking=thinking,
-            max_tokens=max_tokens,
+            max_tokens=effective_max_tokens,
             usage=response.usage,
             input_evidence_count=input_evidence_count,
             input_evidence_tokens=input_evidence_tokens,
