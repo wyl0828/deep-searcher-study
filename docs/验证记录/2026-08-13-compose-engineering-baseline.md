@@ -76,9 +76,24 @@ RocketMQ 客户端且包含前端产物。收紧 `.dockerignore` 后构建上下
 Windows 宿主机客户端会收到 Broker 发布的 Compose 内部地址，因此真实部署链路从与 Broker 同网络的应用
 镜像执行；宿主端口仅用于健康诊断，不把宿主机直连结果当成生产拓扑证明。
 
+## 本地 Milvus 真实验证
+
+启动 `vector` 分组后，MinIO、etcd 3.5.18 与 Milvus 2.5.8 均进入 healthy，初始化任务退出码为 0；
+Milvus 日志确认对象数据实际写入 `milvus-bucket`。验证结果：
+
+- 项目现有 4 项真实 Milvus 集成测试全部通过，覆盖 L2 距离顺序、显式 Collection 范围、真实 PDF
+  Citation 往返、Manifest 与安全版本切换；
+- 独立集合完成向量写入、Flush、加载与相似度查询；
+- MinIO、etcd、Milvus 全部重启后，集合和向量仍可查询；
+- 重启后完成实体删除与 Collection 删除；
+- MinIO API 确认 `milvus-bucket` 中存在实际对象；
+- 应用镜像通过 `DEEPSEARCHER_MILVUS_URI=http://milvus:19530` 成功连接 Compose 内 Milvus；
+- 验证时实际内存约为 MinIO 223 MiB、etcd 21 MiB、Milvus 97 MiB；
+- 分组容器停止后均已移除，MinIO、etcd、Milvus 命名卷保留。
+
 ## 尚未完成
 
-- Milvus 向量分组与双 API 分项集成验收；
+- 双 API 分项集成验收；
 - 本地短时完整冒烟；
 - Linux 服务器反向代理覆盖与完整多实例验收。
 
