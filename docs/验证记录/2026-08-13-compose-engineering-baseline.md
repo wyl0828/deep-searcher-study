@@ -41,11 +41,27 @@ uv run --frozen pytest tests/test_compose_contract.py -q
 Fast Gate 结果：通过，包括 991 项 Python 测试、35 项前端测试、2 项浏览器 E2E、Alembic 全量升级、
 Trust/风险/Provenance 报告门禁与 MkDocs 构建；另有 11 项依赖外部服务的测试按既有条件跳过。
 
+## 本地存储层真实验证
+
+使用 Docker Desktop 29.4.1 启动 `infra` 分组，结果如下：
+
+- PostgreSQL 16、Redis 7、MinIO 均进入 healthy；MinIO 初始化任务退出码为 0；
+- `deepsearcher-documents` 与 `milvus-bucket` 创建成功；
+- PostgreSQL 空库完成全部 Alembic 迁移，当前 revision 为 `20260813_0015`；
+- PostgreSQL 真实任务抢占集成测试通过；
+- 人工构造落后至 `20260813_0014` 的独立测试库，Schema 校验按预期拒绝；
+- MinIO 对象上传、读取、重启后读取和删除通过；
+- Redis 数据重启恢复通过，两个竞争者对同一摘要锁仅一个获得，释放后另一方可获得；
+- 停止分组后项目容器均已移除，PostgreSQL、Redis、MinIO 命名卷保留。
+
+应用镜像 `deepsearcher-study:local` 已真实构建，并验证生产运行环境可直接导入 PostgreSQL、S3、Redis、
+RocketMQ 客户端且包含前端产物。收紧 `.dockerignore` 后构建上下文由约 775 MiB 降至约 55 KiB，镜像
+约 356 MiB；运行命令直接使用构建期虚拟环境，不在容器启动时重新安装项目。
+
 ## 尚未完成
 
-- 应用镜像完整构建（本次执行时 Docker Desktop daemon 未运行）；
-- 各分组真实启动、健康检查和停止清理；
-- 本地存储、消息、向量与双 API 分项集成验收；
+- RocketMQ 消息分组的真实启动与 Compose 链路验收；
+- Milvus 向量分组与双 API 分项集成验收；
 - 本地短时完整冒烟；
 - Linux 服务器反向代理覆盖与完整多实例验收。
 

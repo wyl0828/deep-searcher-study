@@ -61,7 +61,6 @@ def test_postgres_migration_precedes_product_processes():
     compose = _load("compose.yaml")
     migrate = compose["services"]["migrate"]
     assert migrate["command"][-3:] == ["alembic", "upgrade", "head"]
-    assert "--no-dev" in migrate["command"]
     for name in ("product-api-a", "product-api-b", "consumer-a", "consumer-b"):
         dependency = compose["services"][name]["depends_on"]["migrate"]
         assert dependency["condition"] == "service_completed_successfully"

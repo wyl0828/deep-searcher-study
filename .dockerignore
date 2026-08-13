@@ -1,6 +1,7 @@
 .git
 .github
 .venv
+dist
 .pytest_cache
 .ruff_cache
 .mypy_cache
@@ -15,9 +16,16 @@ tmp
 output
 site
 frontend/node_modules
+frontend/.npm-cache
 frontend/dist
 frontend/logs
 infra/milvus/volumes
+docs/学习计划
+docs/验证记录
+evaluation/results
+design-qa
+assets
+examples
 evaluation/results/_local-*
 **/__pycache__
 **/*.pyc
