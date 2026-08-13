@@ -10,6 +10,8 @@
 
 ### 新增
 
+- 增加分项可启动的工程 Compose 拓扑，统一 PostgreSQL、Redis、MinIO、RocketMQ、Milvus、双 API 与
+  双 Consumer；本地端口只绑定回环地址，并提供配置校验、分组启停和 API 冒烟脚本。
 - 增加可选 PostgreSQL 产品数据库支持；正式 PostgreSQL Schema 只允许通过 Alembic 升级，服务启动时
   校验当前 revision，SQLite 继续保留本地自动建表和旧库兼容升级。
 - 增加统一 PDF 对象存储接口，保留本地实现并提供可选 S3/MinIO/RustFS 实现；上传、Worker 读取、

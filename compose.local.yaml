@@ -1,0 +1,30 @@
+services:
+  postgres:
+    ports:
+      - 127.0.0.1:${POSTGRES_PORT:-5432}:5432
+  redis:
+    ports:
+      - 127.0.0.1:${REDIS_PORT:-6379}:6379
+  minio:
+    ports:
+      - 127.0.0.1:${MINIO_API_PORT:-9000}:9000
+      - 127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001
+  rocketmq-namesrv:
+    ports:
+      - 127.0.0.1:${ROCKETMQ_NAMESRV_PORT:-9876}:9876
+  rocketmq-broker:
+    ports:
+      - 127.0.0.1:${ROCKETMQ_GRPC_PORT:-8081}:8081
+  milvus:
+    ports:
+      - 127.0.0.1:${MILVUS_PORT:-19530}:19530
+      - 127.0.0.1:${MILVUS_HEALTH_PORT:-9091}:9091
+  core-api:
+    ports:
+      - 127.0.0.1:${CORE_API_PORT:-8500}:8000
+  product-api-a:
+    ports:
+      - 127.0.0.1:${PRODUCT_API_A_PORT:-8600}:8700
+  product-api-b:
+    ports:
+      - 127.0.0.1:${PRODUCT_API_B_PORT:-8601}:8700

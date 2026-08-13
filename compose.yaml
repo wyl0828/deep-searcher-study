@@ -1,0 +1,321 @@
+x-app-environment: &app-environment
+  DEEPSEARCHER_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
+  DEEPSEARCHER_API_URL: http://core-api:8000
+  DEEPSEARCHER_STORAGE_TYPE: s3
+  DEEPSEARCHER_S3_BUCKET: ${DEEPSEARCHER_S3_BUCKET:?set DEEPSEARCHER_S3_BUCKET}
+  DEEPSEARCHER_S3_ENDPOINT: http://minio:9000
+  DEEPSEARCHER_S3_REGION: us-east-1
+  DEEPSEARCHER_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+  DEEPSEARCHER_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  DEEPSEARCHER_INGEST_TRANSPORT: rocketmq
+  DEEPSEARCHER_ROCKETMQ_ENDPOINTS: rocketmq-broker:8081
+  DEEPSEARCHER_ROCKETMQ_INGEST_TOPIC: deepsearcher-document-ingest
+  DEEPSEARCHER_ROCKETMQ_CONSUMER_GROUP: deepsearcher-document-ingest
+  DEEPSEARCHER_ROCKETMQ_INVISIBLE_SECONDS: 900
+  DEEPSEARCHER_SERVICE_TOKEN: ${DEEPSEARCHER_SERVICE_TOKEN:?set DEEPSEARCHER_SERVICE_TOKEN}
+  DEEPSEARCHER_ADMIN_TOKEN: ${DEEPSEARCHER_ADMIN_TOKEN:?set DEEPSEARCHER_ADMIN_TOKEN}
+  DEEPSEARCHER_SESSION_SECRET: ${DEEPSEARCHER_SESSION_SECRET:?set DEEPSEARCHER_SESSION_SECRET}
+  DEEPSEARCHER_PRODUCT_TENANT: local
+  DEEPSEARCHER_SUMMARY_ENABLED: "true"
+  DEEPSEARCHER_SUMMARY_START_TURNS: 9
+  DEEPSEARCHER_SUMMARY_KEEP_TURNS: 8
+  DEEPSEARCHER_SUMMARY_MAX_CHARS: 600
+  DEEPSEARCHER_API_INSTANCES: 2
+  DEEPSEARCHER_SUMMARY_LOCK: redis
+  DEEPSEARCHER_REDIS_URL: redis://redis:6379/0
+  DEEPSEARCHER_SUMMARY_LOCK_SECONDS: 120
+
+x-app-service: &app-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: deepsearcher-study:${DEEPSEARCHER_IMAGE_TAG:-local}
+  restart: unless-stopped
+  environment: *app-environment
+  networks:
+    - deepsearcher
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U '$${POSTGRES_USER}' -d '$${POSTGRES_DB}'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 512m
+    networks: [deepsearcher]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes", --maxmemory, 128mb, --maxmemory-policy, allkeys-lru]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 192m
+    networks: [deepsearcher]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    command: server /data --console-address :9001
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 384m
+    networks: [deepsearcher]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
+        mc mb --ignore-existing "local/$${DEEPSEARCHER_S3_BUCKET}";
+        mc mb --ignore-existing local/milvus-bucket
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      DEEPSEARCHER_S3_BUCKET: ${DEEPSEARCHER_S3_BUCKET:?set DEEPSEARCHER_S3_BUCKET}
+    mem_limit: 128m
+    networks: [deepsearcher]
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    restart: unless-stopped
+    command: sh mqnamesrv
+    healthcheck:
+      test: [CMD-SHELL, "ps -ef | grep '[N]amesrvStartup' >/dev/null"]
+      interval: 10s
+      timeout: 8s
+      retries: 20
+      start_period: 15s
+    mem_limit: 512m
+    networks: [deepsearcher]
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.2
+    restart: unless-stopped
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: -Xms768m -Xmx768m -Xmn256m
+    command: sh mqbroker --enable-proxy -c /home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+    volumes:
+      - ./infra/compose/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf:ro
+      - rocketmq-store:/home/rocketmq/store
+      - rocketmq-logs:/home/rocketmq/logs
+    healthcheck:
+      test: ["CMD-SHELL", "sh mqadmin clusterList -n rocketmq-namesrv:9876 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 30s
+    mem_limit: 1400m
+    networks: [deepsearcher]
+
+  rocketmq-init:
+    image: apache/rocketmq:5.3.2
+    restart: "no"
+    depends_on:
+      rocketmq-broker:
+        condition: service_healthy
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - >-
+        sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster
+        -t deepsearcher-document-ingest -a +message.type=TRANSACTION;
+        sh mqadmin updateSubGroup -n rocketmq-namesrv:9876 -c DefaultCluster
+        -g deepsearcher-document-ingest -r 3
+    mem_limit: 256m
+    networks: [deepsearcher]
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: [CMD, etcdctl, endpoint, health]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 384m
+    networks: [deepsearcher]
+
+  milvus:
+    image: milvusdb/milvus:v2.5.8
+    restart: unless-stopped
+    command: [milvus, run, standalone]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_NAME: milvus-bucket
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9091/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 2400m
+    networks: [deepsearcher]
+
+  migrate:
+    <<: *app-service
+    restart: "no"
+    command: [uv, run, --frozen, --no-dev, alembic, upgrade, head]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 384m
+    healthcheck:
+      disable: true
+
+  core-api:
+    <<: *app-service
+    command: [uv, run, --frozen, --no-dev, uvicorn, main:app, --host, 0.0.0.0, --port, "8000"]
+    environment:
+      <<: *app-environment
+      DEEPSEARCHER_MILVUS_URI: http://milvus:19530
+      DEEPSEARCHER_MILVUS_TOKEN: root:Milvus
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+    depends_on:
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; assert urlopen('http://localhost:8000/health/live', timeout=3).status == 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    mem_limit: 1024m
+
+  product-api-a:
+    <<: *app-service
+    command: [uv, run, --frozen, --no-dev, uvicorn, frontend.server:app, --host, 0.0.0.0, --port, "8700"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      core-api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; assert urlopen('http://localhost:8700/api/health/live', timeout=3).status == 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 768m
+
+  product-api-b:
+    <<: *app-service
+    command: [uv, run, --frozen, --no-dev, uvicorn, frontend.server:app, --host, 0.0.0.0, --port, "8700"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      core-api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; assert urlopen('http://localhost:8700/api/health/live', timeout=3).status == 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 768m
+
+  consumer-a:
+    <<: *app-service
+    command: [uv, run, --frozen, --no-dev, python, -m, frontend.product.worker]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      rocketmq-init:
+        condition: service_completed_successfully
+      core-api:
+        condition: service_healthy
+    mem_limit: 768m
+    healthcheck:
+      disable: true
+
+  consumer-b:
+    <<: *app-service
+    command: [uv, run, --frozen, --no-dev, python, -m, frontend.product.worker]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      rocketmq-init:
+        condition: service_completed_successfully
+      core-api:
+        condition: service_healthy
+    mem_limit: 768m
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  rocketmq-store:
+  rocketmq-logs:
+  etcd-data:
+  milvus-data:
+
+networks:
+  deepsearcher:
+    driver: bridge

@@ -1,3 +1,4 @@
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import PurePath
@@ -266,6 +267,9 @@ class Milvus(BaseVectorDB):
             hybrid_dense_anchor_count: Dense head results preserved by weighted_rrf.
             **kwargs: Additional keyword arguments to pass to the MilvusClient.
         """
+        uri = os.environ.get("DEEPSEARCHER_MILVUS_URI", uri)
+        token = os.environ.get("DEEPSEARCHER_MILVUS_TOKEN", token)
+        db = os.environ.get("DEEPSEARCHER_MILVUS_DATABASE", db)
         super().__init__(default_collection)
         self.default_collection = default_collection
         self.client = MilvusClient(

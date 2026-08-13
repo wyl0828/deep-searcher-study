@@ -745,6 +745,37 @@ Chat 默认继续使用原有单模型配置。需要容错时可在 `provide_se
 `DEEPSEARCHER_API_INSTANCES=2`、`DEEPSEARCHER_SUMMARY_LOCK=redis` 和共享 Redis URL。锁绑定用户与会话、
 带超时，未获得锁的实例跳过本轮摘要。
 
+### 工程拓扑分项启动
+
+根目录的 `compose.yaml` 定义 PostgreSQL、Redis、MinIO、RocketMQ 5.x、Milvus、2 个产品 API 和
+2 个 RocketMQ Consumer；`compose.local.yaml` 只为本机调试将端口绑定到 `127.0.0.1`。先复制
+`env.compose.example` 为 `.env.compose`，替换示例密码、服务令牌和模型密钥，再执行：
+
+```powershell
+# 只校验 Compose，不启动容器
+.\scripts\compose-environment.ps1 -Action validate
+
+# 按内存预算分项启动和停止
+.\scripts\compose-environment.ps1 -Action up -Group infra
+.\scripts\compose-environment.ps1 -Action stop -Group infra
+.\scripts\compose-environment.ps1 -Action up -Group mq
+.\scripts\compose-environment.ps1 -Action up -Group vector
+
+# 短时启动完整拓扑；首次或代码变化时增加 -Build
+.\scripts\compose-environment.ps1 -Action up -Group full -Build
+.\scripts\compose-smoke.ps1
+.\scripts\compose-environment.ps1 -Action stop -Group full
+```
+
+`infra`、`mq`、`vector` 的容器限制合计分别约为 1.2 GiB、2.2 GiB、3.2 GiB；完整拓扑限制合计约
+10.5 GiB，不适合在 16GB Windows 上长期运行。`stop -Group full` 仅移除本项目容器和网络，不删除
+PostgreSQL、MinIO、Milvus 等命名卷。需要清空持久数据时必须另行人工确认并明确指定卷，本脚本不会执行。
+
+PostgreSQL 启动后由一次性 `migrate` 容器执行 Alembic，API/Consumer 只会在迁移成功后启动。
+MinIO 初始化容器只创建缺失的业务与 Milvus Bucket；RocketMQ 初始化容器只创建 TRANSACTION Topic
+和既有 Consumer Group。基础 Compose 不发布宿主机端口，服务器部署应通过单独的反向代理覆盖文件只暴露
+Web/API 入口，不应直接复用本地端口覆盖文件。
+
 知识库详情页也支持整体删除，并同步清理该知识库的 Milvus 集合、上传目录、文档、对话和引用；删除当前知识库后会自动切换到最近更新的其他知识库。对话页可单独删除当前对话及其消息、引用，不影响知识库、文档或向量数据。
 
 问答链路会区分“检索成功但没有命中”和“向量检索服务故障”。Milvus 离线时，工作台会显示可恢复的系统故障并提供重试；Collection 不存在或向量维度不匹配时，会引导用户检查知识库索引，不会把这些失败伪装成“知识库没有相关资料”。
