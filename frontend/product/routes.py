@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -434,30 +434,46 @@ def document_content(
     document_id: str,
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
-) -> FileResponse:
+) -> StreamingResponse:
     document = _owned_document(session, document_id, user.id)
-    upload_root = document_service.UPLOAD_DIR.resolve()
-    source_path = Path(document.storage_path).resolve()
-    if source_path != upload_root and upload_root not in source_path.parents:
-        raise ProductError(
-            "DOCUMENT_STORAGE_INVALID",
-            "文档存储路径异常，无法打开原文。",
-            status_code=500,
+    try:
+        stream = document_service.document_storage(document).open(
+            document_service.document_object_key(document)
         )
-    if not source_path.is_file():
+    except FileNotFoundError:
         raise ProductError(
             "DOCUMENT_CONTENT_MISSING",
             "原始 PDF 已不存在，无法打开原文。",
             status_code=404,
         )
-    return FileResponse(
-        source_path,
+    except document_service.StorageError as exc:
+        raise ProductError(
+            "DOCUMENT_STORAGE_INVALID",
+            "文档存储配置异常，无法打开原文。",
+            status_code=500,
+        ) from exc
+
+    def chunks():
+        try:
+            while data := stream.read(1024 * 1024):
+                yield data
+        finally:
+            stream.close()
+
+    try:
+        document.display_name.encode("ascii")
+    except UnicodeEncodeError:
+        content_disposition = f"inline; filename*=UTF-8''{quote(document.display_name, safe='')}"
+    else:
+        safe_name = document.display_name.replace('"', "")
+        content_disposition = f'inline; filename="{safe_name}"'
+    return StreamingResponse(
+        chunks(),
         media_type="application/pdf",
-        filename=document.display_name,
-        content_disposition_type="inline",
         headers={
             "Cache-Control": "private, max-age=3600",
             "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": content_disposition,
         },
     )
 

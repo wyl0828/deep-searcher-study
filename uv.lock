@@ -906,6 +906,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "argparse" },
+    { name = "boto3" },
     { name = "fastapi" },
     { name = "firecrawl-py" },
     { name = "ibm-watsonx-ai", version = "1.3.42", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1019,6 +1020,7 @@ requires-dist = [
     { name = "argparse", specifier = ">=1.4.0" },
     { name = "azure-search-documents", marker = "extra == 'all'", specifier = ">=11.5.2" },
     { name = "azure-search-documents", marker = "extra == 'azure-search'", specifier = ">=11.5.2" },
+    { name = "boto3", specifier = ">=1.38.11" },
     { name = "boto3", marker = "extra == 'all'", specifier = ">=1.38.11" },
     { name = "boto3", marker = "extra == 'boto3'", specifier = ">=1.38.11" },
     { name = "crawl4ai", marker = "extra == 'all'", specifier = ">=0.6.2" },

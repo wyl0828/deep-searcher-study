@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-from pathlib import Path
+from contextlib import ExitStack
 
 import httpx
 from sqlalchemy import select
@@ -62,21 +61,16 @@ async def delete_knowledge_base(
             retryable=True,
         ) from exc
 
-    upload_root = documents.UPLOAD_DIR.resolve()
-    knowledge_base_uploads = (upload_root / knowledge_base.id).resolve()
-    if knowledge_base_uploads != upload_root and upload_root not in knowledge_base_uploads.parents:
-        raise ProductError(
-            "KNOWLEDGE_BASE_STORAGE_INVALID",
-            "知识库存储路径异常，未执行删除。",
-            status_code=500,
-        )
-    if knowledge_base_uploads.exists():
+    stored_documents = session.scalars(
+        select(Document).where(Document.knowledge_base_id == knowledge_base.id)
+    ).all()
+    for document in stored_documents:
         try:
-            shutil.rmtree(knowledge_base_uploads)
-        except OSError as exc:
+            documents.document_storage(document).delete(documents.document_object_key(document))
+        except (OSError, documents.StorageError) as exc:
             raise ProductError(
                 "KNOWLEDGE_BASE_FILE_DELETE_FAILED",
-                "知识库文件删除失败，请检查文件是否被占用后重试。",
+                "知识库文件删除失败，请检查存储服务后重试。",
                 status_code=500,
                 retryable=True,
             ) from exc
@@ -133,35 +127,38 @@ async def reindex_knowledge_base(
             status_code=409,
             retryable=True,
         )
-    paths = [document.storage_path for document in documents_to_index]
-    if any(not Path(path).is_file() for path in paths):
-        raise ProductError(
-            "KNOWLEDGE_BASE_SOURCE_MISSING",
-            "部分原始 PDF 已丢失，无法完整重建索引。",
-            status_code=409,
-        )
-
     try:
-        async with httpx.AsyncClient(
-            timeout=600.0,
-            trust_env=False,
-            headers=backend_request_headers(),
-        ) as client:
-            response = await client.post(
-                f"{BACKEND_URL}/collections/{knowledge_base.collection_name}/rebuild",
-                headers={
-                    "X-Confirm-Collection": knowledge_base.collection_name,
-                },
-                json={
-                    "paths": paths,
-                    "document_metadata": [
-                        documents.document_governance_payload(document)
-                        for document in documents_to_index
-                    ],
-                    "collection_description": knowledge_base.description,
-                    "batch_size": documents.EMBEDDING_BATCH_SIZE,
-                },
-            )
+        with ExitStack() as stack:
+            paths = [
+                str(
+                    stack.enter_context(
+                        documents.document_storage(document).materialize(
+                            documents.document_object_key(document)
+                        )
+                    )
+                )
+                for document in documents_to_index
+            ]
+            async with httpx.AsyncClient(
+                timeout=600.0,
+                trust_env=False,
+                headers=backend_request_headers(),
+            ) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/collections/{knowledge_base.collection_name}/rebuild",
+                    headers={
+                        "X-Confirm-Collection": knowledge_base.collection_name,
+                    },
+                    json={
+                        "paths": paths,
+                        "document_metadata": [
+                            documents.document_governance_payload(document)
+                            for document in documents_to_index
+                        ],
+                        "collection_description": knowledge_base.description,
+                        "batch_size": documents.EMBEDDING_BATCH_SIZE,
+                    },
+                )
         if not response.is_success:
             raise ProductError(
                 "KNOWLEDGE_BASE_REINDEX_FAILED",
@@ -196,6 +193,18 @@ async def reindex_knowledge_base(
                 status_code=502,
                 retryable=True,
             )
+    except FileNotFoundError as exc:
+        raise ProductError(
+            "KNOWLEDGE_BASE_SOURCE_MISSING",
+            "部分原始 PDF 已丢失，无法完整重建索引。",
+            status_code=409,
+        ) from exc
+    except documents.StorageError as exc:
+        raise ProductError(
+            "KNOWLEDGE_BASE_STORAGE_INVALID",
+            "文档存储配置异常，无法重建索引。",
+            status_code=500,
+        ) from exc
     except httpx.RequestError as exc:
         raise ProductError(
             "KNOWLEDGE_BASE_VECTOR_SERVICE_UNAVAILABLE",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import secrets
 import sys
@@ -24,8 +25,10 @@ from frontend.product.db import DATA_DIR, SessionLocal
 from frontend.product.errors import ProductError
 from frontend.product.models import Document, IngestJob, KnowledgeBase, utcnow
 from frontend.product.repositories import create_ingest_job
+from frontend.product.storage import LocalObjectStorage, StorageError, get_object_storage
 
 BACKEND_URL = os.environ.get("DEEPSEARCHER_API_URL", "http://127.0.0.1:8500").rstrip("/")
+logger = logging.getLogger(__name__)
 
 
 def _positive_int_environment(name: str, default: int) -> int:
@@ -66,6 +69,21 @@ class StagedUpload:
     display_name: str
     size_bytes: int
     sha256: str
+
+
+def document_storage(document: Document):
+    storage_type = getattr(document, "storage_type", None) or "local"
+    if storage_type == "local":
+        return LocalObjectStorage(UPLOAD_DIR)
+    return get_object_storage(
+        storage_type,
+        local_root=UPLOAD_DIR,
+        bucket=getattr(document, "storage_bucket", None),
+    )
+
+
+def document_object_key(document: Document) -> str:
+    return getattr(document, "storage_key", None) or document.storage_path
 
 
 def validate_document_temporal_metadata(
@@ -304,7 +322,8 @@ async def create_document_from_upload(
     )
     normalized_version_family = validate_document_version_family(version_family)
     staged = await stage_pdf_upload(file)
-    destination: Path | None = None
+    stored_key: str | None = None
+    storage = get_object_storage(local_root=UPLOAD_DIR)
     try:
         page_count = await inspect_pdf_pages(staged.path)
         _enforce_storage_quota(
@@ -329,6 +348,8 @@ async def create_document_from_upload(
             knowledge_base_id=knowledge_base.id,
             display_name=staged.display_name,
             storage_path="",
+            storage_type=storage.storage_type,
+            storage_bucket=storage.bucket,
             size_bytes=staged.size_bytes,
             page_count=page_count,
             sha256=staged.sha256,
@@ -349,15 +370,10 @@ async def create_document_from_upload(
         session.add(document)
         session.flush()
 
-        destination_dir = UPLOAD_DIR / knowledge_base.id
-        _make_private_directory(destination_dir)
-        destination = destination_dir / f"{secrets.token_hex(24)}.pdf"
-        os.replace(staged.path, destination)
-        try:
-            destination.chmod(0o600)
-        except OSError:
-            pass
-        document.storage_path = str(destination)
+        stored_key = storage.put_staged(staged.path, knowledge_base_id=knowledge_base.id)
+        document.storage_key = stored_key
+        # Keep the legacy field populated while callers migrate to storage_key.
+        document.storage_path = stored_key
         job = create_ingest_job(session, document)
         job.max_retries = INGEST_MAX_RETRIES
         session.commit()
@@ -366,8 +382,18 @@ async def create_document_from_upload(
         return document, job
     except IntegrityError as exc:
         session.rollback()
-        if destination is not None:
-            _delete_file_quietly(destination)
+        if stored_key is not None:
+            try:
+                storage.delete(stored_key)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    "Failed to clean uploaded object after duplicate document rollback: "
+                    "storage_type=%s bucket=%s object_key=%s error_type=%s",
+                    storage.storage_type,
+                    storage.bucket,
+                    stored_key,
+                    type(cleanup_exc).__name__,
+                )
         raise ProductError(
             "DOCUMENT_DUPLICATE",
             "这个知识库中已经存在相同的 PDF。",
@@ -375,8 +401,18 @@ async def create_document_from_upload(
         ) from exc
     except Exception:
         session.rollback()
-        if destination is not None:
-            _delete_file_quietly(destination)
+        if stored_key is not None:
+            try:
+                storage.delete(stored_key)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    "Failed to clean uploaded object after document rollback: "
+                    "storage_type=%s bucket=%s object_key=%s error_type=%s",
+                    storage.storage_type,
+                    storage.bucket,
+                    stored_key,
+                    type(cleanup_exc).__name__,
+                )
         raise
     finally:
         _delete_file_quietly(staged.path)
@@ -403,9 +439,11 @@ def cleanup_orphaned_uploads(session: Session, *, now: float | None = None) -> i
         return 0
     upload_root = UPLOAD_DIR.resolve()
     referenced = {
-        str(Path(storage_path).resolve())
-        for storage_path in session.scalars(select(Document.storage_path)).all()
-        if storage_path
+        str(Path(storage_key or storage_path).resolve())
+        for storage_key, storage_path in session.execute(
+            select(Document.storage_key, Document.storage_path)
+        ).all()
+        if storage_key or storage_path
     }
     cutoff = (time.time() if now is None else now) - STAGING_MAX_AGE_SECONDS
     removed = 0
@@ -484,38 +522,32 @@ def claim_next_ingest_job(
     return candidate.id
 
 
-def _safe_document_path(document: Document) -> Path:
-    upload_root = UPLOAD_DIR.resolve()
-    source_path = Path(document.storage_path).resolve()
-    if source_path == upload_root or upload_root not in source_path.parents:
-        raise IngestProcessingError("DOCUMENT_STORAGE_INVALID", retryable=False)
-    if not source_path.is_file():
-        raise IngestProcessingError("DOCUMENT_CONTENT_MISSING", retryable=False)
-    return source_path
-
-
 async def _load_document_into_backend(
     *,
     document: Document,
     knowledge_base: KnowledgeBase,
 ) -> dict:
-    source_path = _safe_document_path(document)
     try:
-        async with httpx.AsyncClient(
-            timeout=float(INGEST_REQUEST_TIMEOUT_SECONDS),
-            trust_env=False,
-            headers=backend_request_headers(),
-        ) as client:
-            response = await client.post(
-                f"{BACKEND_URL}/load-files/",
-                json={
-                    "paths": str(source_path),
-                    "collection_name": knowledge_base.collection_name,
-                    "batch_size": EMBEDDING_BATCH_SIZE,
-                    "replace_document_id": document.sha256,
-                    "document_metadata": document_governance_payload(document),
-                },
-            )
+        with document_storage(document).materialize(document_object_key(document)) as source_path:
+            async with httpx.AsyncClient(
+                timeout=float(INGEST_REQUEST_TIMEOUT_SECONDS),
+                trust_env=False,
+                headers=backend_request_headers(),
+            ) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/load-files/",
+                    json={
+                        "paths": str(source_path),
+                        "collection_name": knowledge_base.collection_name,
+                        "batch_size": EMBEDDING_BATCH_SIZE,
+                        "replace_document_id": document.sha256,
+                        "document_metadata": document_governance_payload(document),
+                    },
+                )
+    except FileNotFoundError as exc:
+        raise IngestProcessingError("DOCUMENT_CONTENT_MISSING", retryable=False) from exc
+    except StorageError as exc:
+        raise IngestProcessingError("DOCUMENT_STORAGE_INVALID", retryable=False) from exc
     except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
         raise IngestProcessingError("DOCUMENT_PROCESSING_UNAVAILABLE", retryable=True) from exc
     except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
@@ -823,25 +855,15 @@ async def delete_document(session: Session, document: Document) -> None:
             retryable=True,
         ) from exc
 
-    storage_path = Path(document.storage_path)
-    if storage_path.exists():
-        upload_root = UPLOAD_DIR.resolve()
-        resolved_path = storage_path.resolve()
-        if resolved_path != upload_root and upload_root not in resolved_path.parents:
-            raise ProductError(
-                "DOCUMENT_STORAGE_INVALID",
-                "文档存储路径异常，未执行删除。",
-                status_code=500,
-            )
-        try:
-            resolved_path.unlink()
-        except OSError as exc:
-            raise ProductError(
-                "DOCUMENT_FILE_DELETE_FAILED",
-                "本地文件删除失败，请检查文件是否被占用后重试。",
-                status_code=500,
-                retryable=True,
-            ) from exc
+    try:
+        document_storage(document).delete(document_object_key(document))
+    except (OSError, StorageError) as exc:
+        raise ProductError(
+            "DOCUMENT_FILE_DELETE_FAILED",
+            "文档对象删除失败，请检查存储服务后重试。",
+            status_code=500,
+            retryable=True,
+        ) from exc
 
     knowledge_base.updated_at = utcnow()
     session.delete(document)

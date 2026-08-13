@@ -403,6 +403,28 @@ def ensure_document_version_family_columns(engine: Engine) -> None:
             )
 
 
+def ensure_document_storage_columns(engine: Engine) -> None:
+    """Upgrade local SQLite workspaces with object-storage identity."""
+
+    columns = {column["name"] for column in inspect(engine).get_columns("documents")}
+    definitions = {
+        "storage_type": "VARCHAR(16) NOT NULL DEFAULT 'local'",
+        "storage_bucket": "VARCHAR(255)",
+        "storage_key": "TEXT",
+    }
+    for column_name, column_type in definitions.items():
+        if column_name in columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"ALTER TABLE documents ADD COLUMN {column_name} {column_type}")
+            )
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE documents SET storage_key = storage_path WHERE storage_key IS NULL")
+        )
+
+
 def init_database() -> None:
     from frontend.product import models  # noqa: F401
 
@@ -416,6 +438,7 @@ def init_database() -> None:
         ensure_trust_layer_columns(ENGINE)
         ensure_document_temporal_columns(ENGINE)
         ensure_document_version_family_columns(ENGINE)
+        ensure_document_storage_columns(ENGINE)
     else:
         validate_alembic_schema(ENGINE)
     from frontend.product.services.documents import (

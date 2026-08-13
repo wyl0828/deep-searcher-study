@@ -44,7 +44,7 @@ def make_session(tmp_path) -> Session:
 
 
 def test_required_alembic_revision_matches_repository_head():
-    assert required_alembic_heads() == ("20260811_0013",)
+    assert required_alembic_heads() == ("20260813_0014",)
 
 
 def test_postgresql_schema_validation_rejects_missing_revision(monkeypatch):
