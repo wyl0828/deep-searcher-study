@@ -32,7 +32,7 @@ $composeArgs = @(
 
 $services = @{
     infra  = @("postgres", "redis", "minio", "minio-init")
-    mq     = @("rocketmq-namesrv", "rocketmq-broker", "rocketmq-init")
+    mq     = @("rocketmq-namesrv", "rocketmq-permissions", "rocketmq-broker", "rocketmq-init")
     vector = @("minio", "minio-init", "etcd", "milvus")
     app    = @("migrate", "core-api", "product-api-a", "product-api-b", "consumer-a", "consumer-b")
     full   = @()

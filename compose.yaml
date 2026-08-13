@@ -116,12 +116,27 @@ services:
     mem_limit: 512m
     networks: [deepsearcher]
 
+  rocketmq-permissions:
+    image: apache/rocketmq:5.3.2
+    user: root
+    restart: "no"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - chown -R 3000:3000 /home/rocketmq/logs /home/rocketmq/store
+    volumes:
+      - rocketmq-store:/home/rocketmq/store
+      - rocketmq-logs:/home/rocketmq/logs
+    mem_limit: 64m
+    networks: [deepsearcher]
+
   rocketmq-broker:
     image: apache/rocketmq:5.3.2
     restart: unless-stopped
     depends_on:
       rocketmq-namesrv:
         condition: service_healthy
+      rocketmq-permissions:
+        condition: service_completed_successfully
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
       JAVA_OPT_EXT: -Xms768m -Xmx768m -Xmn256m

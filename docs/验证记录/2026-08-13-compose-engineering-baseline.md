@@ -58,9 +58,26 @@ Trust/风险/Provenance 报告门禁与 MkDocs 构建；另有 11 项依赖外�
 RocketMQ 客户端且包含前端产物。收紧 `.dockerignore` 后构建上下文由约 775 MiB 降至约 55 KiB，镜像
 约 356 MiB；运行命令直接使用构建期虚拟环境，不在容器启动时重新安装项目。
 
+## 本地 RocketMQ 真实验证
+
+使用官方 `apache/rocketmq:5.3.2` Broker/Proxy 与 `rocketmq-python-client==5.1.1`，在 Compose 应用网络
+内完成以下验证：
+
+- NameServer 与 Broker/Proxy 进入 healthy，初始化任务成功创建 TRANSACTION Topic 和 Consumer Group；
+- 新命名卷首次挂载为 root 所有，增加一次性权限初始化任务后，Broker 以镜像内 uid/gid 3000 正常读写；
+- Half Message Commit 后可见，Rollback 后不可见；
+- 未 ACK 消息的 `delivery_attempt` 从 1 增加至 2，ACK 后不再投递；
+- 两个 SimpleConsumer 竞争同一组时，12 秒长耗时任务每 4 秒续租，没有发生并发重复消费；
+- Producer 未二次确认时，Broker 主动触发 `TransactionChecker.check`，回查后 Commit；
+- `retryMaxTimes=3` 时发生 1 次初始投递和 3 次重试，随后进入 `%DLQ%`，普通队列积压为 0；
+- Broker 重启后业务 Topic offset 和 DLQ 消息仍存在；
+- 临时验证 Consumer Group 已删除，分组容器已移除，RocketMQ 命名卷保留。
+
+Windows 宿主机客户端会收到 Broker 发布的 Compose 内部地址，因此真实部署链路从与 Broker 同网络的应用
+镜像执行；宿主端口仅用于健康诊断，不把宿主机直连结果当成生产拓扑证明。
+
 ## 尚未完成
 
-- RocketMQ 消息分组的真实启动与 Compose 链路验收；
 - Milvus 向量分组与双 API 分项集成验收；
 - 本地短时完整冒烟；
 - Linux 服务器反向代理覆盖与完整多实例验收。

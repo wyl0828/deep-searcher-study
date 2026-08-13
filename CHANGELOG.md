@@ -42,6 +42,8 @@
 
 - Compose `infra` 分组完成真实 PostgreSQL、Redis、MinIO 健康检查、重启恢复与停止清理；应用镜像完成
   多阶段构建和运行期依赖/前端产物自检，构建上下文不再包含本地虚拟环境、私有学习资料和缓存。
+- Compose RocketMQ 分组完成权限初始化、事务 Commit/Rollback、Broker 回查、ACK/重试、长耗时续租、
+  最大重试进入 DLQ 与 Broker 重启恢复验证；分组停止后保留消息命名卷。
 - 使用真实 RocketMQ 5.3.2 Broker/Proxy 完成官方 Python 5.1.1 客户端 Spike：Commit、Rollback、
   Broker 回查、未 ACK 重试、ACK 后停止投递，以及长耗时消费的可见期续租均通过。
 

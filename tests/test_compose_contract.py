@@ -19,6 +19,7 @@ def test_engineering_topology_contains_expected_services_and_persistence():
         "minio",
         "minio-init",
         "rocketmq-namesrv",
+        "rocketmq-permissions",
         "rocketmq-broker",
         "rocketmq-init",
         "etcd",
