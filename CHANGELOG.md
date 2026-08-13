@@ -10,6 +10,34 @@
 
 ### 新增
 
+- 增加 Provider-neutral `ChatOptions`、完整 `TokenUsage`、调用前 Token 估算和按阶段 Trace；DeepSeek
+  V4 Thinking 通过 `extra_body` 显式启停，reasoning 作为输出 Token 子集统计，不重复计入总量。
+- 增加查询级 LLM 调用、输入、输出、reasoning 预算以及最终回答/必需 Trust 预留；Provider usage
+  缺失时使用本地估算约束预算，并在调用后用真实 usage 校正。
+
+### 变更
+
+- DeepSearch 默认迭代数由 3 调整为 2；候选、重排、回答证据、单段证据和反思上下文均改为有界输入，
+  跨迭代去重查询、文档位置与正文，简单且证据充分的查询可确定性跳过反思。
+- 固定 Prompt 使用稳定 system 前缀，动态问题和证据位于后续消息；缓存命中/未命中按阶段记录，
+  不设置脱离具体阶段的全局缓存率门禁。
+- Full Gate 回答阶段对齐 `max_iter=2`，Benchmark 从 Trace 汇总真实 LLM 调用数，不再因 Provider
+  代理未递增旧 `calls` 字段而错误报告为 0。
+
+### 验证
+
+- Fast Gate、956 项 Python 测试和 DeepSeek Entailment live 校准通过；Entailment 校准准确率
+  `0.9683`、稳定率 `1.0`、危险假阳性 `0`。
+- 24 题真实回答复测平均 Token 为 NaiveRAG `2098.46`、DeepSearch `4211.04`、ChainOfRAG
+  `5239.92`，相对旧基线分别下降约 `29.8%/72.2%/42.8%`；`5000` 为 ChainOfRAG 预期目标，
+  不是硬发布门禁。
+- Full Quality Gate 保留一个已知质量观察：ChainOfRAG Claim Support `0.625 < 0.65`；未修改既有
+  tolerance，相关报告不宣称为完整门禁通过。
+
+## [0.3.0-rc.1] - 2026-08-13
+
+### 新增
+
 - 建立版本化 Trust Layer：引用结构、确定性一致性、时效性、风险约束、可选语义蕴含、回答策略与
   去密 Trust Provenance 分别建模，并贯穿查询、Trace、SSE、持久化与离线 Benchmark。
 - 提供 Citation Span Mapper：Claim 的引用可映射到模型实际看到的证据快照；精确、句级近似与未定位状态
@@ -43,6 +71,12 @@
 - Citation 结构与字符定位不等于语义蕴含；Entailment 的真实模型质量必须通过 `--mode live` 评测证明。
 - “最新”仅在最终 Evidence 快照的同一 `version_family` 内判断，不替代全库召回、外部网页归档或连接器同步完整性。
 - 当前开发线尚未声明为通用生产 SLO。基线报告只覆盖固定数据集与明确的运行配置。
+- Entailment 真实校准已通过严格门槛，但仍默认关闭；模型、Prompt/Checker 或 Gold 版本变化后必须重跑。
+- 72 题×3 默认产品路径达到 Hybrid Recall@8 87.44%、MRR 71.07%、Grounded Coverage 82.35%、
+  多文档完整覆盖 62.5%，三类稳定率均为 100%；全量 decomposition 未胜出，继续默认关闭。
+- 上下文 Hybrid Recall 达到 90%；24 题×3 中 Naive Coverage 达到 85.00%，三 Agent 错误率均为 0。
+- 2026-08-13 的 Full Quality Gate 已通过。回答集曾因 Docker Desktop 恢复期间出现 2 次超时和 4 次
+  `VectorDBUnavailable`；获准 checkpoint 重试后均恢复，最终 `recovered=6`、`still_failed=0`。
 
 ## 变更证据
 

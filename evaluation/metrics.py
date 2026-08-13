@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections import Counter
 from dataclasses import dataclass
 from statistics import mean
 from typing import Any, Iterable, Mapping, Sequence
@@ -17,6 +18,7 @@ REFUSAL_MARKERS = (
     "资料中未提及",
     "文档中未提及",
     "无法从",
+    "无法给出有充分依据的回答",
     "no relevant information",
     "not mentioned",
     "not provided",
@@ -28,6 +30,10 @@ REFUSAL_MARKERS = (
     "not specified",
     "no evidence",
 )
+
+
+def is_refusal(answer: str | None) -> bool:
+    return any(marker in _normalize(answer or "") for marker in REFUSAL_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -82,6 +88,19 @@ def matches_evidence(
     )
 
 
+def matches_document(
+    view: ResultView,
+    target: EvidenceTarget,
+    source_aliases: Mapping[str, Sequence[str]] | None = None,
+) -> bool:
+    accepted_documents = [target.document]
+    if source_aliases:
+        accepted_documents.extend(source_aliases.get(target.document, ()))
+    return view.document is not None and any(
+        _normalize(view.document) == _normalize(document) for document in accepted_documents
+    )
+
+
 def criteria_coverage(text: str, criteria: Sequence[Sequence[str]]) -> float | None:
     if not criteria:
         return None
@@ -114,6 +133,7 @@ def evaluate_sample(
     source_aliases: Mapping[str, Sequence[str]] | None = None,
     grounding: Mapping[str, Any] | None = None,
     trust: Mapping[str, Any] | None = None,
+    policy_input_criteria_coverage: float | None = None,
 ) -> dict[str, Any]:
     views = [result_view(result) for result in results][:top_k]
     unique_keys = {(view.document, view.page, view.chunk, _normalize(view.text)) for view in views}
@@ -131,14 +151,15 @@ def evaluate_sample(
     matched_documents = {
         target.document
         for target in sample.evidence
-        if any(matches_evidence(view, target, source_aliases) for view in views)
+        if any(matches_document(view, target, source_aliases) for view in views)
     }
+    missing_documents = sorted(required_documents - matched_documents)
     first_relevant = next((index + 1 for index, hit in enumerate(relevant) if hit), None)
     retrieval_recall = len(matched_targets) / len(sample.evidence) if sample.answerable else None
     retrieval_precision = sum(relevant) / top_k if sample.answerable else None
     retrieved_text = "\n".join(view.text for view in views)
     answer_text = answer or ""
-    refused = any(marker in _normalize(answer_text) for marker in REFUSAL_MARKERS)
+    refused = is_refusal(answer_text)
     grounding_claims = grounding.get("claims", []) if isinstance(grounding, Mapping) else []
     grounding_evidence = grounding.get("evidence", []) if isinstance(grounding, Mapping) else []
     claims = [item for item in grounding_claims if isinstance(item, Mapping)]
@@ -278,6 +299,40 @@ def evaluate_sample(
     policy_answer_changed = (
         bool(policy.get("answer_changed")) if isinstance(policy, Mapping) else None
     )
+    policy_reason_codes = (
+        [str(item) for item in policy.get("reason_codes", []) if str(item).strip()]
+        if isinstance(policy, Mapping) and isinstance(policy.get("reason_codes"), list)
+        else []
+    )
+    policy_input_coverage = (
+        float(policy_input_criteria_coverage)
+        if sample.answerable and policy_input_criteria_coverage is not None
+        else None
+    )
+    final_answer_coverage = (
+        criteria_coverage(answer_text, sample.criteria)
+        if sample.answerable and answer is not None
+        else None
+    )
+    grounded_coverage = (
+        criteria_coverage(retrieved_text, sample.criteria) if sample.answerable else None
+    )
+    if error is not None or not sample.answerable:
+        coverage_failure_type = None
+    elif retrieval_recall is not None and retrieval_recall < 1.0:
+        coverage_failure_type = "retrieval_gap"
+    elif grounded_coverage is not None and grounded_coverage < 1.0:
+        coverage_failure_type = "chunk_ranking_gap"
+    elif (
+        policy_input_coverage is not None
+        and final_answer_coverage is not None
+        and final_answer_coverage < policy_input_coverage
+    ):
+        coverage_failure_type = "policy_deletion"
+    elif final_answer_coverage is not None and final_answer_coverage < 1.0:
+        coverage_failure_type = "generation_gap"
+    else:
+        coverage_failure_type = "complete"
     provenance = trust.get("provenance") if isinstance(trust, Mapping) else None
     temporal_provenance = provenance.get("temporal") if isinstance(provenance, Mapping) else None
     evidence_provenance = provenance.get("evidence") if isinstance(provenance, Mapping) else None
@@ -318,6 +373,7 @@ def evaluate_sample(
         "matched_evidence_count": len(matched_targets),
         "required_document_count": len(required_documents),
         "matched_document_count": len(matched_documents),
+        "missing_documents": missing_documents,
         "full_evidence_retrieved": (
             len(matched_targets) == len(sample.evidence) if sample.answerable else None
         ),
@@ -337,14 +393,10 @@ def evaluate_sample(
         "duplicate_count": duplicate_count,
         "duplicate_rate": duplicate_count / len(views) if views else 0.0,
         "no_answer_false_positive": bool(views) if not sample.answerable else None,
-        "answer_criteria_coverage": (
-            criteria_coverage(answer_text, sample.criteria)
-            if sample.answerable and answer is not None
-            else None
-        ),
-        "grounded_criteria_coverage": (
-            criteria_coverage(retrieved_text, sample.criteria) if sample.answerable else None
-        ),
+        "answer_criteria_coverage": final_answer_coverage,
+        "policy_input_criteria_coverage": policy_input_coverage,
+        "grounded_criteria_coverage": grounded_coverage,
+        "coverage_failure_type": coverage_failure_type,
         "evidence_source_correct": bool(matched_targets) if sample.answerable else None,
         "refusal_correct": refused if not sample.answerable and answer is not None else None,
         "grounding_state": (
@@ -438,6 +490,7 @@ def evaluate_sample(
             risk_rejected_claim_count / len(input_claims) if input_claims else None
         ),
         "policy_action": policy_action,
+        "policy_reason_codes": policy_reason_codes if trust is not None else None,
         "policy_answer_changed": policy_answer_changed,
         "provenance_available": isinstance(provenance, Mapping) if trust is not None else None,
         "temporal_provenance_bound": (
@@ -529,6 +582,14 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     latencies = [float(row["latency_ms"]) for row in rows]
     tokens = [int(row["tokens"]) for row in rows]
     llm_calls = [int(row["llm_calls"]) for row in rows]
+    usage_fields = (
+        "llm_input_tokens",
+        "llm_cache_hit_tokens",
+        "llm_cache_miss_tokens",
+        "llm_output_tokens",
+        "llm_reasoning_tokens",
+        "llm_estimated_input_tokens",
+    )
     summary = {
         "sample_count": len(rows),
         "successful_count": sum(row.get("error") is None for row in rows),
@@ -541,6 +602,7 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "duplicate_rate": average("duplicate_rate"),
         "no_answer_false_positive_rate": average("no_answer_false_positive"),
         "answer_criteria_coverage": average("answer_criteria_coverage"),
+        "policy_input_criteria_coverage": average("policy_input_criteria_coverage"),
         "grounded_criteria_coverage": average("grounded_criteria_coverage"),
         "evidence_source_accuracy": average("evidence_source_correct"),
         "full_evidence_retrieval_rate": average("full_evidence_retrieved"),
@@ -577,6 +639,34 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "average": round(mean(llm_calls), 2) if llm_calls else None,
         },
     }
+    if any(any(field in row for field in usage_fields) for row in rows):
+        summary["llm_token_usage"] = {
+            field.removeprefix("llm_"): sum(int(row.get(field) or 0) for row in rows)
+            for field in usage_fields
+        }
+        stage_totals: dict[str, dict[str, int]] = {}
+        for row in rows:
+            stage_usage = row.get("llm_stage_usage")
+            if not isinstance(stage_usage, Mapping):
+                continue
+            for stage, values in stage_usage.items():
+                if not isinstance(values, Mapping):
+                    continue
+                bucket = stage_totals.setdefault(str(stage), {})
+                for field, value in values.items():
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        bucket[str(field)] = bucket.get(str(field), 0) + max(value, 0)
+        summary["llm_token_usage"]["stages"] = stage_totals
+    if any("coverage_failure_type" in row for row in rows):
+        summary["coverage_failure_types"] = dict(
+            sorted(
+                Counter(
+                    str(row["coverage_failure_type"])
+                    for row in rows
+                    if row.get("coverage_failure_type")
+                ).items()
+            )
+        )
     # Committed reports predate Trust Metric 1.1. Do not synthesize new fields
     # while recomputing those immutable artifacts; new evaluator rows always
     # carry the keys, including explicit None when no checker ran.

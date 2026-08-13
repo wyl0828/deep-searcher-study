@@ -160,9 +160,7 @@ class AzureSearch(BaseVectorDB):
                         )
                         search_results.append(result)
                     except Exception as exc:
-                        log.error(
-                            log.safe_exception_message("azure_search_result_mapping", exc)
-                        )
+                        log.error(log.safe_exception_message("azure_search_result_mapping", exc))
 
             return search_results
         except Exception as exc:
@@ -198,9 +196,7 @@ class AzureSearch(BaseVectorDB):
                         )
                         alt_results.append(result)
                     except Exception as exc:
-                        log.error(
-                            log.safe_exception_message("azure_search_fallback_mapping", exc)
-                        )
+                        log.error(log.safe_exception_message("azure_search_fallback_mapping", exc))
 
                 return alt_results
             except Exception as exc:

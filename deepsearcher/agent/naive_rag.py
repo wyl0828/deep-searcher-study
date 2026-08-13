@@ -1,15 +1,28 @@
 from typing import List, Tuple
 
-from deepsearcher.agent.base import RAGAgent
+from deepsearcher.agent.base import RAGAgent, describe_class
 from deepsearcher.agent.collection_router import CollectionRouter
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
+from deepsearcher.query_planner import (
+    QUERY_PLAN_ORIGINAL_ANCHORS,
+    QUERY_PLAN_RRF_K,
+    QUERY_PLAN_TOPIC_ANCHORS,
+    QueryPlan,
+    merge_ranked_results,
+    plan_explicit_queries,
+    plan_queries,
+)
 from deepsearcher.utils import log
 from deepsearcher.vector_db.base import BaseVectorDB, RetrievalResult, deduplicate_results
 
 SUMMARY_PROMPT = """You are an AI content analysis expert. Generate a specific and detailed answer based on the retrieved evidence.
+
+Cover every distinct comparison dimension or process stage explicitly requested by
+the question when the evidence supports it. Do not omit supported trade-offs such as
+quality, latency, storage, resources, migration, rollback, or failure behavior.
 
 Original Query: {query}
 
@@ -20,6 +33,10 @@ Evidence:
 """
 
 
+@describe_class(
+    "This agent is suitable for direct factual questions that can be answered from a small set "
+    "of retrieved evidence without iterative decomposition."
+)
 class NaiveRAG(RAGAgent):
     """
     Naive Retrieval-Augmented Generation agent implementation.
@@ -36,6 +53,7 @@ class NaiveRAG(RAGAgent):
         top_k: int = 10,
         route_collection: bool = True,
         text_window_splitter: bool = True,
+        query_decomposition_enabled: bool = False,
         **kwargs,
     ):
         """
@@ -58,6 +76,13 @@ class NaiveRAG(RAGAgent):
                 llm=self.llm, vector_db=self.vector_db, dim=embedding_model.dimension
             )
         self.text_window_splitter = text_window_splitter
+        self.query_decomposition_enabled = bool(query_decomposition_enabled)
+        token_control = kwargs.get("token_control") or {}
+        self.answer_evidence_limit = max(int(token_control.get("answer_evidence_limit", 8)), 1)
+        self.max_tokens_per_chunk = max(int(token_control.get("max_tokens_per_chunk", 1200)), 1)
+        self.max_answer_evidence_tokens = max(
+            int(token_control.get("max_answer_evidence_tokens", 10000)), 1
+        )
 
     def retrieve(self, query: str, **kwargs) -> Tuple[List[RetrievalResult], int, dict]:
         """
@@ -94,6 +119,8 @@ class NaiveRAG(RAGAgent):
                 query=query,
                 dim=self.embedding_model.dimension,
                 allowed_collections=allowed_collections,
+                trace_collector=trace_collector,
+                iteration=1,
             )
         else:
             selected_collections = self.collection_router.resolve_all(
@@ -116,22 +143,59 @@ class NaiveRAG(RAGAgent):
             selected_collections,
             self.embedding_profile,
         )
-        all_retrieved_results = []
-        top_k = int(kwargs.get("top_k", self.top_k))
-        for collection in selected_collections:
-            retrieval_res = self.vector_db.search_data(
-                collection=collection,
-                vector=self.embedding_model.embed_query(query),
-                top_k=max(top_k // len(selected_collections), 1),
-                query_text=query,
+        explicit_queries = tuple(
+            dict.fromkeys(
+                str(item).strip()
+                for item in (kwargs.get("retrieval_queries") or ())
+                if str(item).strip()
             )
-            all_retrieved_results.extend(retrieval_res)
-        all_retrieved_results = deduplicate_results(all_retrieved_results)
+        )
+        if explicit_queries:
+            query_plan = plan_explicit_queries(query, explicit_queries)
+        elif self.query_decomposition_enabled:
+            query_plan = plan_queries(self.llm, query)
+            consume_tokens += query_plan.token_usage
+        else:
+            query_plan = QueryPlan((query,), False, False, "disabled")
+        result_groups = []
+        top_k = int(kwargs.get("top_k", self.top_k))
+        for planned_query in query_plan.queries:
+            query_results = []
+            for collection in selected_collections:
+                retrieval_res = self.vector_db.search_data(
+                    collection=collection,
+                    vector=self.embedding_model.embed_query(planned_query),
+                    top_k=top_k,
+                    query_text=planned_query,
+                )
+                query_results.extend(retrieval_res)
+            result_groups.append(deduplicate_results(query_results))
+        all_retrieved_results = merge_ranked_results(
+            result_groups,
+            limit=top_k,
+            anchor_count=QUERY_PLAN_ORIGINAL_ANCHORS if query_plan.decomposed else 0,
+            per_group_anchor_count=QUERY_PLAN_TOPIC_ANCHORS if query_plan.decomposed else 0,
+            cross_query_rrf_k=QUERY_PLAN_RRF_K if query_plan.decomposed else None,
+            identity_policy="source_chunk",
+        )
         if trace_collector is not None:
             trace_collector.record_documents_retrieved(all_retrieved_results)
             trace_collector.record_documents_supported(all_retrieved_results)
             trace_collector.record_reflection(bool(all_retrieved_results))
-        return all_retrieved_results, consume_tokens, {"collections": selected_collections}
+        return (
+            all_retrieved_results,
+            consume_tokens,
+            {
+                "collections": selected_collections,
+                "query_plan": {
+                    "queries": list(query_plan.queries),
+                    "decomposed": query_plan.decomposed,
+                    "fallback_used": query_plan.fallback_used,
+                    "reason": query_plan.reason,
+                    "token_usage": query_plan.token_usage,
+                },
+            },
+        )
 
     def query(self, query: str, **kwargs) -> Tuple[str, List[RetrievalResult], int]:
         """
@@ -156,13 +220,29 @@ class NaiveRAG(RAGAgent):
             all_retrieved_results,
             use_wider_text=self.text_window_splitter,
             trace_collector=trace_collector,
+            max_results=self.answer_evidence_limit,
+            max_tokens_per_chunk=self.max_tokens_per_chunk,
+            max_total_tokens=self.max_answer_evidence_tokens,
+            token_estimator=lambda text: self.llm.estimate_tokens(
+                [{"role": "user", "content": text}]
+            ),
         )
         summary_prompt = SUMMARY_PROMPT.format(
             query=query,
             mini_chunk_str=mini_chunk_str,
             grounding_instructions=GROUNDING_PROMPT,
         )
-        char_response = self.llm.chat([{"role": "user", "content": summary_prompt}])
+        char_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": summary_prompt}],
+            stage="final_answer",
+            max_tokens=4096,
+            trace_collector=trace_collector,
+            input_evidence_count=len(all_retrieved_results),
+            input_evidence_tokens=self.llm.estimate_tokens(
+                [{"role": "user", "content": mini_chunk_str}]
+            ),
+        )
         final_answer = char_response.content
         if trace_collector is not None:
             trace_collector.record_final_answer(char_response.total_tokens)

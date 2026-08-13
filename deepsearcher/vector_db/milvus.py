@@ -1,5 +1,6 @@
 import re
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import PurePath
 from typing import List, Literal, Optional, Union
 
 import numpy as np
@@ -102,6 +103,45 @@ def _hit_identity(hit: dict) -> tuple[object, ...]:
     )
 
 
+def _hit_document_identity(hit: dict) -> str:
+    entity = hit.get("entity") or {}
+    metadata = entity.get("metadata") or {}
+    document_id = str(metadata.get("document_id") or "").strip()
+    if document_id:
+        return f"document:{document_id}"
+    reference = str(entity.get("reference") or "").strip().replace("\\", "/")
+    if reference:
+        return f"reference:{PurePath(reference).as_posix().casefold()}"
+    return f"hit:{_hit_identity(hit)!r}"
+
+
+def _diversify_ranked_hits(
+    ranked: list[tuple[object, ...]],
+    hits: dict[tuple[object, ...], dict],
+    scores: dict[tuple[object, ...], float],
+    *,
+    existing: list[tuple[object, ...]],
+    tolerance: float,
+    limit: int,
+) -> list[tuple[object, ...]]:
+    """Prefer a new document only when its RRF score is close to the current best."""
+    selected = list(existing)
+    remaining = [key for key in ranked if key not in set(selected)]
+    seen_documents = {_hit_document_identity(hits[key]) for key in selected}
+    while remaining and len(selected) < limit:
+        best_score = scores[remaining[0]]
+        floor = best_score * (1 - tolerance)
+        eligible = [key for key in remaining if scores[key] >= floor]
+        chosen = next(
+            (key for key in eligible if _hit_document_identity(hits[key]) not in seen_documents),
+            remaining[0],
+        )
+        selected.append(chosen)
+        seen_documents.add(_hit_document_identity(hits[chosen]))
+        remaining.remove(chosen)
+    return selected
+
+
 def _weighted_rrf_hits(
     sparse_hits: list[dict],
     dense_hits: list[dict],
@@ -110,7 +150,9 @@ def _weighted_rrf_hits(
     dense_weight: float,
     rrf_k: int,
     dense_anchor_count: int,
+    diversity_tolerance: float = 0.0,
     limit: int,
+    diagnostics: dict | None = None,
 ) -> list[dict]:
     """Fuse two ranked hit lists while optionally preserving dense head anchors."""
     scores: dict[tuple[object, ...], float] = {}
@@ -137,7 +179,40 @@ def _weighted_rrf_hits(
         ),
     )
     anchor_keys = list(dense_ranks)[: min(dense_anchor_count, limit)]
-    ordered = anchor_keys + [key for key in ranked if key not in set(anchor_keys)]
+    ordered = _diversify_ranked_hits(
+        ranked,
+        hits,
+        scores,
+        existing=anchor_keys,
+        tolerance=diversity_tolerance,
+        limit=limit,
+    )
+    if diagnostics is not None:
+
+        def rank_items(ranks: dict[tuple[object, ...], int]) -> list[dict]:
+            return [
+                {
+                    "rank": rank,
+                    "identity": repr(key),
+                    "document": _hit_document_identity(hits[key]),
+                }
+                for key, rank in sorted(ranks.items(), key=lambda item: item[1])
+            ]
+
+        diagnostics.update(
+            {
+                "candidate_count": len(ranked),
+                "dense_candidates": rank_items(dense_ranks),
+                "sparse_candidates": rank_items(sparse_ranks),
+                "fused_candidates": rank_items(
+                    {key: rank for rank, key in enumerate(ranked, start=1)}
+                ),
+                "selected_candidates": rank_items(
+                    {key: rank for rank, key in enumerate(ordered, start=1)}
+                ),
+                "selected_documents": [_hit_document_identity(hits[key]) for key in ordered],
+            }
+        )
     return [
         {
             **hits[key],
@@ -169,6 +244,7 @@ class Milvus(BaseVectorDB):
         hybrid_dense_weight: float = 1.0,
         hybrid_candidate_multiplier: int = 1,
         hybrid_dense_anchor_count: int = 0,
+        hybrid_diversity_tolerance: float = 0.0,
         **kwargs,
     ):
         """
@@ -210,10 +286,16 @@ class Milvus(BaseVectorDB):
             raise ValueError("hybrid_candidate_multiplier must be a positive integer")
         if isinstance(hybrid_dense_anchor_count, bool) or int(hybrid_dense_anchor_count) < 0:
             raise ValueError("hybrid_dense_anchor_count must be a non-negative integer")
+        if (
+            isinstance(hybrid_diversity_tolerance, bool)
+            or not 0 <= float(hybrid_diversity_tolerance) <= 1
+        ):
+            raise ValueError("hybrid_diversity_tolerance must be between 0 and 1")
         self.hybrid_sparse_weight = float(hybrid_sparse_weight)
         self.hybrid_dense_weight = float(hybrid_dense_weight)
         self.hybrid_candidate_multiplier = int(hybrid_candidate_multiplier)
         self.hybrid_dense_anchor_count = int(hybrid_dense_anchor_count)
+        self.hybrid_diversity_tolerance = float(hybrid_diversity_tolerance)
 
     @staticmethod
     def _map_error(
@@ -687,6 +769,7 @@ class Milvus(BaseVectorDB):
         if not collection:
             collection = self.default_collection
         requested_mode = _normalize_retrieval_mode(kwargs.pop("retrieval_mode", "auto"))
+        retrieval_diagnostics = kwargs.pop("retrieval_diagnostics", None)
         retrieval_mode: RetrievalMode = requested_mode
         if retrieval_mode == "auto":
             retrieval_mode = "hybrid" if self.hybrid and query_text else "dense"
@@ -752,7 +835,15 @@ class Milvus(BaseVectorDB):
                             dense_weight=dense_weight,
                             rrf_k=self.rrf_k,
                             dense_anchor_count=int(getattr(self, "hybrid_dense_anchor_count", 0)),
+                            diversity_tolerance=float(
+                                getattr(self, "hybrid_diversity_tolerance", 0.0)
+                            ),
                             limit=top_k,
+                            diagnostics=(
+                                retrieval_diagnostics
+                                if isinstance(retrieval_diagnostics, dict)
+                                else None
+                            ),
                         )
                     ]
                 else:
@@ -990,6 +1081,7 @@ class Milvus(BaseVectorDB):
                     "sparse_weight": getattr(self, "hybrid_sparse_weight", 1.0),
                     "candidate_multiplier": getattr(self, "hybrid_candidate_multiplier", 1),
                     "dense_anchor_count": getattr(self, "hybrid_dense_anchor_count", 0),
+                    "diversity_tolerance": getattr(self, "hybrid_diversity_tolerance", 0.0),
                 },
             }
         except VectorDBError:

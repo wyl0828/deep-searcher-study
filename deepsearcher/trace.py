@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from deepsearcher.freshness import classify_query_freshness
 from deepsearcher.grounding import MAX_GROUNDING_EVIDENCE_TEXT, build_grounding
+from deepsearcher.llm.base import TokenUsage
 from deepsearcher.provenance import bind_trust_provenance_temporal, sanitize_trust_provenance
 from deepsearcher.risk import classify_query_risk
 from deepsearcher.temporal import extract_document_temporal_metadata
@@ -70,7 +71,7 @@ def redact_sensitive_text(value: Any, *, max_length: int) -> Optional[str]:
 class TraceCollector:
     """Collect explicit Agent events without parsing logs or exposing hidden reasoning."""
 
-    VERSION = 6
+    VERSION = 7
     EVENT_VERSION = 1
     MAX_VISIBLE_DOCUMENTS = 5
     MAX_DOCUMENT_TEXT = 600
@@ -90,6 +91,8 @@ class TraceCollector:
         | None = None,
         temporal_timezone: str = "UTC",
         reference_time: datetime | str | None = None,
+        token_control: Dict[str, Any] | None = None,
+        required_trust_calls: int = 0,
     ):
         self.risk_profile = dict(risk_profile or classify_query_risk(original_query))
         self.freshness_intent = classify_query_freshness(original_query)
@@ -100,6 +103,41 @@ class TraceCollector:
         self.final_answer_tokens = 0
         self.trust_tokens = 0
         self._selection_events: List[Dict[str, Any]] = []
+        self._llm_calls: List[Dict[str, Any]] = []
+        settings = token_control if isinstance(token_control, dict) else {}
+        self._budget_limits = {
+            "max_llm_calls": max(int(settings.get("max_llm_calls_per_query", 8)), 1),
+            "max_input_tokens_per_call": max(
+                int(settings.get("max_input_tokens_per_call", 24000)), 1
+            ),
+            "max_total_input_tokens": max(
+                int(settings.get("max_total_input_tokens_per_query", 32000)), 1
+            ),
+            "max_total_output_tokens": max(
+                int(settings.get("max_total_output_tokens_per_query", 8000)), 1
+            ),
+            "max_reasoning_tokens": max(
+                int(settings.get("max_reasoning_tokens_per_query", 2000)), 0
+            ),
+            "final_answer_max_tokens": max(int(settings.get("final_answer_max_tokens", 4096)), 1),
+            "required_trust_output_tokens": max(
+                int(settings.get("required_trust_output_tokens", 3904)), 0
+            ),
+        }
+        self._required_trust_calls = max(
+            int(required_trust_calls or (1 if entailment_checker is not None else 0)), 0
+        )
+        self._budget_state = {
+            "llm_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "pending_calls": 0,
+            "pending_input_tokens": 0,
+            "pending_output_tokens": 0,
+            "exhausted": False,
+            "exhausted_reason": None,
+        }
         self.contextualization: Optional[Dict[str, Any]] = None
         self._grounding_evidence_text: Dict[int, str] = {}
         self._grounding_snapshot_recorded = False
@@ -163,6 +201,8 @@ class TraceCollector:
         fallback_used: bool,
         reason: str,
         token_usage: int = 0,
+        dependency_status: str | None = None,
+        retrieval_query_count: int = 1,
     ) -> None:
         self.raise_if_cancelled()
         safe_reason = self._safe_identifier(reason) or "unknown"
@@ -172,6 +212,9 @@ class TraceCollector:
             "fallback_used": bool(fallback_used),
             "reason": safe_reason,
             "token_usage": max(int(token_usage or 0), 0),
+            "dependency_status": self._safe_identifier(dependency_status)
+            or ("dependent" if depends_on_history else "standalone"),
+            "retrieval_query_count": max(int(retrieval_query_count or 1), 1),
         }
         if self.contextualization["history_turn_count"]:
             self.emit_event("contextualization", dict(self.contextualization))
@@ -330,6 +373,142 @@ class TraceCollector:
         self.raise_if_cancelled()
         self.final_answer_tokens = int(token_usage or 0)
 
+    def record_llm_call(
+        self,
+        *,
+        stage: str,
+        model: str,
+        thinking: bool | None,
+        max_tokens: int | None,
+        usage: TokenUsage,
+        iteration: int | None = None,
+        input_evidence_count: int = 0,
+        input_evidence_tokens: int = 0,
+    ) -> None:
+        """Record token metadata without retaining prompts or hidden reasoning."""
+
+        self.raise_if_cancelled()
+        with self._event_lock:
+            self._budget_state["pending_calls"] = max(
+                int(self._budget_state["pending_calls"]) - 1, 0
+            )
+            self._budget_state["pending_input_tokens"] = max(
+                int(self._budget_state["pending_input_tokens"])
+                - max(int(usage.estimated_input_tokens or 0), 0),
+                0,
+            )
+            self._budget_state["pending_output_tokens"] = max(
+                int(self._budget_state["pending_output_tokens"]) - max(int(max_tokens or 0), 0),
+                0,
+            )
+            actual_input = (
+                usage.input_tokens
+                if usage.usage_source == "provider" and usage.input_tokens
+                else usage.estimated_input_tokens
+            )
+            self._budget_state["llm_calls"] += 1
+            self._budget_state["input_tokens"] += actual_input
+            self._budget_state["output_tokens"] += usage.output_tokens
+            self._budget_state["reasoning_tokens"] += usage.reasoning_tokens
+            call_index = len(self._llm_calls) + 1
+            self._llm_calls.append(
+                {
+                    "call_index": call_index,
+                    "stage": self._safe_identifier(stage) or "unspecified",
+                    "iteration": max(int(iteration), 0) if iteration is not None else None,
+                    "model": self._safe_identifier(model) or "unknown",
+                    "thinking": thinking,
+                    "max_tokens": max(int(max_tokens), 0) if max_tokens is not None else None,
+                    "input_evidence_count": max(int(input_evidence_count or 0), 0),
+                    "input_evidence_tokens": max(int(input_evidence_tokens or 0), 0),
+                    "usage": {
+                        "input_tokens": usage.input_tokens,
+                        "cache_hit_tokens": usage.cache_hit_tokens,
+                        "cache_miss_tokens": usage.cache_miss_tokens,
+                        "output_tokens": usage.output_tokens,
+                        "reasoning_tokens": usage.reasoning_tokens,
+                        "total_tokens": usage.total_tokens,
+                        "estimated_input_tokens": usage.estimated_input_tokens,
+                        "usage_source": usage.usage_source,
+                    },
+                }
+            )
+
+    def reserve_llm_call(
+        self,
+        *,
+        stage: str,
+        estimated_input_tokens: int,
+        requested_max_tokens: int,
+        optional: bool,
+    ) -> int:
+        """Reserve one call atomically and return its budget-adjusted output cap."""
+
+        estimated = max(int(estimated_input_tokens or 0), 0)
+        requested = max(int(requested_max_tokens or 0), 1)
+        limits = self._budget_limits
+        with self._event_lock:
+            state = self._budget_state
+            if stage == "final_answer":
+                requested = min(requested, limits["final_answer_max_tokens"])
+            if estimated > limits["max_input_tokens_per_call"]:
+                self._mark_budget_exhausted("max_input_tokens_per_call")
+                return 0
+            if (
+                state["input_tokens"] + state["pending_input_tokens"] + estimated
+                > limits["max_total_input_tokens"]
+            ):
+                self._mark_budget_exhausted("max_total_input_tokens")
+                return 0
+            reserved_calls = 0 if stage == "final_answer" else 1 + self._required_trust_calls
+            calls_after = state["llm_calls"] + state["pending_calls"] + 1
+            if calls_after + reserved_calls > limits["max_llm_calls"]:
+                self._mark_budget_exhausted("max_llm_calls")
+                return 0
+            reserved_output = (
+                0
+                if stage == "final_answer"
+                else limits["final_answer_max_tokens"]
+                + limits["required_trust_output_tokens"] * self._required_trust_calls
+            )
+            available_output = (
+                limits["max_total_output_tokens"]
+                - state["output_tokens"]
+                - state["pending_output_tokens"]
+                - reserved_output
+            )
+            effective = min(requested, max(available_output, 0))
+            if effective <= 0:
+                self._mark_budget_exhausted("max_total_output_tokens")
+                return 0
+            if state["reasoning_tokens"] >= limits["max_reasoning_tokens"] and optional:
+                self._mark_budget_exhausted("max_reasoning_tokens")
+                return 0
+            state["pending_calls"] += 1
+            state["pending_input_tokens"] += estimated
+            state["pending_output_tokens"] += effective
+            return effective
+
+    def release_llm_reservation(self, max_tokens: int, estimated_input_tokens: int = 0) -> None:
+        with self._event_lock:
+            self._budget_state["pending_calls"] = max(
+                int(self._budget_state["pending_calls"]) - 1, 0
+            )
+            self._budget_state["pending_input_tokens"] = max(
+                int(self._budget_state["pending_input_tokens"])
+                - max(int(estimated_input_tokens or 0), 0),
+                0,
+            )
+            self._budget_state["pending_output_tokens"] = max(
+                int(self._budget_state["pending_output_tokens"]) - max(int(max_tokens or 0), 0),
+                0,
+            )
+
+    def _mark_budget_exhausted(self, reason: str) -> None:
+        self._budget_state["exhausted"] = True
+        if self._budget_state["exhausted_reason"] is None:
+            self._budget_state["exhausted_reason"] = reason
+
     def record_grounding_evidence(
         self,
         evidence_snapshot: Iterable[tuple[RetrievalResult, str]],
@@ -455,6 +634,15 @@ class TraceCollector:
             "routing": self.routing_decision,
             "iterations": iterations,
             "selection_events": list(self._selection_events),
+            "llm_usage": {
+                "calls": list(self._llm_calls),
+                "summary": self._llm_usage_summary(),
+            },
+            "budget": {
+                key: value
+                for key, value in self._budget_state.items()
+                if key not in {"pending_calls", "pending_input_tokens", "pending_output_tokens"}
+            },
             "summary": {
                 "iteration_count": len(iterations),
                 "supported_document_count": len(final_results_list),
@@ -475,6 +663,33 @@ class TraceCollector:
             trace["grounding"] = self._final_grounding
             trace["trust"] = self._trust_report
         return trace
+
+    def _llm_usage_summary(self) -> Dict[str, Any]:
+        fields = (
+            "input_tokens",
+            "cache_hit_tokens",
+            "cache_miss_tokens",
+            "output_tokens",
+            "reasoning_tokens",
+            "total_tokens",
+            "estimated_input_tokens",
+        )
+        summary = {"call_count": len(self._llm_calls)}
+        summary.update(
+            {
+                field: sum(int(call["usage"].get(field) or 0) for call in self._llm_calls)
+                for field in fields
+            }
+        )
+        stages: Dict[str, Dict[str, int]] = {}
+        for call in self._llm_calls:
+            stage = call["stage"]
+            bucket = stages.setdefault(stage, {"call_count": 0, **{field: 0 for field in fields}})
+            bucket["call_count"] += 1
+            for field in fields:
+                bucket[field] += int(call["usage"].get(field) or 0)
+        summary["stages"] = stages
+        return summary
 
     def _serialize_iteration(
         self,

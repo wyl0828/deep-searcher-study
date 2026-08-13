@@ -14,7 +14,8 @@ from deepsearcher.agent.selection import (
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
+from deepsearcher.query_planner import plan_explicit_queries
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
 from deepsearcher.vector_db.base import BaseVectorDB, deduplicate_results
@@ -127,7 +128,7 @@ class ChainOfRAG(RAGAgent):
         llm: BaseLLM,
         embedding_model: BaseEmbedding,
         vector_db: BaseVectorDB,
-        max_iter: int = 4,
+        max_iter: int = 2,
         early_stopping: bool = False,
         route_collection: bool = True,
         text_window_splitter: bool = True,
@@ -162,6 +163,15 @@ class ChainOfRAG(RAGAgent):
         self.text_window_splitter = text_window_splitter
         self.min_evidence_for_stop = max(int(min_evidence_for_stop), 1)
         self.max_followup_query_length = max(int(max_followup_query_length), 1)
+        token_control = kwargs.get("token_control") or {}
+        self.answer_evidence_limit = max(int(token_control.get("answer_evidence_limit", 8)), 1)
+        self.max_tokens_per_chunk = max(int(token_control.get("max_tokens_per_chunk", 1200)), 1)
+        self.max_answer_evidence_tokens = max(
+            int(token_control.get("max_answer_evidence_tokens", 10000)), 1
+        )
+        self.max_reflection_evidence_tokens = max(
+            int(token_control.get("max_reflection_evidence_tokens", 2500)), 1
+        )
         self._last_supported_docs_decision = ContextVar(
             f"chain_of_rag_supported_docs_decision_{id(self)}",
             default=None,
@@ -196,8 +206,12 @@ class ChainOfRAG(RAGAgent):
         query: str,
         intermediate_context: List[str],
         previous_queries: List[str] | None = None,
+        *,
+        trace_collector=None,
+        iteration: int | None = None,
     ) -> Tuple[str, int]:
-        chat_response = self.llm.chat(
+        chat_response = chat_with_stage(
+            self.llm,
             [
                 {
                     "role": "user",
@@ -211,7 +225,11 @@ class ChainOfRAG(RAGAgent):
                         or "None",
                     ),
                 }
-            ]
+            ],
+            stage="followup_query",
+            max_tokens=512,
+            trace_collector=trace_collector,
+            iteration=iteration,
         )
         return self.llm.remove_think(chat_response.content), chat_response.total_tokens
 
@@ -326,6 +344,7 @@ class ChainOfRAG(RAGAgent):
         allowed_collections=None,
         top_k: int = 10,
         query_vector=None,
+        iteration: int | None = None,
     ) -> Tuple[str, List[RetrievalResult], int]:
         consume_tokens = 0
         if collection_names is not None:
@@ -340,6 +359,8 @@ class ChainOfRAG(RAGAgent):
                 query=query,
                 dim=self.embedding_model.dimension,
                 allowed_collections=allowed_collections,
+                trace_collector=trace_collector,
+                iteration=iteration,
             )
         else:
             selected_collections = self.collection_router.resolve_all(
@@ -377,16 +398,26 @@ class ChainOfRAG(RAGAgent):
             if trace_collector is not None:
                 trace_collector.record_intermediate_answer(NO_RELEVANT_INFORMATION, 0)
             return NO_RELEVANT_INFORMATION, [], consume_tokens
-        chat_response = self.llm.chat(
+        formatted_results = self._format_retrieved_results(all_retrieved_results)
+        chat_response = chat_with_stage(
+            self.llm,
             [
                 {
                     "role": "user",
                     "content": INTERMEDIATE_ANSWER_PROMPT.format(
-                        retrieved_documents=self._format_retrieved_results(all_retrieved_results),
+                        retrieved_documents=formatted_results,
                         sub_query=query,
                     ),
                 }
-            ]
+            ],
+            stage="intermediate_answer",
+            max_tokens=2048,
+            trace_collector=trace_collector,
+            iteration=iteration,
+            input_evidence_count=len(all_retrieved_results),
+            input_evidence_tokens=self.llm.estimate_tokens(
+                [{"role": "user", "content": formatted_results}]
+            ),
         )
         intermediate_answer = self.llm.remove_think(chat_response.content)
         if trace_collector is not None:
@@ -405,6 +436,9 @@ class ChainOfRAG(RAGAgent):
         query: str,
         intermediate_answer: str,
         main_query: str | None = None,
+        *,
+        trace_collector=None,
+        iteration: int | None = None,
     ) -> Tuple[List[RetrievalResult], int]:
         supported_retrieved_results = []
         token_usage = 0
@@ -412,18 +446,28 @@ class ChainOfRAG(RAGAgent):
             "no relevant information found" in str(intermediate_answer or "").casefold()
         )
         if retrieved_results and not answer_has_no_information:
-            chat_response = self.llm.chat(
+            formatted_results = self._format_retrieved_results(retrieved_results)
+            chat_response = chat_with_stage(
+                self.llm,
                 [
                     {
                         "role": "user",
                         "content": GET_SUPPORTED_DOCS_PROMPT.format(
-                            retrieved_documents=self._format_retrieved_results(retrieved_results),
+                            retrieved_documents=formatted_results,
                             main_query=main_query or query,
                             query=query,
                             answer=intermediate_answer,
                         ),
                     }
-                ]
+                ],
+                stage="support_filter",
+                max_tokens=256,
+                trace_collector=trace_collector,
+                iteration=iteration,
+                input_evidence_count=len(retrieved_results),
+                input_evidence_tokens=self.llm.estimate_tokens(
+                    [{"role": "user", "content": formatted_results}]
+                ),
             )
             try:
                 parsed_indices = self.llm.literal_eval(self.llm.remove_think(chat_response.content))
@@ -468,12 +512,18 @@ class ChainOfRAG(RAGAgent):
         return supported_retrieved_results, token_usage
 
     def _check_has_enough_info(
-        self, query: str, intermediate_contexts: List[str]
+        self,
+        query: str,
+        intermediate_contexts: List[str],
+        *,
+        trace_collector=None,
+        iteration: int | None = None,
     ) -> Tuple[bool, int]:
         if not intermediate_contexts:
             return False, 0
 
-        chat_response = self.llm.chat(
+        chat_response = chat_with_stage(
+            self.llm,
             [
                 {
                     "role": "user",
@@ -482,7 +532,11 @@ class ChainOfRAG(RAGAgent):
                         intermediate_context="\n".join(intermediate_contexts),
                     ),
                 }
-            ]
+            ],
+            stage="reflection",
+            max_tokens=512,
+            trace_collector=trace_collector,
+            iteration=iteration,
         )
         has_enough_info = self.llm.remove_think(chat_response.content).strip().lower() == "yes"
         return has_enough_info, chat_response.total_tokens
@@ -514,6 +568,10 @@ class ChainOfRAG(RAGAgent):
             int(kwargs.pop("min_evidence_for_stop", self.min_evidence_for_stop)),
             1,
         )
+        explicit_plan = plan_explicit_queries(
+            query, tuple(kwargs.pop("retrieval_queries", ()) or ())
+        )
+        seed_queries = list(explicit_plan.queries)
         trusted_contexts = []
         intermediate_steps = []
         attempted_queries = []
@@ -526,15 +584,17 @@ class ChainOfRAG(RAGAgent):
             log.color_print(f">> Iteration: {iteration}\n")
             if trace_collector is not None:
                 trace_collector.start_iteration(iteration)
-            if not attempted_queries:
-                generated_query = query
+            if iteration <= len(seed_queries):
+                generated_query = seed_queries[iteration - 1]
                 n_token0 = 0
-                query_source = "original_query"
+                query_source = "original_query" if iteration == 1 else "context_seed"
             else:
                 generated_query, n_token0 = self._reflect_get_subquery(
                     query,
                     trusted_contexts,
                     attempted_queries,
+                    trace_collector=trace_collector,
+                    iteration=iteration,
                 )
                 query_source = "model"
             token_usage += n_token0
@@ -584,6 +644,7 @@ class ChainOfRAG(RAGAgent):
                 intermediate_answer, retrieved_results, n_token1 = self._retrieve_and_answer(
                     followup_query,
                     trace_collector=trace_collector,
+                    iteration=iteration,
                     **retrieve_kwargs,
                 )
             else:
@@ -596,6 +657,8 @@ class ChainOfRAG(RAGAgent):
                 followup_query,
                 intermediate_answer,
                 main_query=query,
+                trace_collector=trace_collector,
+                iteration=iteration,
             )
             support_decision = dict(self.last_supported_docs_decision or {})
             if trace_collector is not None:
@@ -649,6 +712,8 @@ class ChainOfRAG(RAGAgent):
                     has_enough_info, n_token_check = self._check_has_enough_info(
                         query,
                         trusted_contexts,
+                        trace_collector=trace_collector,
+                        iteration=iteration,
                     )
                     gate_reason = (
                         "model_has_enough_verified_evidence"
@@ -717,22 +782,38 @@ class ChainOfRAG(RAGAgent):
             f"<think> Summarize answer from all {len(all_retrieved_results)} retrieved chunks... </think>\n"
         )
         trace_collector = kwargs.get("trace_collector")
-        chat_response = self.llm.chat(
+        formatted_evidence = format_grounding_evidence(
+            all_retrieved_results,
+            use_wider_text=self.text_window_splitter,
+            trace_collector=trace_collector,
+            max_results=self.answer_evidence_limit,
+            max_tokens_per_chunk=self.max_tokens_per_chunk,
+            max_total_tokens=self.max_answer_evidence_tokens,
+            token_estimator=lambda text: self.llm.estimate_tokens(
+                [{"role": "user", "content": text}]
+            ),
+        )
+        final_prompt = FINAL_ANSWER_PROMPT.format(
+            retrieved_documents=formatted_evidence,
+            intermediate_context="\n".join(intermediate_context),
+            query=query,
+            grounding_instructions=GROUNDING_PROMPT,
+        )
+        chat_response = chat_with_stage(
+            self.llm,
             [
                 {
                     "role": "user",
-                    "content": FINAL_ANSWER_PROMPT.format(
-                        retrieved_documents=format_grounding_evidence(
-                            all_retrieved_results,
-                            use_wider_text=self.text_window_splitter,
-                            trace_collector=trace_collector,
-                        ),
-                        intermediate_context="\n".join(intermediate_context),
-                        query=query,
-                        grounding_instructions=GROUNDING_PROMPT,
-                    ),
+                    "content": final_prompt,
                 }
-            ]
+            ],
+            stage="final_answer",
+            max_tokens=4096,
+            trace_collector=trace_collector,
+            input_evidence_count=len(all_retrieved_results),
+            input_evidence_tokens=self.llm.estimate_tokens(
+                [{"role": "user", "content": formatted_evidence}]
+            ),
         )
         if trace_collector is not None:
             trace_collector.record_final_answer(chat_response.total_tokens)

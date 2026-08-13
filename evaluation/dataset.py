@@ -99,8 +99,7 @@ def load_dataset(path: str | Path) -> EvalDataset:
         if not isinstance(raw_sources, list) or len(raw_sources) < 2:
             raise DatasetValidationError("sources must contain at least two source objects")
         sources = tuple(
-            _load_source(item, f"sources[{index}]")
-            for index, item in enumerate(raw_sources)
+            _load_source(item, f"sources[{index}]") for index, item in enumerate(raw_sources)
         )
     source_documents = [source.document for source in sources]
     if len(set(source_documents)) != len(source_documents):

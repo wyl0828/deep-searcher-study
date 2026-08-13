@@ -5,6 +5,7 @@ provide_settings:
       model: "deepseek-v4-flash"
       timeout: 30
       max_retries: 1
+      temperature: 0
 #      api_key: "sk-xxxx"  # Uncomment to override the `DEEPSEEK_API_KEY` set in the environment variable
 #      base_url: "https://api.deepseek.com"
 
@@ -171,6 +172,7 @@ provide_settings:
       hybrid_sparse_weight: 1.0
       hybrid_candidate_multiplier: 1
       hybrid_dense_anchor_count: 2
+      hybrid_diversity_tolerance: 0.0
 
   # vector_db:      
   #   provider: "OracleDB"
@@ -191,7 +193,25 @@ provide_settings:
   #     port: 6333
 
 query_settings:
-  max_iter: 3
+  max_iter: 2
+  token_control:
+    candidate_limit: 16
+    rerank_limit: 12
+    answer_evidence_limit: 8
+    max_tokens_per_chunk: 1200
+    max_answer_evidence_tokens: 10000
+    max_reflection_evidence_tokens: 2500
+    max_llm_calls_per_query: 8
+    max_input_tokens_per_call: 24000
+    max_total_input_tokens_per_query: 32000
+    max_total_output_tokens_per_query: 8000
+    max_reasoning_tokens_per_query: 2000
+    final_answer_max_tokens: 4096
+    # Leaves the 4096-token final-answer reservation intact under the 8000 cap.
+    required_trust_output_tokens: 3904
+  document_aware_query_decomposition:
+    # Promoted only after the focused and full v0.3 quality gates pass.
+    enabled: false
   trust:
     temporal:
       # Relative dates in answers are resolved against this request-clock timezone.
@@ -200,7 +220,8 @@ query_settings:
       # Opt-in: one bounded batch call for claims not resolved by deterministic checks.
       enabled: false
       provider: "llm"
-      min_confidence: 0.8
+      # deepseek-v4-flash / checker 1.2 / Gold 1.1.0 calibration recommendation.
+      min_confidence: 0.90
   deep_search:
     web_search_queries_per_iteration: 2
     web_search_results_per_query: 5

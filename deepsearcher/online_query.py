@@ -8,7 +8,7 @@ from deepsearcher.vector_db.base import RetrievalResult
 
 def query(
     original_query: str,
-    max_iter: int = 3,
+    max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
     *,
@@ -21,6 +21,8 @@ def query(
     evidence_provenance_resolver=None,
     temporal_timezone: str = "UTC",
     reference_time=None,
+    retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
+    token_control: Optional[dict] = None,
 ) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
@@ -48,6 +50,7 @@ def query(
             evidence_provenance_resolver=evidence_provenance_resolver,
             temporal_timezone=temporal_timezone,
             reference_time=reference_time,
+            token_control=token_control,
         )
         if enforce_trust
         else None
@@ -59,6 +62,8 @@ def query(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_queries:
+        kwargs["retrieval_queries"] = tuple(retrieval_queries)
     answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
     trust_tokens = 0
     if collector is not None:
@@ -73,7 +78,7 @@ def query(
 
 def query_with_trace(
     original_query: str,
-    max_iter: int = 3,
+    max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
     *,
@@ -86,6 +91,8 @@ def query_with_trace(
     evidence_provenance_resolver=None,
     temporal_timezone: str = "UTC",
     reference_time=None,
+    retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
+    token_control: Optional[dict] = None,
 ):
     """Query the knowledge base and return an additional structured execution trace."""
     collector = trace_collector or TraceCollector(
@@ -96,6 +103,7 @@ def query_with_trace(
         evidence_provenance_resolver=evidence_provenance_resolver,
         temporal_timezone=temporal_timezone,
         reference_time=reference_time,
+        token_control=token_control,
     )
     default_searcher = searcher or configuration.default_searcher
     kwargs = {"max_iter": max_iter, "trace_collector": collector}
@@ -103,6 +111,8 @@ def query_with_trace(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_queries:
+        kwargs["retrieval_queries"] = tuple(retrieval_queries)
     answer, results, agent_tokens = default_searcher.query(original_query, **kwargs)
     consume_tokens = int(agent_tokens or 0) + max(int(initial_tokens or 0), 0)
     answer = collector.finalize_answer(answer, results, enforce_policy=True)
@@ -121,7 +131,7 @@ def query_with_trace(
 
 def retrieve(
     original_query: str,
-    max_iter: int = 3,
+    max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
 ) -> Tuple[List[RetrievalResult], List[str], int]:

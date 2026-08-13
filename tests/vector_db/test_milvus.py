@@ -59,6 +59,67 @@ def test_weighted_rrf_fuses_duplicates_and_keeps_dense_head_anchor():
     assert fused[1]["distance"] > fused[0]["distance"]
 
 
+def test_weighted_rrf_prefers_close_scoring_unseen_document():
+    def hit(hit_id, document_id, reference):
+        return {
+            "id": hit_id,
+            "entity": {
+                "embedding": [],
+                "text": hit_id,
+                "reference": reference,
+                "metadata": {"document_id": document_id},
+            },
+        }
+
+    dense = [
+        hit("a1", "doc-a", "a.pdf"),
+        hit("a2", "doc-a", "a.pdf"),
+        hit("b1", "doc-b", "b.pdf"),
+    ]
+    diagnostics = {}
+
+    fused = _weighted_rrf_hits(
+        [],
+        dense,
+        sparse_weight=1,
+        dense_weight=1,
+        rrf_k=60,
+        dense_anchor_count=1,
+        diversity_tolerance=0.1,
+        limit=2,
+        diagnostics=diagnostics,
+    )
+
+    assert [item["id"] for item in fused] == ["a1", "b1"]
+    assert diagnostics["selected_documents"] == ["document:doc-a", "document:doc-b"]
+
+
+def test_weighted_rrf_document_fallback_normalizes_reference_path():
+    def hit(hit_id, reference):
+        return {
+            "id": hit_id,
+            "entity": {
+                "embedding": [],
+                "text": hit_id,
+                "reference": reference,
+                "metadata": {},
+            },
+        }
+
+    fused = _weighted_rrf_hits(
+        [],
+        [hit("a1", "Docs\\Guide.PDF"), hit("a2", "docs/guide.pdf"), hit("b", "other.pdf")],
+        sparse_weight=1,
+        dense_weight=1,
+        rrf_k=60,
+        dense_anchor_count=1,
+        diversity_tolerance=0.1,
+        limit=2,
+    )
+
+    assert [item["id"] for item in fused] == ["a1", "b"]
+
+
 @unittest.skipIf(
     importlib.util.find_spec("milvus_lite") is None,
     "milvus-lite is not available on this platform",
@@ -785,6 +846,7 @@ class TestMilvusFailureVisibility(unittest.TestCase):
                 "sparse_weight": 1.0,
                 "candidate_multiplier": 1,
                 "dense_anchor_count": 0,
+                "diversity_tolerance": 0.0,
             },
         )
         self.assertEqual(len(profile["indexes"]), 2)

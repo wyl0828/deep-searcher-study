@@ -146,15 +146,37 @@ def format_grounding_evidence(
     *,
     use_wider_text: bool,
     trace_collector: Any | None = None,
+    max_results: int = MAX_GROUNDING_EVIDENCE,
+    max_tokens_per_chunk: int | None = None,
+    max_total_tokens: int | None = None,
+    token_estimator: Callable[[str], int] | None = None,
 ) -> str:
     blocks: list[str] = []
     evidence_snapshot: list[tuple[RetrievalResult, str]] = []
-    for index, result in enumerate(list(results)[:MAX_GROUNDING_EVIDENCE], start=1):
+    total_estimated_tokens = 0
+    for result in list(results)[: max(int(max_results), 0)]:
         metadata = result.metadata if isinstance(result.metadata, dict) else {}
         text = metadata.get("wider_text") if use_wider_text else None
         if not isinstance(text, str) or not text.strip():
             text = result.text
         evidence_text = str(text)[:MAX_GROUNDING_EVIDENCE_TEXT]
+        if token_estimator is not None and max_tokens_per_chunk is not None:
+            evidence_text = _truncate_to_token_budget(
+                evidence_text, max(int(max_tokens_per_chunk), 1), token_estimator
+            )
+        estimated = token_estimator(evidence_text) if token_estimator is not None else 0
+        if max_total_tokens is not None and total_estimated_tokens + estimated > max(
+            int(max_total_tokens), 0
+        ):
+            remaining = max(int(max_total_tokens), 0) - total_estimated_tokens
+            if remaining <= 0:
+                break
+            evidence_text = _truncate_to_token_budget(evidence_text, remaining, token_estimator)
+            estimated = token_estimator(evidence_text)
+        if not evidence_text.strip():
+            continue
+        index = len(evidence_snapshot) + 1
+        total_estimated_tokens += estimated
         evidence_snapshot.append((result, evidence_text))
         governance = extract_document_governance_metadata(metadata)
         attributes = [f'id="E{index}"']
@@ -168,6 +190,28 @@ def format_grounding_evidence(
     if callable(record_snapshot):
         record_snapshot(evidence_snapshot)
     return "\n".join(blocks)
+
+
+def _truncate_to_token_budget(
+    text: str,
+    budget: int,
+    estimator: Callable[[str], int],
+) -> str:
+    """Return the longest prefix within a deterministic token budget."""
+
+    if budget <= 0:
+        return ""
+    value = str(text or "")
+    if estimator(value) <= budget:
+        return value
+    low, high = 0, len(value)
+    while low < high:
+        midpoint = (low + high + 1) // 2
+        if estimator(value[:midpoint]) <= budget:
+            low = midpoint
+        else:
+            high = midpoint - 1
+    return value[:low].rstrip()
 
 
 def _claim_units(answer: str) -> list[str]:

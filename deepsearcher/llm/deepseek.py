@@ -1,7 +1,13 @@
 import os
 from typing import Dict, List
 
-from deepsearcher.llm.base import BaseLLM, ChatResponse
+from deepsearcher.llm.base import (
+    BaseLLM,
+    ChatOptions,
+    ChatResponse,
+    TokenUsage,
+    _safe_usage_int,
+)
 
 
 class DeepSeek(BaseLLM):
@@ -40,6 +46,7 @@ class DeepSeek(BaseLLM):
             base_url = kwargs.pop("base_url")
         else:
             base_url = os.getenv("DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
+        self.temperature = float(kwargs.pop("temperature", 0.0))
         self.client = OpenAI_(api_key=api_key, base_url=base_url, **kwargs)
 
     def chat(self, messages: List[Dict]) -> ChatResponse:
@@ -54,11 +61,74 @@ class DeepSeek(BaseLLM):
         Returns:
             ChatResponse: An object containing the model's response and token usage information.
         """
-        completion = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
+        return self.chat_with_options(messages)
+
+    def chat_with_options(
+        self,
+        messages: List[Dict],
+        options: ChatOptions | None = None,
+    ) -> ChatResponse:
+        options = options or ChatOptions()
+        stable_system = {
+            "agent_router": "Select exactly one valid agent index. Return only the index.",
+            "collection_router": "Select authorized collection names. Return only a JSON array.",
+            "history_rewrite": "Rewrite conversational questions using the required JSON contract.",
+            "query_decomposition": "Return only the requested bounded JSON query list.",
+            "rerank": "Return only valid zero-based evidence indices as a JSON array.",
+            "support_filter": "Return only fully supported evidence indices as a JSON array.",
+            "reflection": "Assess evidence gaps and return only the requested constrained output.",
+            "followup_query": "Return one concise follow-up search query without explanation.",
+            "intermediate_answer": "Answer only from supplied evidence and stay concise.",
+            "entailment": "Apply the strict entailment JSON contract without explanation.",
+            "final_answer": "Answer only from supplied evidence and preserve citation markers.",
+        }.get(options.stage)
+        request_messages = list(messages)
+        if stable_system and not (request_messages and request_messages[0].get("role") == "system"):
+            request_messages = [
+                {"role": "system", "content": stable_system},
+                *request_messages,
+            ]
+        request: Dict = {"model": self.model, "messages": request_messages}
+        if options.thinking is None:
+            request["temperature"] = self.temperature
+        else:
+            request["extra_body"] = {
+                "thinking": {"type": "enabled" if options.thinking else "disabled"}
+            }
+            if not options.thinking:
+                request["temperature"] = self.temperature
+        if options.max_tokens is not None:
+            request["max_tokens"] = max(int(options.max_tokens), 1)
+        if options.response_format is not None:
+            request["response_format"] = options.response_format
+        completion = self.client.chat.completions.create(**request)
+        raw_usage = getattr(completion, "usage", None)
+        input_tokens = _safe_usage_int(getattr(raw_usage, "prompt_tokens", 0))
+        cache_hit = _safe_usage_int(getattr(raw_usage, "prompt_cache_hit_tokens", 0))
+        cache_miss = _safe_usage_int(getattr(raw_usage, "prompt_cache_miss_tokens", 0))
+        output_tokens = _safe_usage_int(getattr(raw_usage, "completion_tokens", 0))
+        details = getattr(raw_usage, "completion_tokens_details", None)
+        reasoning_tokens = min(
+            _safe_usage_int(getattr(details, "reasoning_tokens", 0)),
+            output_tokens,
         )
+        total_tokens = _safe_usage_int(getattr(raw_usage, "total_tokens", 0))
+        usage_available = any((input_tokens, cache_hit, cache_miss, output_tokens, total_tokens))
+        estimate = self.estimate_tokens(messages)
+        if not usage_available:
+            usage_source = "estimated"
+        else:
+            usage_source = "provider"
         return ChatResponse(
             content=completion.choices[0].message.content,
-            total_tokens=completion.usage.total_tokens,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                cache_hit_tokens=cache_hit,
+                cache_miss_tokens=cache_miss,
+                output_tokens=output_tokens,
+                reasoning_tokens=reasoning_tokens,
+                total_tokens=total_tokens,
+                estimated_input_tokens=estimate,
+                usage_source=usage_source,
+            ),
         )

@@ -638,17 +638,33 @@ Hybrid，并保存逐题 JSON/CSV、分标签质量、检索延迟、排序稳�
 `python -m evaluation.benchmark` 继续比较三类 Agent 的回答要点、声明支持、引用精确率/召回率、
 拒答、上下文改写、延迟和 Token。
 
-2026-08-09 的 `2.2.0` 三重复真实检索报告中，加权 RRF 使用 Dense:BM25=`1.5:1`、`k=5`、
-候选倍率 `1`，并保留 Dense 前两名。相对 Dense，Hybrid 的 MRR 从 71.16% 升至 71.53%、
-Recall@8 从 83.85% 升至 87.44%、召回答案要点覆盖率从 80.66% 升至 81.84%，8 道跨文档题的
-完整文档覆盖率从 25% 升至 37.5%；综合增益为 1.7133 个百分点且 P95 检索延迟满足门禁，
+当前查询链路已经启用 Token 成本治理：所有模型调用按阶段记录输入、输出、reasoning、缓存命中/
+未命中和本地估算；中间结构化阶段默认关闭 Thinking，并设置独立输出上限。DeepSearch 默认最多
+2 轮，候选、重排、最终证据和单段/总证据 Token 均有上限；查询级预算最多允许 8 次 LLM 调用，
+并在可选检索或反思前预留最终回答与必需 Trust 调用。Provider 未返回 usage 时，预算使用调用前
+确定性估算，不会将未知消耗当成 0。Trace 只保存统计，不保存 Prompt 或 reasoning 正文。
+
+以 `v0.3.0-rc.1` 的 24 题 `answer_stratified_v1` 基线为参照，2026-08-13 使用相同样本、
+`max_iter=2` 的真实回答复测中，NaiveRAG、DeepSearch、ChainOfRAG 平均 Token 从
+`2987.54/15139.17/9163.46` 降至 `2098.46/4211.04/5239.92`；平均 LLM 调用数为
+`1.21/3.92/4.75`，单题最大分别为 `2/6/7`。`5000` 是 ChainOfRAG 的优化目标而非发布硬上限；
+当前结果已降低约 42.8%，仍有继续压缩空间。固定 Full Quality Gate 中 ChainOfRAG Claim Support
+为 `0.625`，低于 `0.65` 门槛，因此该次报告保留为质量观察，不能表述为完整门禁通过；检索、上下文、
+NaiveRAG、DeepSearch 及独立 Entailment live 校准均通过各自固定门槛。
+
+2026-08-13 的 `2.2.0` 三重复真实检索报告中，加权 RRF 使用 Dense:BM25=`1.5:1`、`k=5`、
+候选倍率 `1`，并保留 Dense 前两名。相对 Dense，Hybrid 的 MRR 为 71.07%、
+Recall@8 从 84.62% 升至 87.44%、召回答案要点覆盖率从 81.69% 升至 82.35%，8 道跨文档题的
+完整文档覆盖率从 50% 升至 62.5%；综合增益为 1.13 个百分点，三类稳定率均为 100%，P95 检索延迟为 658 ms，
 因此 `deepsearcher/config.yaml` 已切换为 Hybrid。旧 Dense-only 知识库必须重建后使用，且不能把
-本次小型业务集外推为生产 SLO。
+本次小型业务集外推为生产 SLO。共享 document-aware decomposition 在定向样本中有效，但全量未胜出，
+因此继续默认关闭。
 
 同日 `answer_stratified_v1` 的 24×3 真实回答报告中，三类 Agent 均零错误。NaiveRAG、
-DeepSearch、ChainOfRAG 的质量分为 `0.785600/0.761980/0.774910`，平均 Tokens 为
-`2987.54/15139.17/9163.46`，P95 延迟为 `27.7/223.0/74.8` 秒。DeepSearch 的无答案拒答
-准确率只有 50%，未达到 75% 准入线；最终推荐 NaiveRAG 作为路由解析失败时的默认 Agent。
+DeepSearch、ChainOfRAG 的 Coverage 为 `85.00%/85.92%/72.42%`，Claim Support 为
+`79.17%/78.49%/79.17%`，无答案拒答准确率均为 100%。Docker Desktop 恢复期间的 2 次超时和
+4 次 Milvus 不可用通过获准的 checkpoint 重试恢复为 `recovered=6/still_failed=0`；最终推荐
+NaiveRAG 作为路由解析失败时的默认 Agent。
 显式要求联网时仍由路由器选择支持 Web Search 的 DeepSearch，不受该兜底选择影响。
 
 ### 一键质量门禁
@@ -673,6 +689,9 @@ DeepSearch、ChainOfRAG 的质量分为 `0.785600/0.761980/0.774910`，平均 To
 完整档先通过快速档，再使用 `evaluation/quality_gate.json` 中的固定样本与门槛校验新报告；
 它需要本机 Milvus 和 `.env` 中的真实 Provider 配置。GitHub Actions 默认执行快速档，并上传
 14 天可下载的质量日志与 JSON 结果。
+
+Full Gate 的回答阶段显式使用 `max_iter=2`，与当前 DeepSearch/ChainOfRAG 默认成本口径一致。
+成本目标用于观察和优化，不会替代 `evaluation/quality_gate.json` 中既有的质量阈值。
 
 ---
 ## 🧭 用户学习工作台
@@ -755,11 +774,18 @@ Claim 引用现在还会保存相对于生成证据快照的精确 `citation_spa
 [`docs/adr/0004-citation-span-mapper.md`](docs/adr/0004-citation-span-mapper.md)。人工金标集
 `evaluation/datasets/citation_span_v1.json` 已加入快速质量门禁。
 
-可插拔语义核验通过 `query_settings.trust.entailment` 配置，默认关闭；原因不是功能不可用，而是当前
-模型尚未完成金标阈值校准，不能默认增加额外调用和误拒答风险。Checker 使用严格 JSON 契约，不保存
-自由推理文本，失败或低置信统一成为 unknown，并将实际 Token 计入线上 Trace 与离线 Benchmark。
+可插拔语义核验通过 `query_settings.trust.entailment` 配置，默认关闭。Gold 1.1.0 包含 63 条、三标签
+各不少于 20 条；`deepseek-v4-flash` 与 Checker 1.2 以 8 条一批重复 3 次校准后，推荐阈值为 `0.90`，
+Accuracy 为 96.30%、Macro F1 为 96.38%、contradicted Recall 为 100%、危险误判为 0，样本结论
+稳定率为 98.41%。该结果只绑定当前数据集、模型和 Prompt/Checker 版本；默认仍关闭，避免未经业务流量
+验证就增加调用、延迟和误拒答风险。Checker 使用严格 JSON 契约，不保存自由推理文本，失败或低置信
+统一成为 unknown，并将实际 Token 计入线上 Trace 与离线 Benchmark。
 人工金标与 live 评测入口见
 [`docs/adr/0005-entailment-checker.md`](docs/adr/0005-entailment-checker.md)。
+
+Hybrid 参数筛选支持候选池、RRF 常数、Dense/Sparse 权重、Dense anchors 与确定性文档多样性重排，
+同时输出 Dense、BM25、融合和最终选择排名。当前 8 个跨文档样本的最佳完整文档覆盖率为 50%，尚未
+达到 62.5% 的提升目标，因此没有把实验参数推广为默认配置；现有已验证 Hybrid 基线保持不变。
 
 Query Risk Profile 会在服务端识别财务、制度合规、权限和健康安全类决策问题。high 风险回答必须
 获得明确语义结论；涉及额度、期限、比例或剂量时，还需要至少两份 Evidence 和两个独立来源，同一

@@ -2,6 +2,7 @@ import threading
 
 import pytest
 
+from deepsearcher.llm.base import TokenUsage
 from deepsearcher.online_query import query, query_with_trace
 from deepsearcher.trace import QueryCancelled, TraceCollector
 from deepsearcher.vector_db.base import RetrievalResult
@@ -74,7 +75,8 @@ def test_trace_collector_builds_versioned_safe_trace():
     iteration = trace["iterations"][0]
     document = iteration["retrieved_documents"][0]
 
-    assert trace["version"] == 6
+    assert trace["version"] == 7
+
     assert trace["agent"] == "ChainOfRAG"
     assert trace["routing"]["fallback_used"] is True
     assert trace["routing"]["reason"] == "invalid_index_format"
@@ -121,6 +123,80 @@ def test_trace_collector_builds_versioned_safe_trace():
     assert "embedding" not in document
     assert "metadata" not in document
     assert "secret" not in str(trace)
+
+
+def test_budget_reserves_final_answer_and_corrects_with_provider_usage():
+    collector = TraceCollector(
+        "question",
+        token_control={
+            "max_llm_calls_per_query": 3,
+            "max_total_input_tokens_per_query": 1000,
+            "max_total_output_tokens_per_query": 500,
+            "final_answer_max_tokens": 300,
+        },
+    )
+
+    optional_cap = collector.reserve_llm_call(
+        stage="reflection",
+        estimated_input_tokens=100,
+        requested_max_tokens=256,
+        optional=True,
+    )
+    assert optional_cap == 200
+    collector.record_llm_call(
+        stage="reflection",
+        model="test",
+        thinking=False,
+        max_tokens=optional_cap,
+        usage=TokenUsage(
+            input_tokens=90,
+            output_tokens=25,
+            total_tokens=115,
+            estimated_input_tokens=100,
+            usage_source="provider",
+        ),
+    )
+
+    final_cap = collector.reserve_llm_call(
+        stage="final_answer",
+        estimated_input_tokens=200,
+        requested_max_tokens=4096,
+        optional=False,
+    )
+    assert final_cap == 300
+
+
+def test_budget_uses_estimate_when_provider_usage_is_unavailable():
+    collector = TraceCollector(
+        "question",
+        token_control={"max_total_input_tokens_per_query": 120},
+    )
+    cap = collector.reserve_llm_call(
+        stage="reflection",
+        estimated_input_tokens=80,
+        requested_max_tokens=10,
+        optional=True,
+    )
+    collector.record_llm_call(
+        stage="reflection",
+        model="test",
+        thinking=False,
+        max_tokens=cap,
+        usage=TokenUsage(
+            estimated_input_tokens=80,
+            usage_source="estimated",
+        ),
+    )
+    assert (
+        collector.reserve_llm_call(
+            stage="reflection",
+            estimated_input_tokens=50,
+            requested_max_tokens=10,
+            optional=True,
+        )
+        == 0
+    )
+    assert collector._budget_state["exhausted_reason"] == "max_total_input_tokens"
 
 
 def test_trace_collector_limits_visible_documents_but_keeps_real_count():

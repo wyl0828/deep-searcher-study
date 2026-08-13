@@ -48,6 +48,33 @@ Tokens 为 `2987.54/15139.17/9163.46`，P95 延迟为
 `naive` 作为路由失败时的默认回答 Agent。完整结果见
 `results/workspace-v2-answer-stratified-20260809/report.json`。
 
+### Token 成本治理复测（2026-08-13）
+
+Token 成本治理以同一 `answer_stratified_v1` 24 题、同一 Collection 和三类 Agent 复测；回答阶段
+使用当前默认 `max_iter=2`。结果如下：
+
+| Agent | 旧基线平均 Token | 当前平均 Token | 降幅 | 平均/最大 LLM 调用 |
+| --- | ---: | ---: | ---: | ---: |
+| NaiveRAG | 2987.54 | 2098.46 | 29.8% | 1.21 / 2 |
+| DeepSearch | 15139.17 | 4211.04 | 72.2% | 3.92 / 6 |
+| ChainOfRAG | 9163.46 | 5239.92 | 42.8% | 4.75 / 7 |
+
+中间结构化调用的 reasoning Token 为 0，三类 Agent 单题调用均未超过 8 次硬上限。ChainOfRAG
+`5000` 是预期优化目标，不是质量门禁；当前实测略高 4.8%，但已经获得显著下降。
+
+质量阈值没有因 Token 项目而调整。该轮 retrieval、context、NaiveRAG、DeepSearch 阈值通过，
+ChainOfRAG Claim Support 为 `0.625`，低于固定 `0.65`，因此整套 Full Gate 报告为 failed，作为
+已知质量观察保留。独立 DeepSeek Entailment live 校准使用 Thinking、受控 `max_tokens=3904`，
+准确率 `0.9683`、稳定率 `1.0`、危险假阳性 `0`，通过发布门槛；Entailment 默认仍关闭。
+
+完整复测继续使用质量门禁入口：
+
+```powershell
+.\scripts\run-quality-gate.ps1 -Mode Full -OutputDir tmp/quality-gate/full
+```
+
+`evaluation/quality_gate.json` 的固定质量 tolerance 不属于 Token 成本目标，不能为了达到成本数字而放宽。
+
 报告使用 `metric_version=2.1.0`；`full_document_coverage_rate` 只以真正需要两份及以上文档的
 样本为分母，并同时输出 `multi_document_sample_count`。除原有质量、延迟和成本数据外，还输出全部证据
 召回率、声明级引用和上下文改写准确率，以及按标签和难度分组的

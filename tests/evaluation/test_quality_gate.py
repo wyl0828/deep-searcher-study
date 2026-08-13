@@ -5,6 +5,35 @@ import json
 from evaluation.quality_gate import DEFAULT_MANIFEST, ROOT, validate_quality_gate
 
 
+def test_release_gate_contract_uses_tracked_entailment_report_and_multidoc_threshold():
+    manifest = json.loads(DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+    threshold = next(
+        item
+        for item in manifest["reports"]["retrieval"]["thresholds"]
+        if item["path"] == "metrics.hybrid.full_document_coverage_rate"
+    )
+    report = ROOT / "evaluation" / "results" / "v0.3-entailment-deepseek-20260812" / "report.json"
+
+    assert threshold == {"path": threshold["path"], "op": "ge", "value": 0.625}
+    stability_paths = {
+        item["path"]
+        for item in manifest["reports"]["retrieval"]["thresholds"]
+        if "stability_rate" in item["path"]
+    }
+    assert stability_paths == {
+        "metrics.hybrid.query_plan_stability_rate",
+        "metrics.hybrid.retrieval_given_plan_stability_rate",
+        "metrics.hybrid.end_to_end_ranking_stability_rate",
+    }
+    assert {
+        "path": "freshness_classifier_version",
+        "op": "eq",
+        "value": "1.1.0",
+    } in manifest["reports"]["answer"]["thresholds"]
+    assert report.is_file()
+    assert "_local-" not in report.as_posix()
+
+
 def test_committed_quality_gate_reports_are_consistent():
     summary = validate_quality_gate()
 

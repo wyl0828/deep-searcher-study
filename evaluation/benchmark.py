@@ -17,6 +17,7 @@ from typing import Any, Callable, Mapping, Sequence
 from deepsearcher.agent import ChainOfRAG, DeepSearch, NaiveRAG
 from deepsearcher.configuration import Configuration, RuntimeComponents, build_runtime
 from deepsearcher.entailment import build_entailment_checker
+from deepsearcher.freshness import FRESHNESS_CLASSIFIER_VERSION
 from deepsearcher.provenance import TrustProvenanceSession
 from deepsearcher.query_context import contextualize_query
 from deepsearcher.trace import TraceCollector
@@ -26,7 +27,9 @@ from evaluation.metrics import (
     METRIC_VERSION,
     TRUST_METRIC_VERSION,
     aggregate,
+    criteria_coverage,
     evaluate_sample,
+    is_refusal,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,18 +247,32 @@ def _is_compatible_timeout_widening(
     old_keys = set(old_run)
     new_keys = set(new_run)
     added_keys = new_keys - old_keys
-    if old_keys - new_keys or added_keys - {"llm_timeout_seconds"}:
+    if old_keys - new_keys or added_keys - set(CHECKPOINT_WIDENABLE_TIMEOUTS):
         return False
     changed = bool(added_keys)
-    if "llm_timeout_seconds" in added_keys and new_run["llm_timeout_seconds"] is None:
-        return False
+    for key in added_keys:
+        try:
+            if new_run[key] is None or float(new_run[key]) <= 0:
+                return False
+        except (TypeError, ValueError):
+            return False
     for key in old_run:
         if old_run[key] == new_run[key]:
             continue
         if key not in CHECKPOINT_WIDENABLE_TIMEOUTS:
             return False
+        old_value = old_run[key]
+        new_value = new_run[key]
+        if old_value is None:
+            try:
+                if new_value is None or float(new_value) <= 0:
+                    return False
+            except (TypeError, ValueError):
+                return False
+            changed = True
+            continue
         try:
-            if float(new_run[key]) < float(old_run[key]):
+            if new_value is None or float(new_value) < float(old_value):
                 return False
         except (TypeError, ValueError):
             return False
@@ -447,6 +464,9 @@ def evaluate_agent(
         existing = existing_rows.get(sample.id) if existing_rows is not None else None
         if existing is not None and not existing.get("error"):
             row = dict(existing)
+            row["checkpoint_status"] = "reused"
+            if not sample.answerable:
+                row["refusal_correct"] = is_refusal(str(row.get("answer") or ""))
             rows.append(row)
             print(f"[{agent_name}] {index}/{len(samples)} {sample.id} resumed")
             continue
@@ -454,10 +474,13 @@ def evaluate_agent(
         started = time.perf_counter()
         results: Sequence[Any] = ()
         answer: str | None = None
+        policy_input_coverage: float | None = None
         grounding: dict[str, Any] | None = None
         trust: dict[str, Any] | None = None
+        llm_usage: dict[str, Any] | None = None
         tokens = 0
         error = None
+        previous_attempts = int((existing or {}).get("evaluation_attempts") or 0)
         contextualization = None
         effective_query = sample.question
         try:
@@ -481,6 +504,8 @@ def evaluate_agent(
                 "allowed_collections": [collection],
                 "top_k": top_k,
             }
+            if contextualization is not None:
+                kwargs["retrieval_queries"] = contextualization.retrieval_queries
             if mode == "answer":
                 provenance_session = TrustProvenanceSession(
                     getattr(agent, "runtime_components", agent),
@@ -496,6 +521,9 @@ def evaluate_agent(
                     temporal_timezone=temporal_timezone_from_query_settings(
                         agent.runtime_components.config.query_settings
                     ),
+                    token_control=agent.runtime_components.config.query_settings.get(
+                        "token_control", {}
+                    ),
                 )
                 if contextualization is not None:
                     collector.record_contextualization(
@@ -504,11 +532,16 @@ def evaluate_agent(
                         fallback_used=contextualization.fallback_used,
                         reason=contextualization.reason,
                         token_usage=contextualization.token_usage,
+                        dependency_status=contextualization.dependency_status,
+                        retrieval_query_count=len(contextualization.retrieval_queries),
                     )
                 answer, results, agent_tokens = agent.query(
                     effective_query,
                     trace_collector=collector,
                     **kwargs,
+                )
+                policy_input_coverage = (
+                    criteria_coverage(answer, sample.criteria) if sample.answerable else None
                 )
                 tokens += int(agent_tokens or 0)
                 answer = collector.finalize_answer(answer, results, enforce_policy=True)
@@ -520,6 +553,7 @@ def evaluate_agent(
                 )
                 grounding = trace.get("grounding")
                 trust = trace.get("trust")
+                llm_usage = trace.get("llm_usage") if isinstance(trace, dict) else None
             else:
                 results, agent_tokens, _ = agent.retrieve(effective_query, **kwargs)
                 tokens += int(agent_tokens or 0)
@@ -539,8 +573,43 @@ def evaluate_agent(
             source_aliases=source_aliases,
             grounding=grounding,
             trust=trust,
+            policy_input_criteria_coverage=policy_input_coverage,
         )
         row["agent"] = agent_name
+        usage_summary = (
+            llm_usage.get("summary")
+            if isinstance(llm_usage, Mapping) and isinstance(llm_usage.get("summary"), Mapping)
+            else {}
+        )
+        row["llm_input_tokens"] = int(usage_summary.get("input_tokens") or 0)
+        row["llm_cache_hit_tokens"] = int(usage_summary.get("cache_hit_tokens") or 0)
+        row["llm_cache_miss_tokens"] = int(usage_summary.get("cache_miss_tokens") or 0)
+        row["llm_output_tokens"] = int(usage_summary.get("output_tokens") or 0)
+        row["llm_reasoning_tokens"] = int(usage_summary.get("reasoning_tokens") or 0)
+        row["llm_estimated_input_tokens"] = int(usage_summary.get("estimated_input_tokens") or 0)
+        row["llm_stage_usage"] = usage_summary.get("stages") or {}
+        traced_calls = sum(
+            int(stage.get("call_count") or 0)
+            for stage in row["llm_stage_usage"].values()
+            if isinstance(stage, Mapping)
+        )
+        contextualization_calls = int(
+            contextualization is not None and contextualization.token_usage > 0
+        )
+        row["llm_calls"] = max(
+            int(row.get("llm_calls") or 0),
+            traced_calls + contextualization_calls,
+        )
+        row["evaluation_attempts"] = previous_attempts + 1
+        row["checkpoint_status"] = (
+            "recovered"
+            if existing is not None and error is None
+            else "still_failed"
+            if existing is not None
+            else "failed"
+            if error is not None
+            else "executed"
+        )
         row["context_expected_dependency"] = sample.context_dependent if sample.history else None
         row["context_predicted_dependency"] = (
             contextualization.depends_on_history if contextualization is not None else None
@@ -551,13 +620,29 @@ def evaluate_agent(
             else None
         )
         row["context_query_match"] = (
-            re.sub(r"\s+", " ", effective_query.casefold()).strip()
+            re.sub(
+                r"\s+",
+                " ",
+                str(contextualization.primary_rewrite or effective_query).casefold(),
+            ).strip()
             == re.sub(r"\s+", " ", (sample.standalone_question or "").casefold()).strip()
             if contextualization is not None
             else None
         )
         row["context_fallback_used"] = (
             contextualization.fallback_used if contextualization is not None else None
+        )
+        row["context_primary_rewrite"] = (
+            contextualization.primary_rewrite if contextualization is not None else None
+        )
+        row["context_safe_query"] = (
+            contextualization.safe_query if contextualization is not None else None
+        )
+        row["context_retrieval_queries"] = (
+            list(contextualization.retrieval_queries) if contextualization is not None else None
+        )
+        row["context_validation_reason"] = (
+            contextualization.validation_reason if contextualization is not None else None
         )
         row["context_tokens"] = (
             contextualization.token_usage if contextualization is not None else 0
@@ -570,7 +655,13 @@ def evaluate_agent(
             f"hit={row['retrieval_hit']} error={error or '-'} "
             f"latency={latency_ms:.0f}ms"
         )
-    return rows, aggregate(rows)
+    summary = aggregate(rows)
+    summary["checkpoint"] = {
+        status: sum(row.get("checkpoint_status") == status for row in rows)
+        for status in ("executed", "failed", "reused", "recovered", "still_failed")
+    }
+    summary["evaluation_attempts"] = sum(int(row.get("evaluation_attempts") or 0) for row in rows)
+    return rows, summary
 
 
 def _git_state() -> dict[str, Any]:
@@ -604,6 +695,15 @@ def _runtime_metadata(config: Configuration) -> dict[str, Any]:
             **({"model": model} if model else {}),
         }
     return providers
+
+
+def _provider_retry_metadata(config: Configuration) -> dict[str, Any]:
+    setting = config.get_provider_config("llm")
+    provider_config = setting.get("config", {})
+    return {
+        "provider": setting.get("provider"),
+        "max_retries": provider_config.get("max_retries"),
+    }
 
 
 def build_report(
@@ -652,6 +752,7 @@ def build_report(
         "report_schema_version": 2,
         "metric_version": METRIC_VERSION,
         "trust_metric_version": TRUST_METRIC_VERSION,
+        "freshness_classifier_version": FRESHNESS_CLASSIFIER_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset": {
             "id": dataset.dataset_id,
@@ -669,6 +770,7 @@ def build_report(
             "llm_timeout_seconds": llm_timeout_seconds,
             "external_call_timeout_seconds": external_call_timeout_seconds,
             "request_timeout_seconds": request_timeout_seconds,
+            "provider_retry": _provider_retry_metadata(config),
             "chain_early_stopping": True,
             "chain_min_evidence_for_stop": chain_min_evidence_for_stop,
             "agents": list(summaries),
@@ -742,7 +844,20 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "context_dependency_correct",
         "context_query_match",
         "context_fallback_used",
+        "context_primary_rewrite",
+        "context_safe_query",
+        "context_retrieval_queries",
+        "context_validation_reason",
         "context_tokens",
+        "llm_input_tokens",
+        "llm_cache_hit_tokens",
+        "llm_cache_miss_tokens",
+        "llm_output_tokens",
+        "llm_reasoning_tokens",
+        "llm_estimated_input_tokens",
+        "llm_stage_usage",
+        "checkpoint_status",
+        "evaluation_attempts",
         "multi_document",
         "required_evidence_count",
         "matched_evidence_count",
@@ -760,6 +875,8 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "duplicate_rate",
         "no_answer_false_positive",
         "answer_criteria_coverage",
+        "policy_input_criteria_coverage",
+        "coverage_failure_type",
         "grounded_criteria_coverage",
         "evidence_source_correct",
         "refusal_correct",
@@ -790,6 +907,7 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "freshness_rejected_claim_count",
         "freshness_rejection_rate",
         "policy_action",
+        "policy_reason_codes",
         "policy_answer_changed",
         "temporal_provenance_bound",
         "evidence_publication_anchor_count",
@@ -812,7 +930,13 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         writer = csv.DictWriter(handle, fieldnames=scalar_fields)
         writer.writeheader()
         for row in report["details"]:
-            writer.writerow({field: row.get(field) for field in scalar_fields})
+            serialized = {}
+            for field in scalar_fields:
+                value = row.get(field)
+                if isinstance(value, str):
+                    value = "\n".join(line.rstrip() for line in value.splitlines())
+                serialized[field] = value
+            writer.writerow(serialized)
     temporary_csv.replace(details_path)
     return report_path, details_path
 
@@ -898,6 +1022,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "dataset_sha256": dataset.sha256,
         "metric_version": METRIC_VERSION,
         "trust_metric_version": TRUST_METRIC_VERSION,
+        "freshness_classifier_version": FRESHNESS_CLASSIFIER_VERSION,
         "config_sha256": hashlib.sha256(args.config.read_bytes()).hexdigest(),
         "collection": args.collection,
         "mode": args.mode,

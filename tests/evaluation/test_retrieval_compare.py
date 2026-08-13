@@ -54,7 +54,7 @@ class FakeVectorDB:
         ]
 
 
-def test_evaluate_modes_embeds_each_question_once_and_repeats_every_mode():
+def test_evaluate_modes_replans_each_repetition_and_shares_plan_across_modes():
     dataset = load_dataset(DATASET)
     embedding = FakeEmbedding()
     vector_db = FakeVectorDB()
@@ -71,13 +71,15 @@ def test_evaluate_modes_embeds_each_question_once_and_repeats_every_mode():
         source_aliases={"WhatisMilvus.pdf": ("WhatisMilvus.pdf",)},
     )
 
-    assert embedding.calls == 1
+    assert embedding.calls == 2
     assert len(vector_db.calls) == 6
     assert set(rows) == {"dense", "bm25", "hybrid"}
     assert set(summaries) == set(rows)
-    assert all(mode_rows[0]["retrieval_hit"] is True for mode_rows in rows.values())
+    assert all(mode_rows[0]["retrieval_hit"] == 1.0 for mode_rows in rows.values())
     assert all(mode_rows[0]["search_repetitions"] == 2 for mode_rows in rows.values())
     assert all(mode_rows[0]["ranking_stability_rate"] == 1 for mode_rows in rows.values())
+    assert all(mode_rows[0]["query_plan_stability_rate"] == 1 for mode_rows in rows.values())
+    assert all(len(mode_rows[0]["repetitions"]) == 2 for mode_rows in rows.values())
 
 
 def test_evaluate_modes_uses_contextualized_query_for_every_mode():
@@ -115,11 +117,12 @@ def test_evaluate_modes_uses_contextualized_query_for_every_mode():
         source_aliases={"WhatisMilvus.pdf": ("WhatisMilvus.pdf",)},
     )
 
-    assert {call["query_text"] for call in vector_db.calls} == {
-        "Milvus Lite、Standalone 和 Distributed 分别适合什么部署场景？"
-    }
-    assert rows["dense"][0]["context_dependency_correct"] is True
-    assert rows["dense"][0]["context_query_match"] is True
+    queries = {call["query_text"] for call in vector_db.calls}
+    assert "Milvus 是什么，它有哪些部署形态？ 那三种分别适合什么场景？" in queries
+    assert any("部署形态包括 Lite" in query for query in queries)
+    assert rows["dense"][0]["context_dependency_correct"] == 1.0
+    assert rows["dense"][0]["context_query_match"] == 1.0
+    assert len(rows["dense"][0]["context_retrieval_queries"]) == 2
     assert rows["dense"][0]["tokens"] == 9
     assert rows["dense"][0]["llm_calls"] == 1
     assert summaries["hybrid"]["context_dependency_accuracy"] == 1.0
@@ -208,6 +211,8 @@ def test_parse_args_exposes_rrf_and_repetition_contract():
             "2",
             "--dense-anchors",
             "2",
+            "--diversity-tolerance",
+            "0.1",
             "--repetitions",
             "5",
             "--batch-size",
@@ -223,6 +228,7 @@ def test_parse_args_exposes_rrf_and_repetition_contract():
     assert args.sparse_weight == 0.75
     assert args.candidate_multiplier == 2
     assert args.dense_anchors == 2
+    assert args.diversity_tolerance == 0.1
     assert args.repetitions == 5
     assert args.batch_size == 8
     assert args.prepare is True

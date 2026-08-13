@@ -452,7 +452,7 @@ class ConversationHistoryMessage(BaseModel):
 
 class QueryStreamRequest(BaseModel):
     original_query: str = Field(min_length=1, max_length=4000)
-    max_iter: int = Field(default=3, ge=1, le=10)
+    max_iter: int = Field(default=2, ge=1, le=10)
     collection_names: List[str] | None = Field(default=None, max_length=512)
     use_web_search: bool = False
     conversation_history: List[ConversationHistoryMessage] = Field(
@@ -477,11 +477,14 @@ def _contextualize_request(
             history_turn_count=0,
             fallback_used=False,
             reason="no_history",
+            retrieval_queries=(payload.original_query.strip(),),
+            dependency_status="standalone",
         )
     context = contextualize_query(
         runtime.llm,
         payload.original_query,
         [item.model_dump() for item in payload.conversation_history],
+        trace_collector=collector,
     )
     if collector is not None and context.history_turn_count:
         collector.record_contextualization(
@@ -490,6 +493,8 @@ def _contextualize_request(
             fallback_used=context.fallback_used,
             reason=context.reason,
             token_usage=context.token_usage,
+            dependency_status=context.dependency_status,
+            retrieval_query_count=len(context.retrieval_queries),
         )
     return context
 
@@ -999,6 +1004,7 @@ def perform_query(
             "use_web_search": payload.use_web_search,
             "entailment_checker": getattr(runtime, "entailment_checker", None),
             "temporal_timezone": temporal_timezone,
+            "token_control": getattr(runtime.config, "query_settings", {}).get("token_control", {}),
         }
         if explicit_collections is not None:
             kwargs["collection_names"] = explicit_collections
@@ -1012,6 +1018,9 @@ def perform_query(
                 provenance_resolver=provenance_session.bind_collections,
                 evidence_provenance_resolver=provenance_session.bind_evidence,
                 temporal_timezone=temporal_timezone,
+                token_control=getattr(runtime.config, "query_settings", {}).get(
+                    "token_control", {}
+                ),
             )
             contextual = _contextualize_request(payload, runtime, collector)
             result_text, _, consume_token, trace = query_with_trace(
@@ -1019,6 +1028,7 @@ def perform_query(
                 payload.max_iter,
                 trace_collector=collector,
                 initial_tokens=contextual.token_usage,
+                retrieval_queries=contextual.retrieval_queries,
                 **kwargs,
             )
             return {
@@ -1032,6 +1042,7 @@ def perform_query(
             contextual.query,
             payload.max_iter,
             initial_tokens=contextual.token_usage,
+            retrieval_queries=contextual.retrieval_queries,
             enforce_trust=True,
             provenance=provenance,
             provenance_resolver=provenance_session.bind_collections,
@@ -1157,6 +1168,9 @@ async def perform_query_stream(
             temporal_timezone=temporal_timezone_from_query_settings(
                 getattr(lease.runtime.config, "query_settings", {})
             ),
+            token_control=getattr(lease.runtime.config, "query_settings", {}).get(
+                "token_control", {}
+            ),
         )
 
         def run_query() -> None:
@@ -1170,6 +1184,8 @@ async def perform_query_stream(
                         fallback_used=contextual.fallback_used,
                         reason=contextual.reason,
                         token_usage=contextual.token_usage,
+                        dependency_status=contextual.dependency_status,
+                        retrieval_query_count=len(contextual.retrieval_queries),
                     )
                 result_text, _, consume_token, trace = query_with_trace(
                     contextual.query,
@@ -1179,6 +1195,7 @@ async def perform_query_stream(
                     searcher=lease.runtime.default_searcher,
                     trace_collector=collector,
                     initial_tokens=contextual.token_usage,
+                    retrieval_queries=contextual.retrieval_queries,
                 )
             except QueryCancelled:
                 collector.emit_event(

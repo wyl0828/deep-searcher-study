@@ -11,13 +11,21 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import mean, median
+from statistics import mean
 from typing import Any, Mapping, Sequence
 
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.configuration import Configuration, ModuleFactory
 from deepsearcher.offline_loading import load_from_local_files
 from deepsearcher.query_context import contextualize_query
+from deepsearcher.query_planner import (
+    QUERY_PLAN_ORIGINAL_ANCHORS,
+    QUERY_PLAN_RRF_K,
+    QUERY_PLAN_TOPIC_ANCHORS,
+    QueryPlan,
+    merge_ranked_results,
+    plan_queries,
+)
 from evaluation.benchmark import (
     DEFAULT_CONFIG,
     DEFAULT_DATASET,
@@ -32,6 +40,8 @@ from evaluation.metrics import (
     METRIC_VERSION,
     aggregate,
     evaluate_sample,
+    matches_document,
+    matches_evidence,
     percentile,
     result_view,
 )
@@ -90,14 +100,16 @@ def summarize_mode(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     summary = aggregate(rows)
     search_latencies = [float(row["search_latency_ms"]) for row in rows]
     embedding_latencies = [float(row["embedding_latency_ms"]) for row in rows]
-    stability = [
-        float(row["ranking_stability_rate"])
-        for row in rows
-        if row.get("ranking_stability_rate") is not None
-    ]
     summary["search_latency_ms"] = _latency_summary(search_latencies)
     summary["embedding_latency_ms"] = _latency_summary(embedding_latencies)
-    summary["ranking_stability_rate"] = round(mean(stability), 4) if stability else None
+    for field in (
+        "query_plan_stability_rate",
+        "retrieval_given_plan_stability_rate",
+        "end_to_end_ranking_stability_rate",
+        "ranking_stability_rate",
+    ):
+        values = [float(row[field]) for row in rows if row.get(field) is not None]
+        summary[field] = round(mean(values), 4) if values else None
     return summary
 
 
@@ -126,133 +138,306 @@ def evaluate_modes(
     sample_ids: Sequence[str] | None = None,
     source_aliases: Mapping[str, Sequence[str]] | None = None,
     contextualizer_llm: Any | None = None,
+    query_decomposition_enabled: bool = False,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
     samples = select_samples(dataset, limit=limit, sample_ids=sample_ids)
-    if contextualizer_llm is None and any(sample.history for sample in samples):
-        raise ValueError("contextualizer_llm is required for conversational samples")
+    if contextualizer_llm is None and (
+        query_decomposition_enabled or any(sample.history for sample in samples)
+    ):
+        raise ValueError("contextualizer_llm is required for context or query decomposition")
     rows_by_mode: dict[str, list[dict[str, Any]]] = {mode: [] for mode in modes}
     for sample_index, sample in enumerate(samples):
-        context_started = time.perf_counter()
-        contextualization = None
-        effective_query = sample.question
-        context_calls_before = int(getattr(contextualizer_llm, "calls", 0))
-        if sample.history:
-            contextualization = contextualize_query(
-                contextualizer_llm,
-                sample.question,
-                [
-                    {
-                        "role": role,
-                        "content": content,
-                        "grounded": role == "assistant",
-                    }
-                    for role, content in sample.history
-                ],
+        repetition_rows: dict[str, list[dict[str, Any]]] = {mode: [] for mode in modes}
+        plan_signatures: list[tuple[str, ...]] = []
+        plan_outcome_signatures: list[tuple[Any, ...]] = []
+        result_signatures: dict[str, list[tuple[tuple[Any, ...], ...]]] = {
+            mode: [] for mode in modes
+        }
+        for repetition in range(repetitions):
+            planning_started = time.perf_counter()
+            calls_before = int(getattr(contextualizer_llm, "calls", 0))
+            contextualization = None
+            effective_query = sample.question
+            query_plan = QueryPlan((effective_query,), False, False, "disabled")
+            if sample.history:
+                contextualization = contextualize_query(
+                    contextualizer_llm,
+                    sample.question,
+                    [
+                        {"role": role, "content": content, "grounded": role == "assistant"}
+                        for role, content in sample.history
+                    ],
+                )
+                effective_query = contextualization.query
+                query_plan = QueryPlan(
+                    contextualization.retrieval_queries,
+                    len(contextualization.retrieval_queries) > 1,
+                    contextualization.fallback_used,
+                    f"context:{contextualization.reason}",
+                    contextualization.token_usage,
+                )
+            elif query_decomposition_enabled:
+                query_plan = plan_queries(contextualizer_llm, effective_query)
+            planning_latency_ms = (time.perf_counter() - planning_started) * 1000
+            context_calls = int(getattr(contextualizer_llm, "calls", 0)) - calls_before
+            plan_signatures.append(query_plan.queries)
+            plan_outcome_signatures.append(
+                (
+                    query_plan.decomposed,
+                    query_plan.fallback_used,
+                    query_plan.reason,
+                    len(query_plan.queries),
+                    contextualization.dependency_status if contextualization else None,
+                )
             )
-            effective_query = contextualization.query
-        contextualization_latency_ms = (
-            (time.perf_counter() - context_started) * 1000 if sample.history else 0.0
-        )
-        context_calls = int(getattr(contextualizer_llm, "calls", 0)) - context_calls_before
-        embedding_started = time.perf_counter()
-        embedding_error: str | None = None
-        try:
-            vector = embedding_model.embed_query(effective_query)
-        except Exception as exc:
-            vector = []
-            embedding_error = _safe_error(exc)
-        embedding_latency_ms = (time.perf_counter() - embedding_started) * 1000
 
-        mode_results: dict[str, list[Any]] = {mode: [] for mode in modes}
-        mode_durations: dict[str, list[float]] = {mode: [] for mode in modes}
-        mode_signatures: dict[str, list[tuple[tuple[Any, ...], ...]]] = {mode: [] for mode in modes}
-        mode_errors: dict[str, str | None] = {mode: embedding_error for mode in modes}
-        if embedding_error is None:
-            for repetition in range(repetitions):
-                offset = (sample_index + repetition) % len(modes)
-                ordered_modes = tuple(modes[offset:]) + tuple(modes[:offset])
-                for mode in ordered_modes:
-                    started = time.perf_counter()
+            embedding_started = time.perf_counter()
+            embedding_error = None
+            try:
+                vectors = {
+                    query: embedding_model.embed_query(query) for query in query_plan.queries
+                }
+            except Exception as exc:
+                vectors = {}
+                embedding_error = _safe_error(exc)
+            embedding_latency_ms = (time.perf_counter() - embedding_started) * 1000
+            offset = (sample_index + repetition) % len(modes)
+            ordered_modes = tuple(modes[offset:]) + tuple(modes[:offset])
+            for mode in ordered_modes:
+                started = time.perf_counter()
+                results: list[Any] = []
+                error = embedding_error
+                query_diagnostics = []
+                if error is None:
                     try:
-                        results = vector_db.search_data(
-                            collection=collection,
-                            vector=vector,
-                            query_text=effective_query,
-                            retrieval_mode=mode,
-                            top_k=top_k,
+                        groups = []
+                        for planned_query in query_plan.queries:
+                            diagnostics: dict[str, Any] = {}
+                            query_results = list(
+                                vector_db.search_data(
+                                    collection=collection,
+                                    vector=vectors[planned_query],
+                                    query_text=planned_query,
+                                    retrieval_mode=mode,
+                                    top_k=top_k,
+                                    retrieval_diagnostics=diagnostics,
+                                )
+                            )
+                            groups.append(query_results)
+                            query_diagnostics.append(
+                                {
+                                    "query": planned_query,
+                                    "diagnostics": diagnostics or None,
+                                    "ranked_results": [
+                                        {
+                                            "rank": rank,
+                                            "document": result_view(result).document,
+                                            "page": result_view(result).page,
+                                            "matches_gold": any(
+                                                matches_evidence(
+                                                    result_view(result), target, source_aliases
+                                                )
+                                                for target in sample.evidence
+                                            ),
+                                        }
+                                        for rank, result in enumerate(query_results, start=1)
+                                    ],
+                                }
+                            )
+                        merged_candidates = merge_ranked_results(
+                            groups,
+                            limit=sum(len(group) for group in groups),
+                            anchor_count=(
+                                QUERY_PLAN_ORIGINAL_ANCHORS if query_plan.decomposed else 0
+                            ),
+                            per_group_anchor_count=(
+                                QUERY_PLAN_TOPIC_ANCHORS if query_plan.decomposed else 0
+                            ),
+                            cross_query_rrf_k=(QUERY_PLAN_RRF_K if query_plan.decomposed else None),
                         )
+                        results = merged_candidates[:top_k]
+                        missing_document_diagnostics = []
+                        for document in sorted({target.document for target in sample.evidence}):
+                            target = next(
+                                target for target in sample.evidence if target.document == document
+                            )
+                            raw_ranks = [
+                                {
+                                    "query": planned_query,
+                                    "rank": rank,
+                                }
+                                for planned_query, group in zip(
+                                    query_plan.queries, groups, strict=True
+                                )
+                                for rank, candidate in enumerate(group, start=1)
+                                if matches_document(result_view(candidate), target, source_aliases)
+                            ]
+                            final_rank = next(
+                                (
+                                    rank
+                                    for rank, candidate in enumerate(merged_candidates, start=1)
+                                    if matches_document(
+                                        result_view(candidate), target, source_aliases
+                                    )
+                                ),
+                                None,
+                            )
+                            if final_rank is None or final_rank > top_k:
+                                missing_document_diagnostics.append(
+                                    {
+                                        "document": document,
+                                        "classification": (
+                                            "fusion_lost" if raw_ranks else "not_recalled"
+                                        ),
+                                        "raw_ranks": raw_ranks,
+                                        "fusion_rank": final_rank,
+                                        "candidate_truncation_position": top_k,
+                                    }
+                                )
                     except Exception as exc:
-                        mode_errors[mode] = _safe_error(exc)
-                        continue
-                    mode_durations[mode].append((time.perf_counter() - started) * 1000)
-                    if not mode_results[mode]:
-                        mode_results[mode] = list(results)
-                    mode_signatures[mode].append(_result_signature(results))
+                        error = _safe_error(exc)
+                search_latency_ms = (time.perf_counter() - started) * 1000
+                row = evaluate_sample(
+                    sample,
+                    results,
+                    answer=None,
+                    top_k=top_k,
+                    latency_ms=planning_latency_ms + embedding_latency_ms + search_latency_ms,
+                    tokens=query_plan.token_usage,
+                    llm_calls=context_calls,
+                    error=error,
+                    source_aliases=source_aliases,
+                )
+                row.update(
+                    {
+                        "retrieval_mode": mode,
+                        "repetition": repetition + 1,
+                        "context_expected_dependency": sample.context_dependent
+                        if sample.history
+                        else None,
+                        "context_predicted_dependency": contextualization.depends_on_history
+                        if contextualization
+                        else None,
+                        "context_dependency_correct": (
+                            contextualization.depends_on_history == sample.context_dependent
+                            if contextualization
+                            else None
+                        ),
+                        "context_query_match": (
+                            re.sub(
+                                r"\s+",
+                                " ",
+                                str(
+                                    contextualization.primary_rewrite or effective_query
+                                ).casefold(),
+                            ).strip()
+                            == re.sub(
+                                r"\s+", " ", (sample.standalone_question or "").casefold()
+                            ).strip()
+                            if contextualization
+                            else None
+                        ),
+                        "context_fallback_used": contextualization.fallback_used
+                        if contextualization
+                        else None,
+                        "context_dependency_status": contextualization.dependency_status
+                        if contextualization
+                        else None,
+                        "context_retrieval_queries": list(query_plan.queries),
+                        "query_plan": {
+                            "queries": list(query_plan.queries),
+                            "decomposed": query_plan.decomposed,
+                            "fallback_used": query_plan.fallback_used,
+                            "reason": query_plan.reason,
+                            "token_usage": query_plan.token_usage,
+                        },
+                        "query_planning_latency_ms": round(planning_latency_ms, 3),
+                        "embedding_latency_ms": round(embedding_latency_ms, 3),
+                        "search_latency_ms": round(search_latency_ms, 3),
+                        "retrieval_diagnostics": {
+                            "queries": query_diagnostics,
+                            "per_query_top_k": top_k,
+                            "anchor_count": (
+                                QUERY_PLAN_ORIGINAL_ANCHORS if query_plan.decomposed else 0
+                            ),
+                            "per_query_anchor_count": (
+                                QUERY_PLAN_TOPIC_ANCHORS if query_plan.decomposed else 0
+                            ),
+                            "cross_query_rrf_k": (
+                                QUERY_PLAN_RRF_K if query_plan.decomposed else None
+                            ),
+                            "missing_documents": missing_document_diagnostics,
+                        },
+                    }
+                )
+                repetition_rows[mode].append(row)
+                result_signatures[mode].append(_result_signature(results))
 
+        planner_stability = mean(
+            outcome == plan_outcome_signatures[0] for outcome in plan_outcome_signatures
+        )
+        averaged_fields = (
+            "retrieval_hit",
+            "retrieval_recall",
+            "retrieval_precision",
+            "reciprocal_rank",
+            "empty_result",
+            "duplicate_rate",
+            "grounded_criteria_coverage",
+            "evidence_source_correct",
+            "full_evidence_retrieved",
+            "full_document_coverage",
+            "context_dependency_correct",
+            "context_query_match",
+            "context_fallback_used",
+        )
         for mode in modes:
-            durations = mode_durations[mode]
-            search_latency_ms = median(durations) if durations else 0.0
-            signatures = mode_signatures[mode]
-            stability_rate = (
-                mean(signature == signatures[0] for signature in signatures) if signatures else None
+            rep_rows = repetition_rows[mode]
+            row = dict(rep_rows[0])
+            for field in averaged_fields:
+                values = [item[field] for item in rep_rows if item.get(field) is not None]
+                if values:
+                    row[field] = mean(float(value) for value in values)
+            row["latency_ms"] = mean(float(item["latency_ms"]) for item in rep_rows)
+            row["embedding_latency_ms"] = mean(
+                float(item["embedding_latency_ms"]) for item in rep_rows
             )
-            row = evaluate_sample(
-                sample,
-                mode_results[mode],
-                answer=None,
-                top_k=top_k,
-                latency_ms=(
-                    contextualization_latency_ms + embedding_latency_ms + search_latency_ms
-                ),
-                tokens=(contextualization.token_usage if contextualization is not None else 0),
-                llm_calls=context_calls,
-                error=mode_errors[mode],
-                source_aliases=source_aliases,
+            row["search_latency_ms"] = mean(float(item["search_latency_ms"]) for item in rep_rows)
+            row["query_planning_latency_ms"] = mean(
+                float(item["query_planning_latency_ms"]) for item in rep_rows
+            )
+            row["tokens"] = sum(int(item.get("tokens") or 0) for item in rep_rows)
+            row["llm_calls"] = sum(int(item.get("llm_calls") or 0) for item in rep_rows)
+            errors = [str(item["error"]) for item in rep_rows if item.get("error")]
+            row["error"] = errors[0] if errors else None
+            signatures = result_signatures[mode]
+            end_to_end = mean(signature == signatures[0] for signature in signatures)
+            fixed_plan_groups: dict[tuple[str, ...], list[tuple[tuple[Any, ...], ...]]] = {}
+            for plan, signature in zip(plan_signatures, signatures, strict=True):
+                fixed_plan_groups.setdefault(plan, []).append(signature)
+            comparable = [items for items in fixed_plan_groups.values() if len(items) > 1]
+            fixed_plan_stability = (
+                mean(signature == items[0] for items in comparable for signature in items)
+                if comparable
+                else None
             )
             row.update(
                 {
-                    "retrieval_mode": mode,
-                    "context_expected_dependency": (
-                        sample.context_dependent if sample.history else None
+                    "search_repetitions": repetitions,
+                    "query_plan_stability_rate": round(planner_stability, 4),
+                    "retrieval_given_plan_stability_rate": (
+                        round(fixed_plan_stability, 4) if fixed_plan_stability is not None else None
                     ),
-                    "context_predicted_dependency": (
-                        contextualization.depends_on_history
-                        if contextualization is not None
-                        else None
-                    ),
-                    "context_dependency_correct": (
-                        contextualization.depends_on_history == sample.context_dependent
-                        if contextualization is not None
-                        else None
-                    ),
-                    "context_query_match": (
-                        re.sub(r"\s+", " ", effective_query.casefold()).strip()
-                        == re.sub(
-                            r"\s+",
-                            " ",
-                            (sample.standalone_question or "").casefold(),
-                        ).strip()
-                        if contextualization is not None
-                        else None
-                    ),
-                    "context_fallback_used": (
-                        contextualization.fallback_used if contextualization is not None else None
-                    ),
-                    "contextualization_latency_ms": round(
-                        contextualization_latency_ms,
-                        3,
-                    ),
-                    "embedding_latency_ms": round(embedding_latency_ms, 3),
-                    "search_latency_ms": round(search_latency_ms, 3),
-                    "search_repetitions": len(durations),
-                    "ranking_stability_rate": (
-                        round(stability_rate, 4) if stability_rate is not None else None
-                    ),
+                    "end_to_end_ranking_stability_rate": round(end_to_end, 4),
+                    "ranking_stability_rate": round(end_to_end, 4),
+                    "repetitions": rep_rows,
+                    "retrieval_diagnostics": [item["retrieval_diagnostics"] for item in rep_rows],
                 }
             )
             rows_by_mode[mode].append(row)
         status = ", ".join(
-            f"{mode}={'ok' if mode_errors[mode] is None else mode_errors[mode]}" for mode in modes
+            f"{mode}={'ok' if not any(item.get('error') for item in repetition_rows[mode]) else 'error'}"
+            for mode in modes
         )
         print(f"[{sample_index + 1}/{len(samples)}] {sample.id}: {status}")
 
@@ -398,6 +583,12 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "context_dependency_correct",
         "context_query_match",
         "context_fallback_used",
+        "context_primary_rewrite",
+        "context_safe_query",
+        "context_retrieval_queries",
+        "context_validation_reason",
+        "query_plan",
+        "query_planning_latency_ms",
         "contextualization_latency_ms",
         "multi_document",
         "required_evidence_count",
@@ -421,8 +612,14 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "search_latency_ms",
         "latency_ms",
         "search_repetitions",
+        "query_plan_stability_rate",
+        "retrieval_given_plan_stability_rate",
+        "end_to_end_ranking_stability_rate",
         "ranking_stability_rate",
         "error",
+        "missing_documents",
+        "retrieval_diagnostics",
+        "repetitions",
     ]
     temporary_csv = details_path.with_suffix(".csv.tmp")
     with temporary_csv.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -431,6 +628,19 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         for row in report["details"]:
             serialized = {field: row.get(field) for field in fields}
             serialized["tags"] = ",".join(row.get("tags") or [])
+            serialized["missing_documents"] = ",".join(row.get("missing_documents") or [])
+            serialized["retrieval_diagnostics"] = json.dumps(
+                row.get("retrieval_diagnostics"), ensure_ascii=False, separators=(",", ":")
+            )
+            serialized["context_retrieval_queries"] = json.dumps(
+                row.get("context_retrieval_queries"), ensure_ascii=False, separators=(",", ":")
+            )
+            serialized["query_plan"] = json.dumps(
+                row.get("query_plan"), ensure_ascii=False, separators=(",", ":")
+            )
+            serialized["repetitions"] = json.dumps(
+                row.get("repetitions"), ensure_ascii=False, separators=(",", ":")
+            )
             writer.writerow(serialized)
     temporary_csv.replace(details_path)
     return report_path, details_path
@@ -459,9 +669,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sparse-weight", type=float, default=1.0)
     parser.add_argument("--candidate-multiplier", type=int, default=1)
     parser.add_argument("--dense-anchors", type=int, default=2)
+    parser.add_argument("--diversity-tolerance", type=float, default=0.0)
     parser.add_argument("--batch-size", type=int, default=10)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--sample-ids")
+    parser.add_argument("--query-decomposition", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--min-quality-gain", type=float, default=0.01)
     parser.add_argument("--max-quality-regression", type=float, default=0.01)
@@ -480,6 +692,7 @@ def _create_components(
     sparse_weight: float,
     candidate_multiplier: int,
     dense_anchors: int,
+    diversity_tolerance: float,
 ) -> tuple[Any, Any, Any, Any]:
     vector_setting = config.get_provider_config("vector_db")
     if vector_setting.get("provider") != "Milvus":
@@ -494,6 +707,7 @@ def _create_components(
             "hybrid_sparse_weight": sparse_weight,
             "hybrid_candidate_multiplier": candidate_multiplier,
             "hybrid_dense_anchor_count": dense_anchors,
+            "hybrid_diversity_tolerance": diversity_tolerance,
         }
     )
     config.set_provider_config("vector_db", "Milvus", vector_config)
@@ -531,6 +745,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("limit must be positive")
     if args.dense_anchors < 0:
         raise SystemExit("dense anchors must be non-negative")
+    if not 0 <= args.diversity_tolerance <= 1:
+        raise SystemExit("diversity tolerance must be between 0 and 1")
     if args.min_quality_gain < 0 or args.max_quality_regression < 0:
         raise SystemExit("quality thresholds must be non-negative")
 
@@ -555,6 +771,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sparse_weight=args.sparse_weight,
         candidate_multiplier=args.candidate_multiplier,
         dense_anchors=args.dense_anchors,
+        diversity_tolerance=args.diversity_tolerance,
     )
     report: dict[str, Any] | None = None
     cleanup_result: dict[str, Any] | None = None
@@ -601,6 +818,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sample_ids=sample_ids,
             source_aliases=source_aliases,
             contextualizer_llm=contextualizer_llm,
+            query_decomposition_enabled=args.query_decomposition,
         )
         thresholds = DecisionThresholds(
             min_quality_gain=args.min_quality_gain,
@@ -638,6 +856,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "modes": list(modes),
                 "top_k": args.top_k,
                 "repetitions": args.repetitions,
+                "query_decomposition_enabled": args.query_decomposition,
                 "embedding_batch_size": args.batch_size,
                 "fusion": {
                     "algorithm": args.hybrid_ranker,
@@ -646,6 +865,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "sparse_weight": args.sparse_weight,
                     "candidate_multiplier": args.candidate_multiplier,
                     "dense_anchor_count": args.dense_anchors,
+                    "diversity_tolerance": args.diversity_tolerance,
                 },
                 "source_aliases": source_aliases,
                 "config_path": str(config_path),
@@ -683,6 +903,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "latency_ms": "查询 Embedding 延迟加各模式检索延迟中位数。",
                 "search_latency_ms": "同一问题重复检索后取中位数；模式执行顺序轮换。",
                 "ranking_stability_rate": "重复检索 Top-K 文档、页码、Chunk 和文本顺序完全一致的比例。",
+                "query_plan_stability_rate": "各 repetition 生成完全相同查询计划的比例。",
+                "retrieval_given_plan_stability_rate": "查询计划相同时最终 Top-K 排名完全一致的比例。",
+                "end_to_end_ranking_stability_rate": "从 Planner 到最终 Top-K 的端到端完全一致比例。",
                 "quality_score": "Recall@K、MRR 与召回答案要点覆盖率的等权平均，仅用于本报告门禁。",
                 "context_dependency_accuracy": "有历史样本中，是否需要依赖历史的分类准确率。",
                 "context_query_match_rate": "改写结果与金标独立问题的规范化精确匹配率。",

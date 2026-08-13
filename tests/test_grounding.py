@@ -132,6 +132,25 @@ def test_trace_persists_the_exact_wider_evidence_shown_to_the_model():
     assert trace["grounding"]["evidence"][0]["text"].endswith("cited fact")
 
 
+def test_format_grounding_evidence_bounds_count_and_token_snapshot():
+    evidence = [result("甲" * 200, f"loc-{index}") for index in range(3)]
+    collector = TraceCollector("问题")
+
+    formatted = format_grounding_evidence(
+        evidence,
+        use_wider_text=False,
+        trace_collector=collector,
+        max_results=2,
+        max_tokens_per_chunk=12,
+        max_total_tokens=18,
+        token_estimator=len,
+    )
+
+    assert formatted.count("<Evidence ") == 2
+    assert "E3" not in formatted
+    assert sum(len(text) for text in collector._grounding_evidence_text.values()) <= 18
+
+
 def test_build_grounding_locates_normalized_exact_citation_span():
     evidence_text = "上传规则：每份 PDF 最大 20 MiB，超过后拒绝。"
     grounding = build_grounding(

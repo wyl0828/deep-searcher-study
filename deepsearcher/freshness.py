@@ -6,7 +6,12 @@ import re
 from typing import Any, Mapping
 
 FRESHNESS_CONTRACT_VERSION = 1
-FRESHNESS_CLASSIFIER_VERSION = "1.0.0"
+FRESHNESS_CLASSIFIER_VERSION = "1.1.0"
+
+_VERSION_BOUND_CURRENT = re.compile(
+    r"当前(?:(?:本地|生产)(?:项目|环境|选择|配置|实现)?|"
+    r"项目|仓库|代码|实现|配置|字段|接口|系统|产品)(?!.*(?:有效|生效|现行))"
+)
 
 _LATEST = re.compile(
     r"最新(?:版|版本)?|最近(?:的|发布|更新)?|最新版|"
@@ -34,7 +39,7 @@ def classify_query_freshness(query: str) -> dict[str, Any]:
 
     text = str(query or "")
     latest = _LATEST.search(text) is not None
-    current = _CURRENT.search(text) is not None
+    current = _CURRENT.search(text) is not None and _VERSION_BOUND_CURRENT.search(text) is None
     recent = _RECENT.search(text) is not None
     publication = _PUBLICATION.search(text) is not None
     if recent and not latest:
