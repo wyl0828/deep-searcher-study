@@ -14,6 +14,8 @@
   校验当前 revision，SQLite 继续保留本地自动建表和旧库兼容升级。
 - 增加统一 PDF 对象存储接口，保留本地实现并提供可选 S3/MinIO/RustFS 实现；上传、Worker 读取、
   原文预览、索引重建和删除共用 Bucket/Object Key 语义，且不把对象上传宣称为消息事务的一部分。
+- 增加可选 RocketMQ 5.x 事务入库模式，以官方 Python 客户端保护 Document/IngestJob 状态迁移与
+  处理消息投递；本地轮询 Worker 继续作为默认模式，不引入 Outbox 或自定义消息状态表。
 - 增加 Provider-neutral `ChatOptions`、完整 `TokenUsage`、调用前 Token 估算和按阶段 Trace；DeepSeek
   V4 Thinking 通过 `extra_body` 显式启停，reasoning 作为输出 Token 子集统计，不重复计入总量。
 - 增加查询级 LLM 调用、输入、输出、reasoning 预算以及最终回答/必需 Trust 预留；Provider usage
@@ -31,6 +33,9 @@
   代理未递增旧 `calls` 字段而错误报告为 0。
 
 ### 验证
+
+- 使用真实 RocketMQ 5.3.2 Broker/Proxy 完成官方 Python 5.1.1 客户端 Spike：Commit、Rollback、
+  Broker 回查、未 ACK 重试、ACK 后停止投递，以及长耗时消费的可见期续租均通过。
 
 - PostgreSQL Schema 校验与抢占分支单测进入 Fast Gate；提供通过 `DEEPSEARCHER_TEST_POSTGRES_URL` 显式
   启用的真实 PostgreSQL 迁移/抢占集成测试，本地未配置 PostgreSQL 时不会伪造执行结果。

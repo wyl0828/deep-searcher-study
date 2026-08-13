@@ -721,6 +721,17 @@ Object Key，Worker 仅在调用现有索引接口期间下载到受控临时目
 数据库提交失败时会尝试删除已上传对象并记录可定位的 Object Key。对象存储与数据库之间不是原子事务，
 也不属于后续 RocketMQ 事务消息的一致性范围。
 
+入库默认仍由数据库租约 Worker 轮询。工程部署可将 `DEEPSEARCHER_INGEST_TRANSPORT` 设为
+`rocketmq`，并配置 RocketMQ 5.x gRPC Proxy、TRANSACTION 类型 Topic 与 Consumer Group。
+该模式使用官方 `rocketmq-python-client`：API 先发送 Half Message，再在本地数据库事务中把
+Document/IngestJob 从 `queued` 切到 `processing`，成功后 Commit；Broker 二次确认丢失时按
+`job_id` 回查数据库。Consumer 复用原有解析、Embedding、Manifest 校验与索引切换函数，成功或
+明确不可重试失败后 ACK，可重试故障不 ACK，并在长耗时处理中续租消息可见期。
+
+事务边界仅为“Document/IngestJob 处理状态迁移 + 文档处理消息投递”。它不覆盖文件上传、对象存储、
+Consumer 内部解析/Embedding/Milvus 写入，也不保证整条入库 Exactly Once；重复消息依靠完成状态
+幂等结束。RocketMQ 5.x Topic 必须按官方要求预先创建为 TRANSACTION 类型，应用不会代替运维创建。
+
 知识库详情页也支持整体删除，并同步清理该知识库的 Milvus 集合、上传目录、文档、对话和引用；删除当前知识库后会自动切换到最近更新的其他知识库。对话页可单独删除当前对话及其消息、引用，不影响知识库、文档或向量数据。
 
 问答链路会区分“检索成功但没有命中”和“向量检索服务故障”。Milvus 离线时，工作台会显示可恢复的系统故障并提供重试；Collection 不存在或向量维度不匹配时，会引导用户检查知识库索引，不会把这些失败伪装成“知识库没有相关资料”。

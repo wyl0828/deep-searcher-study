@@ -64,8 +64,13 @@ async def run_worker(*, once: bool = False) -> None:
         while not stopping.is_set():
             now = loop.time()
             if now - last_recovery >= RECOVERY_INTERVAL_SECONDS:
-                with SessionLocal() as session:
-                    recovered = recover_interrupted_work(session)
+                from frontend.product.messaging import rocketmq_enabled
+
+                if rocketmq_enabled():
+                    recovered = 0
+                else:
+                    with SessionLocal() as session:
+                        recovered = recover_interrupted_work(session)
                 if recovered:
                     logger.warning("ingest_worker_recovered_items count=%s", recovered)
                 last_recovery = now
@@ -108,7 +113,14 @@ async def run_worker(*, once: bool = False) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    asyncio.run(run_worker())
+    from frontend.product.messaging import rocketmq_enabled
+
+    if rocketmq_enabled():
+        from frontend.product.rocketmq_worker import run_rocketmq_worker
+
+        asyncio.run(run_rocketmq_worker())
+    else:
+        asyncio.run(run_worker())
 
 
 if __name__ == "__main__":

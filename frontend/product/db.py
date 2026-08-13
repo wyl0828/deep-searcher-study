@@ -441,13 +441,17 @@ def init_database() -> None:
         ensure_document_storage_columns(ENGINE)
     else:
         validate_alembic_schema(ENGINE)
+    from frontend.product.messaging import rocketmq_enabled
     from frontend.product.services.documents import (
         cleanup_orphaned_uploads,
         cleanup_stale_uploads,
     )
 
     with SessionLocal() as session:
-        recover_interrupted_work(session)
+        # RocketMQ redelivers unacked messages and the consumer reclaims expired
+        # leases without moving the transaction-check source state back to queued.
+        if not rocketmq_enabled():
+            recover_interrupted_work(session)
         repair_citation_display_names(session)
         cleanup_orphaned_uploads(session)
 

@@ -23,6 +23,7 @@ from deepsearcher.versioning import normalize_version_family
 from frontend.product.backend import backend_request_headers
 from frontend.product.db import DATA_DIR, SessionLocal
 from frontend.product.errors import ProductError
+from frontend.product.messaging import MessageDispatchError, dispatch_ingest_transaction
 from frontend.product.models import Document, IngestJob, KnowledgeBase, utcnow
 from frontend.product.repositories import create_ingest_job
 from frontend.product.storage import LocalObjectStorage, StorageError, get_object_storage
@@ -179,6 +180,32 @@ def _delete_file_quietly(path: Path) -> None:
         path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _dispatch_ingest_or_mark_failed(
+    session: Session,
+    *,
+    document: Document,
+    job: IngestJob,
+) -> None:
+    try:
+        dispatch_ingest_transaction(session, document=document, job=job)
+    except MessageDispatchError as exc:
+        now = utcnow()
+        document.status = "failed"
+        document.error_code = "DOCUMENT_DISPATCH_FAILED"
+        document.error_message = "文档处理消息发送失败，请检查消息服务后重试。"
+        job.status = "dead_letter"
+        job.error_code = document.error_code
+        job.error_message = document.error_message
+        job.finished_at = now
+        session.commit()
+        raise ProductError(
+            "DOCUMENT_DISPATCH_FAILED",
+            "文档已保存，但处理消息发送失败，请检查消息服务后重试。",
+            status_code=503,
+            retryable=True,
+        ) from exc
 
 
 async def stage_pdf_upload(file: UploadFile) -> StagedUpload:
@@ -377,6 +404,12 @@ async def create_document_from_upload(
         job = create_ingest_job(session, document)
         job.max_retries = INGEST_MAX_RETRIES
         session.commit()
+        session.refresh(document)
+        session.refresh(job)
+        # The object and queued Document are now the durable preparation state.
+        # Dispatch failure must retain them so the existing retry endpoint can recover.
+        stored_key = None
+        _dispatch_ingest_or_mark_failed(session, document=document, job=job)
         session.refresh(document)
         session.refresh(job)
         return document, job
@@ -671,6 +704,81 @@ async def process_claimed_ingest_job(job_id: str, *, worker_id: str) -> None:
         _finish_ingest_job(job_id=job_id, worker_id=worker_id, manifest=manifest)
 
 
+async def process_rocketmq_ingest_job(
+    job_id: str,
+    *,
+    worker_id: str,
+    delivery_attempt: int,
+    lease_seconds: int = INGEST_LEASE_SECONDS,
+) -> bool:
+    """Process one MQ delivery and return whether the consumer should ACK it."""
+
+    with SessionLocal() as session:
+        job = session.get(IngestJob, job_id)
+        if job is None or job.status in {"succeeded", "dead_letter"}:
+            return True
+        now = utcnow()
+        if job.status != "processing":
+            return False
+        lease_expires_at = job.lease_expires_at
+        if lease_expires_at is not None and lease_expires_at.tzinfo is None:
+            lease_expires_at = lease_expires_at.replace(tzinfo=now.tzinfo)
+        if (
+            job.lease_owner is not None
+            and job.lease_owner != worker_id
+            and lease_expires_at is not None
+            and lease_expires_at > now
+        ):
+            return False
+        document = session.get(Document, job.document_id)
+        if document is None:
+            return True
+        knowledge_base = session.get(KnowledgeBase, document.knowledge_base_id)
+        if knowledge_base is None:
+            return True
+        job.lease_owner = worker_id
+        job.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        job.retry_count = max(job.retry_count + 1, delivery_attempt)
+        job.started_at = now
+        max_retries = job.max_retries
+        session.commit()
+        session.expunge(document)
+        session.expunge(knowledge_base)
+    try:
+        manifest = await _load_document_into_backend(
+            document=document,
+            knowledge_base=knowledge_base,
+        )
+    except IngestProcessingError as exc:
+        failure = exc
+    except Exception:
+        failure = IngestProcessingError("DOCUMENT_PROCESSING_UNEXPECTED", retryable=True)
+    else:
+        _finish_ingest_job(job_id=job_id, worker_id=worker_id, manifest=manifest)
+        return True
+
+    if failure.retryable and delivery_attempt < max_retries:
+        with SessionLocal() as session:
+            current_job = session.get(IngestJob, job_id)
+            current_document = (
+                session.get(Document, current_job.document_id) if current_job is not None else None
+            )
+            if current_job is not None and current_job.lease_owner == worker_id:
+                current_job.lease_owner = None
+                current_job.lease_expires_at = None
+                current_job.error_code = failure.code
+                current_job.error_message = "文档处理暂时失败，等待消息重试。"
+                if current_document is not None:
+                    current_document.status = "processing"
+                    current_document.error_code = "DOCUMENT_RETRY_SCHEDULED"
+                    current_document.error_message = "文档处理暂时失败，系统将在后台自动重试。"
+                session.commit()
+        return False
+
+    _finish_ingest_job(job_id=job_id, worker_id=worker_id, failure=failure)
+    return True
+
+
 async def process_document(document_id: str) -> None:
     """Compatibility helper for tests and direct callers; the product uses the durable worker."""
     worker_id = f"inline-{os.getpid()}-{uuid4().hex[:12]}"
@@ -697,6 +805,9 @@ def retry_document(session: Session, document: Document) -> IngestJob:
     job = create_ingest_job(session, document)
     job.max_retries = INGEST_MAX_RETRIES
     session.commit()
+    session.refresh(job)
+    _dispatch_ingest_or_mark_failed(session, document=document, job=job)
+    session.refresh(document)
     session.refresh(job)
     return job
 
@@ -741,6 +852,9 @@ def update_document_temporal_metadata(
     session.commit()
     session.refresh(document)
     if job is not None:
+        session.refresh(job)
+        _dispatch_ingest_or_mark_failed(session, document=document, job=job)
+        session.refresh(document)
         session.refresh(job)
     return job
 
@@ -797,6 +911,9 @@ def update_document_governance_metadata(
     session.commit()
     session.refresh(document)
     if job is not None:
+        session.refresh(job)
+        _dispatch_ingest_or_mark_failed(session, document=document, job=job)
+        session.refresh(document)
         session.refresh(job)
     return job
 
