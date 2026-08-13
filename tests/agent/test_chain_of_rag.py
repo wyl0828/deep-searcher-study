@@ -193,7 +193,8 @@ class TestChainOfRAG(BaseAgentTest):
             main_query="Main topic",
         )
 
-        prompt = self.llm.chat.call_args.args[0][0]["content"]
+        messages = self.llm.chat.call_args.kwargs.get("messages") or self.llm.chat.call_args.args[0]
+        prompt = messages[0]["content"]
         self.assertIn("## Main Query\nMain topic", prompt)
         self.assertEqual(supported_docs, [])
         self.assertEqual(tokens, 4)

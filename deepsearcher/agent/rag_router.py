@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 
 from deepsearcher.agent.base import RAGAgent
 from deepsearcher.agent.selection import parse_one_based_index
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
 
@@ -67,6 +67,10 @@ class RAGRouter(RAGAgent):
             f"rag_router_last_route_decision_{id(self)}",
             default=None,
         )
+        self._trace_collector = ContextVar(
+            f"rag_router_trace_collector_{id(self)}",
+            default=None,
+        )
 
     @property
     def last_route_decision(self) -> Optional[dict]:
@@ -84,7 +88,13 @@ class RAGRouter(RAGAgent):
             [f"[{i + 1}]: {description}" for i, description in enumerate(self.agent_descriptions)]
         )
         prompt = RAG_ROUTER_PROMPT.format(query=query, description_str=description_str)
-        chat_response = self.llm.chat(messages=[{"role": "user", "content": prompt}])
+        chat_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": prompt}],
+            stage="agent_router",
+            max_tokens=32,
+            trace_collector=self._trace_collector.get(),
+        )
         decision = parse_one_based_index(
             self.llm.remove_think(chat_response.content),
             upper_bound=len(self.rag_agents),
@@ -120,11 +130,15 @@ class RAGRouter(RAGAgent):
         return self._route(query)
 
     def retrieve(self, query: str, **kwargs) -> Tuple[List[RetrievalResult], int, dict]:
-        agent, n_token_router = self._select_agent(
-            query,
-            use_web_search=bool(kwargs.get("use_web_search", False)),
-        )
         trace_collector = kwargs.get("trace_collector")
+        token = self._trace_collector.set(trace_collector)
+        try:
+            agent, n_token_router = self._select_agent(
+                query,
+                use_web_search=bool(kwargs.get("use_web_search", False)),
+            )
+        finally:
+            self._trace_collector.reset(token)
         if trace_collector is not None:
             trace_collector.select_agent(
                 agent.__class__.__name__,
@@ -135,11 +149,15 @@ class RAGRouter(RAGAgent):
         return retrieved_results, n_token_router + n_token_retrieval, metadata
 
     def query(self, query: str, **kwargs) -> Tuple[str, List[RetrievalResult], int]:
-        agent, n_token_router = self._select_agent(
-            query,
-            use_web_search=bool(kwargs.get("use_web_search", False)),
-        )
         trace_collector = kwargs.get("trace_collector")
+        token = self._trace_collector.set(trace_collector)
+        try:
+            agent, n_token_router = self._select_agent(
+                query,
+                use_web_search=bool(kwargs.get("use_web_search", False)),
+            )
+        finally:
+            self._trace_collector.reset(token)
         if trace_collector is not None:
             trace_collector.select_agent(
                 agent.__class__.__name__,

@@ -639,7 +639,7 @@ def test_query_stream_emits_safe_incremental_stage_events():
     completed = events[-1]["data"]
     assert completed["result"] == "Supported fact. [E1]"
     assert completed["consume_token"] == 12
-    assert completed["trace"]["version"] == 6
+    assert completed["trace"]["version"] == 7
     provenance = completed["trace"]["trust"]["provenance"]
     assert provenance["version"] == 2
     assert provenance["execution_scope"] == "stream"

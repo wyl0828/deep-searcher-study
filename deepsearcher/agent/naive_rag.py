@@ -5,7 +5,7 @@ from deepsearcher.agent.collection_router import CollectionRouter
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
 from deepsearcher.query_planner import (
     QUERY_PLAN_ORIGINAL_ANCHORS,
     QUERY_PLAN_RRF_K,
@@ -113,6 +113,8 @@ class NaiveRAG(RAGAgent):
                 query=query,
                 dim=self.embedding_model.dimension,
                 allowed_collections=allowed_collections,
+                trace_collector=trace_collector,
+                iteration=1,
             )
         else:
             selected_collections = self.collection_router.resolve_all(
@@ -218,7 +220,17 @@ class NaiveRAG(RAGAgent):
             mini_chunk_str=mini_chunk_str,
             grounding_instructions=GROUNDING_PROMPT,
         )
-        char_response = self.llm.chat([{"role": "user", "content": summary_prompt}])
+        char_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": summary_prompt}],
+            stage="final_answer",
+            max_tokens=4096,
+            trace_collector=trace_collector,
+            input_evidence_count=len(all_retrieved_results),
+            input_evidence_tokens=self.llm.estimate_tokens(
+                [{"role": "user", "content": mini_chunk_str}]
+            ),
+        )
         final_answer = char_response.content
         if trace_collector is not None:
             trace_collector.record_final_answer(char_response.total_tokens)

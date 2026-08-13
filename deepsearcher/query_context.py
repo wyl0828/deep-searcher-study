@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal, Mapping
 
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
 
 MAX_HISTORY_TURNS = 8
 MAX_HISTORY_CHARS = 6000
@@ -161,6 +161,8 @@ def contextualize_query(
     llm: BaseLLM,
     current_question: str,
     history: Iterable[Mapping[str, Any]],
+    *,
+    trace_collector=None,
 ) -> ContextualQuery:
     question = str(current_question or "").strip()
     bounded_history = _bounded_history(history)
@@ -197,7 +199,13 @@ def contextualize_query(
         question=html.escape(question),
     )
     try:
-        response = llm.chat([{"role": "user", "content": prompt}])
+        response = chat_with_stage(
+            llm,
+            [{"role": "user", "content": prompt}],
+            stage="history_rewrite",
+            max_tokens=256,
+            trace_collector=trace_collector,
+        )
         raw_content = str(response.content or "").strip()
         remove_think = getattr(llm, "remove_think", None)
         if callable(remove_think):

@@ -74,7 +74,7 @@ def test_trace_collector_builds_versioned_safe_trace():
     iteration = trace["iterations"][0]
     document = iteration["retrieved_documents"][0]
 
-    assert trace["version"] == 6
+    assert trace["version"] == 7
     assert trace["agent"] == "ChainOfRAG"
     assert trace["routing"]["fallback_used"] is True
     assert trace["routing"]["reason"] == "invalid_index_format"

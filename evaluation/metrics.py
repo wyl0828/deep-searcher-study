@@ -582,6 +582,14 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     latencies = [float(row["latency_ms"]) for row in rows]
     tokens = [int(row["tokens"]) for row in rows]
     llm_calls = [int(row["llm_calls"]) for row in rows]
+    usage_fields = (
+        "llm_input_tokens",
+        "llm_cache_hit_tokens",
+        "llm_cache_miss_tokens",
+        "llm_output_tokens",
+        "llm_reasoning_tokens",
+        "llm_estimated_input_tokens",
+    )
     summary = {
         "sample_count": len(rows),
         "successful_count": sum(row.get("error") is None for row in rows),
@@ -631,6 +639,24 @@ def aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "average": round(mean(llm_calls), 2) if llm_calls else None,
         },
     }
+    if any(any(field in row for field in usage_fields) for row in rows):
+        summary["llm_token_usage"] = {
+            field.removeprefix("llm_"): sum(int(row.get(field) or 0) for row in rows)
+            for field in usage_fields
+        }
+        stage_totals: dict[str, dict[str, int]] = {}
+        for row in rows:
+            stage_usage = row.get("llm_stage_usage")
+            if not isinstance(stage_usage, Mapping):
+                continue
+            for stage, values in stage_usage.items():
+                if not isinstance(values, Mapping):
+                    continue
+                bucket = stage_totals.setdefault(str(stage), {})
+                for field, value in values.items():
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        bucket[str(field)] = bucket.get(str(field), 0) + max(value, 0)
+        summary["llm_token_usage"]["stages"] = stage_totals
     if any("coverage_failure_type" in row for row in rows):
         summary["coverage_failure_types"] = dict(
             sorted(

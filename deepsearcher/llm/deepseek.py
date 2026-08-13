@@ -1,7 +1,13 @@
 import os
 from typing import Dict, List
 
-from deepsearcher.llm.base import BaseLLM, ChatResponse
+from deepsearcher.llm.base import (
+    BaseLLM,
+    ChatOptions,
+    ChatResponse,
+    TokenUsage,
+    _safe_usage_int,
+)
 
 
 class DeepSeek(BaseLLM):
@@ -55,12 +61,55 @@ class DeepSeek(BaseLLM):
         Returns:
             ChatResponse: An object containing the model's response and token usage information.
         """
-        completion = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
+        return self.chat_with_options(messages)
+
+    def chat_with_options(
+        self,
+        messages: List[Dict],
+        options: ChatOptions | None = None,
+    ) -> ChatResponse:
+        options = options or ChatOptions()
+        request: Dict = {"model": self.model, "messages": messages}
+        if options.thinking is None:
+            request["temperature"] = self.temperature
+        else:
+            request["extra_body"] = {
+                "thinking": {"type": "enabled" if options.thinking else "disabled"}
+            }
+            if not options.thinking:
+                request["temperature"] = self.temperature
+        if options.max_tokens is not None:
+            request["max_tokens"] = max(int(options.max_tokens), 1)
+        if options.response_format is not None:
+            request["response_format"] = options.response_format
+        completion = self.client.chat.completions.create(**request)
+        raw_usage = getattr(completion, "usage", None)
+        input_tokens = _safe_usage_int(getattr(raw_usage, "prompt_tokens", 0))
+        cache_hit = _safe_usage_int(getattr(raw_usage, "prompt_cache_hit_tokens", 0))
+        cache_miss = _safe_usage_int(getattr(raw_usage, "prompt_cache_miss_tokens", 0))
+        output_tokens = _safe_usage_int(getattr(raw_usage, "completion_tokens", 0))
+        details = getattr(raw_usage, "completion_tokens_details", None)
+        reasoning_tokens = min(
+            _safe_usage_int(getattr(details, "reasoning_tokens", 0)),
+            output_tokens,
         )
+        total_tokens = _safe_usage_int(getattr(raw_usage, "total_tokens", 0))
+        usage_available = any((input_tokens, cache_hit, cache_miss, output_tokens, total_tokens))
+        estimate = self.estimate_tokens(messages)
+        if not usage_available:
+            usage_source = "estimated"
+        else:
+            usage_source = "provider"
         return ChatResponse(
             content=completion.choices[0].message.content,
-            total_tokens=completion.usage.total_tokens,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                cache_hit_tokens=cache_hit,
+                cache_miss_tokens=cache_miss,
+                output_tokens=output_tokens,
+                reasoning_tokens=reasoning_tokens,
+                total_tokens=total_tokens,
+                estimated_input_tokens=estimate,
+                usage_source=usage_source,
+            ),
         )

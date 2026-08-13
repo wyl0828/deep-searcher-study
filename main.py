@@ -452,7 +452,7 @@ class ConversationHistoryMessage(BaseModel):
 
 class QueryStreamRequest(BaseModel):
     original_query: str = Field(min_length=1, max_length=4000)
-    max_iter: int = Field(default=3, ge=1, le=10)
+    max_iter: int = Field(default=2, ge=1, le=10)
     collection_names: List[str] | None = Field(default=None, max_length=512)
     use_web_search: bool = False
     conversation_history: List[ConversationHistoryMessage] = Field(
@@ -484,6 +484,7 @@ def _contextualize_request(
         runtime.llm,
         payload.original_query,
         [item.model_dump() for item in payload.conversation_history],
+        trace_collector=collector,
     )
     if collector is not None and context.history_turn_count:
         collector.record_contextualization(

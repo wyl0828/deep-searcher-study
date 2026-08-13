@@ -8,7 +8,7 @@ from deepsearcher.vector_db.base import RetrievalResult
 
 def query(
     original_query: str,
-    max_iter: int = 3,
+    max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
     *,
@@ -76,7 +76,7 @@ def query(
 
 def query_with_trace(
     original_query: str,
-    max_iter: int = 3,
+    max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
     *,
@@ -127,7 +127,7 @@ def query_with_trace(
 
 def retrieve(
     original_query: str,
-    max_iter: int = 3,
+    max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
 ) -> Tuple[List[RetrievalResult], List[str], int]:

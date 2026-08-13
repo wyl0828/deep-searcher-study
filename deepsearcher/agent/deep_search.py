@@ -15,7 +15,7 @@ from deepsearcher.agent.selection import (
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
 from deepsearcher.query_planner import merge_ranked_results, plan_explicit_queries
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
@@ -109,7 +109,7 @@ class DeepSearch(RAGAgent):
         llm: BaseLLM,
         embedding_model: BaseEmbedding,
         vector_db: BaseVectorDB,
-        max_iter: int = 3,
+        max_iter: int = 2,
         route_collection: bool = True,
         text_window_splitter: bool = True,
         rerank_batch_size: int = 10,
@@ -227,11 +227,15 @@ class DeepSearch(RAGAgent):
             log.warning(f"DeepSearch constrained structured output at {stage}: {decision.reason}.")
         return decision.values
 
-    def _generate_sub_queries(self, original_query: str) -> Tuple[List[str], int]:
-        chat_response = self.llm.chat(
-            messages=[
-                {"role": "user", "content": SUB_QUERY_PROMPT.format(original_query=original_query)}
-            ]
+    def _generate_sub_queries(
+        self, original_query: str, *, trace_collector=None
+    ) -> Tuple[List[str], int]:
+        chat_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": SUB_QUERY_PROMPT.format(original_query=original_query)}],
+            stage="query_decomposition",
+            max_tokens=512,
+            trace_collector=trace_collector,
         )
         sub_queries = self._validated_query_list(
             chat_response.content,
@@ -300,8 +304,9 @@ class DeepSearch(RAGAgent):
         for batch_index, start in enumerate(range(0, len(candidates), self.rerank_batch_size)):
             batch = candidates[start : start + self.rerank_batch_size]
             candidate_chunks = self._format_chunk_texts([result.text for result in batch])
-            chat_response = self.llm.chat(
-                messages=[
+            chat_response = chat_with_stage(
+                self.llm,
+                [
                     {
                         "role": "user",
                         "content": RERANK_BATCH_PROMPT.format(
@@ -312,7 +317,14 @@ class DeepSearch(RAGAgent):
                             candidate_chunks=candidate_chunks,
                         ),
                     }
-                ]
+                ],
+                stage="rerank",
+                max_tokens=256,
+                trace_collector=trace_collector,
+                input_evidence_count=len(batch),
+                input_evidence_tokens=self.llm.estimate_tokens(
+                    [{"role": "user", "content": candidate_chunks}]
+                ),
             )
             consume_tokens += chat_response.total_tokens
             selected_indices, event = self._validated_chunk_indices(
@@ -382,8 +394,21 @@ class DeepSearch(RAGAgent):
                 }
             ]
             chat_response = await self._run_blocking_call(
-                self.llm.chat,
+                chat_with_stage,
+                self.llm,
                 messages=messages,
+                stage="rerank",
+                max_tokens=256,
+                iteration=(
+                    trace_collector._current["index"]
+                    if trace_collector is not None and trace_collector._current
+                    else None
+                ),
+                trace_collector=trace_collector,
+                input_evidence_count=len(batch),
+                input_evidence_tokens=self.llm.estimate_tokens(
+                    [{"role": "user", "content": candidate_chunks}]
+                ),
                 semaphore=semaphore,
                 timeout_seconds=timeout_seconds,
             )
@@ -442,6 +467,8 @@ class DeepSearch(RAGAgent):
         query: str,
         collection_names=None,
         allowed_collections=None,
+        trace_collector=None,
+        iteration=None,
     ) -> Tuple[List[str], int, dict | None]:
         router = copy.copy(self.collection_router)
         if collection_names is not None:
@@ -456,6 +483,8 @@ class DeepSearch(RAGAgent):
                 query=query,
                 dim=self.embedding_model.dimension,
                 allowed_collections=allowed_collections,
+                trace_collector=trace_collector,
+                iteration=iteration,
             )
         else:
             selected_collections = router.resolve_all(
@@ -474,6 +503,8 @@ class DeepSearch(RAGAgent):
         top_k: int = 10,
         semaphore: asyncio.Semaphore | None = None,
         timeout_seconds: float | None = None,
+        trace_collector=None,
+        iteration=None,
     ):
         semaphore = semaphore or asyncio.Semaphore(self.retrieval_concurrency)
         timeout_seconds = timeout_seconds or self.external_call_timeout_seconds
@@ -482,6 +513,8 @@ class DeepSearch(RAGAgent):
             query,
             collection_names=collection_names,
             allowed_collections=allowed_collections,
+            trace_collector=trace_collector,
+            iteration=iteration,
             semaphore=semaphore,
             timeout_seconds=timeout_seconds,
         )
@@ -631,7 +664,13 @@ class DeepSearch(RAGAgent):
             log.color_print("<search> No document chunk accepted by batch reranker! </search>\n")
 
     def _generate_gap_queries(
-        self, original_query: str, all_sub_queries: List[str], all_chunks: List[RetrievalResult]
+        self,
+        original_query: str,
+        all_sub_queries: List[str],
+        all_chunks: List[RetrievalResult],
+        *,
+        trace_collector=None,
+        iteration=None,
     ) -> Tuple[List[str], int]:
         reflect_prompt = REFLECT_PROMPT.format(
             question=original_query,
@@ -640,7 +679,18 @@ class DeepSearch(RAGAgent):
             if len(all_chunks) > 0
             else "NO RELATED CHUNKS FOUND.",
         )
-        chat_response = self.llm.chat([{"role": "user", "content": reflect_prompt}])
+        chat_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": reflect_prompt}],
+            stage="reflection",
+            max_tokens=512,
+            iteration=iteration,
+            trace_collector=trace_collector,
+            input_evidence_count=len(all_chunks),
+            input_evidence_tokens=self.llm.estimate_tokens(
+                [{"role": "user", "content": reflect_prompt}]
+            ),
+        )
         gap_queries = self._validated_query_list(
             chat_response.content,
             stage="gap_queries",
@@ -768,6 +818,7 @@ class DeepSearch(RAGAgent):
             sub_queries, used_token = await self._run_blocking_call(
                 self._generate_sub_queries,
                 original_query,
+                trace_collector=trace_collector,
                 semaphore=semaphore,
                 timeout_seconds=external_call_timeout_seconds,
             )
@@ -800,6 +851,8 @@ class DeepSearch(RAGAgent):
                         top_k=top_k,
                         semaphore=semaphore,
                         timeout_seconds=external_call_timeout_seconds,
+                        trace_collector=trace_collector,
+                        iteration=iter + 1,
                     )
                     for query in sub_gap_queries
                 )
@@ -879,6 +932,8 @@ class DeepSearch(RAGAgent):
                 original_query,
                 all_sub_queries,
                 all_search_res,
+                trace_collector=trace_collector,
+                iteration=iter + 1,
                 semaphore=semaphore,
                 timeout_seconds=external_call_timeout_seconds,
             )
@@ -944,7 +999,17 @@ class DeepSearch(RAGAgent):
             ),
             grounding_instructions=GROUNDING_PROMPT,
         )
-        chat_response = self.llm.chat([{"role": "user", "content": summary_prompt}])
+        chat_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": summary_prompt}],
+            stage="final_answer",
+            max_tokens=4096,
+            trace_collector=trace_collector,
+            input_evidence_count=len(all_retrieved_results),
+            input_evidence_tokens=self.llm.estimate_tokens(
+                [{"role": "user", "content": summary_prompt}]
+            ),
+        )
         if trace_collector is not None:
             trace_collector.record_final_answer(chat_response.total_tokens)
         log.color_print(

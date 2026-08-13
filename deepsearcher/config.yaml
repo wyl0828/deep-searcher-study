@@ -193,7 +193,7 @@ provide_settings:
   #     port: 6333
 
 query_settings:
-  max_iter: 3
+  max_iter: 2
   document_aware_query_decomposition:
     # Promoted only after the focused and full v0.3 quality gates pass.
     enabled: false

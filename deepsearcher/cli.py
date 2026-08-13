@@ -29,7 +29,7 @@ def main():
     if "--query" in sys.argv or "--load" in sys.argv:
         print("\033[91m[Deprecated]\033[0m The use of '--query' and '--load' is deprecated.")
         print("Please use:")
-        print("  deepsearcher query <your_query> --max_iter 3")
+        print("  deepsearcher query <your_query> --max_iter 2")
         print(
             "  deepsearcher load <your_local_path_or_url> --collection_name <your_collection_name> --collection_desc <your_collection_description>"
         )
@@ -47,7 +47,7 @@ def main():
     query_parser.add_argument(
         "--max_iter",
         type=int,
-        default=3,
+        default=2,
         help="Max iterations of reflection. Default is 3.",
     )
     query_parser.add_argument(

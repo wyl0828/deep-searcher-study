@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
 
 ENTAILMENT_CONTRACT_VERSION = 1
 LLM_ENTAILMENT_CHECKER_VERSION = "1.2.0"
@@ -195,7 +195,12 @@ class LLMEntailmentChecker(BaseEntailmentChecker):
             )
         token_usage = 0
         try:
-            response = self.llm.chat([{"role": "user", "content": self._prompt(bounded)}])
+            response = chat_with_stage(
+                self.llm,
+                [{"role": "user", "content": self._prompt(bounded)}],
+                stage="entailment",
+                max_tokens=512,
+            )
             token_usage = max(int(getattr(response, "total_tokens", 0) or 0), 0)
             findings = self._parse(str(getattr(response, "content", "")), bounded)
         except Exception:

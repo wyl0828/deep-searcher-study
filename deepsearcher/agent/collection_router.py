@@ -9,7 +9,7 @@ from deepsearcher.agent.selection import (
     safe_collection_name,
     validate_string_list,
 )
-from deepsearcher.llm.base import BaseLLM
+from deepsearcher.llm.base import BaseLLM, chat_with_stage
 from deepsearcher.utils import log
 from deepsearcher.vector_db.base import BaseVectorDB, CollectionInfo
 
@@ -192,7 +192,14 @@ class CollectionRouter(BaseAgent):
                 for info in collection_infos
             ],
         )
-        chat_response = self.llm.chat(messages=[{"role": "user", "content": prompt}])
+        chat_response = chat_with_stage(
+            self.llm,
+            [{"role": "user", "content": prompt}],
+            stage="collection_router",
+            max_tokens=128,
+            trace_collector=kwargs.get("trace_collector"),
+            iteration=kwargs.get("iteration"),
+        )
         try:
             parsed_value = self.llm.literal_eval(self.llm.remove_think(chat_response.content))
             parsed = validate_string_list(

@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from deepsearcher.freshness import classify_query_freshness
 from deepsearcher.grounding import MAX_GROUNDING_EVIDENCE_TEXT, build_grounding
+from deepsearcher.llm.base import TokenUsage
 from deepsearcher.provenance import bind_trust_provenance_temporal, sanitize_trust_provenance
 from deepsearcher.risk import classify_query_risk
 from deepsearcher.temporal import extract_document_temporal_metadata
@@ -70,7 +71,7 @@ def redact_sensitive_text(value: Any, *, max_length: int) -> Optional[str]:
 class TraceCollector:
     """Collect explicit Agent events without parsing logs or exposing hidden reasoning."""
 
-    VERSION = 6
+    VERSION = 7
     EVENT_VERSION = 1
     MAX_VISIBLE_DOCUMENTS = 5
     MAX_DOCUMENT_TEXT = 600
@@ -100,6 +101,7 @@ class TraceCollector:
         self.final_answer_tokens = 0
         self.trust_tokens = 0
         self._selection_events: List[Dict[str, Any]] = []
+        self._llm_calls: List[Dict[str, Any]] = []
         self.contextualization: Optional[Dict[str, Any]] = None
         self._grounding_evidence_text: Dict[int, str] = {}
         self._grounding_snapshot_recorded = False
@@ -335,6 +337,46 @@ class TraceCollector:
         self.raise_if_cancelled()
         self.final_answer_tokens = int(token_usage or 0)
 
+    def record_llm_call(
+        self,
+        *,
+        stage: str,
+        model: str,
+        thinking: bool | None,
+        max_tokens: int | None,
+        usage: TokenUsage,
+        iteration: int | None = None,
+        input_evidence_count: int = 0,
+        input_evidence_tokens: int = 0,
+    ) -> None:
+        """Record token metadata without retaining prompts or hidden reasoning."""
+
+        self.raise_if_cancelled()
+        with self._event_lock:
+            call_index = len(self._llm_calls) + 1
+            self._llm_calls.append(
+                {
+                    "call_index": call_index,
+                    "stage": self._safe_identifier(stage) or "unspecified",
+                    "iteration": max(int(iteration), 0) if iteration is not None else None,
+                    "model": self._safe_identifier(model) or "unknown",
+                    "thinking": thinking,
+                    "max_tokens": max(int(max_tokens), 0) if max_tokens is not None else None,
+                    "input_evidence_count": max(int(input_evidence_count or 0), 0),
+                    "input_evidence_tokens": max(int(input_evidence_tokens or 0), 0),
+                    "usage": {
+                        "input_tokens": usage.input_tokens,
+                        "cache_hit_tokens": usage.cache_hit_tokens,
+                        "cache_miss_tokens": usage.cache_miss_tokens,
+                        "output_tokens": usage.output_tokens,
+                        "reasoning_tokens": usage.reasoning_tokens,
+                        "total_tokens": usage.total_tokens,
+                        "estimated_input_tokens": usage.estimated_input_tokens,
+                        "usage_source": usage.usage_source,
+                    },
+                }
+            )
+
     def record_grounding_evidence(
         self,
         evidence_snapshot: Iterable[tuple[RetrievalResult, str]],
@@ -460,6 +502,10 @@ class TraceCollector:
             "routing": self.routing_decision,
             "iterations": iterations,
             "selection_events": list(self._selection_events),
+            "llm_usage": {
+                "calls": list(self._llm_calls),
+                "summary": self._llm_usage_summary(),
+            },
             "summary": {
                 "iteration_count": len(iterations),
                 "supported_document_count": len(final_results_list),
@@ -480,6 +526,33 @@ class TraceCollector:
             trace["grounding"] = self._final_grounding
             trace["trust"] = self._trust_report
         return trace
+
+    def _llm_usage_summary(self) -> Dict[str, Any]:
+        fields = (
+            "input_tokens",
+            "cache_hit_tokens",
+            "cache_miss_tokens",
+            "output_tokens",
+            "reasoning_tokens",
+            "total_tokens",
+            "estimated_input_tokens",
+        )
+        summary = {"call_count": len(self._llm_calls)}
+        summary.update(
+            {
+                field: sum(int(call["usage"].get(field) or 0) for call in self._llm_calls)
+                for field in fields
+            }
+        )
+        stages: Dict[str, Dict[str, int]] = {}
+        for call in self._llm_calls:
+            stage = call["stage"]
+            bucket = stages.setdefault(stage, {"call_count": 0, **{field: 0 for field in fields}})
+            bucket["call_count"] += 1
+            for field in fields:
+                bucket[field] += int(call["usage"].get(field) or 0)
+        summary["stages"] = stages
+        return summary
 
     def _serialize_iteration(
         self,

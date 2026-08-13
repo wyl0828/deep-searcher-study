@@ -477,6 +477,7 @@ def evaluate_agent(
         policy_input_coverage: float | None = None
         grounding: dict[str, Any] | None = None
         trust: dict[str, Any] | None = None
+        llm_usage: dict[str, Any] | None = None
         tokens = 0
         error = None
         previous_attempts = int((existing or {}).get("evaluation_attempts") or 0)
@@ -549,6 +550,7 @@ def evaluate_agent(
                 )
                 grounding = trace.get("grounding")
                 trust = trace.get("trust")
+                llm_usage = trace.get("llm_usage") if isinstance(trace, dict) else None
             else:
                 results, agent_tokens, _ = agent.retrieve(effective_query, **kwargs)
                 tokens += int(agent_tokens or 0)
@@ -571,6 +573,18 @@ def evaluate_agent(
             policy_input_criteria_coverage=policy_input_coverage,
         )
         row["agent"] = agent_name
+        usage_summary = (
+            llm_usage.get("summary")
+            if isinstance(llm_usage, Mapping) and isinstance(llm_usage.get("summary"), Mapping)
+            else {}
+        )
+        row["llm_input_tokens"] = int(usage_summary.get("input_tokens") or 0)
+        row["llm_cache_hit_tokens"] = int(usage_summary.get("cache_hit_tokens") or 0)
+        row["llm_cache_miss_tokens"] = int(usage_summary.get("cache_miss_tokens") or 0)
+        row["llm_output_tokens"] = int(usage_summary.get("output_tokens") or 0)
+        row["llm_reasoning_tokens"] = int(usage_summary.get("reasoning_tokens") or 0)
+        row["llm_estimated_input_tokens"] = int(usage_summary.get("estimated_input_tokens") or 0)
+        row["llm_stage_usage"] = usage_summary.get("stages") or {}
         row["evaluation_attempts"] = previous_attempts + 1
         row["checkpoint_status"] = (
             "recovered"
@@ -820,6 +834,13 @@ def save_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
         "context_retrieval_queries",
         "context_validation_reason",
         "context_tokens",
+        "llm_input_tokens",
+        "llm_cache_hit_tokens",
+        "llm_cache_miss_tokens",
+        "llm_output_tokens",
+        "llm_reasoning_tokens",
+        "llm_estimated_input_tokens",
+        "llm_stage_usage",
         "checkpoint_status",
         "evaluation_attempts",
         "multi_document",
