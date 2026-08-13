@@ -638,6 +638,20 @@ Hybrid，并保存逐题 JSON/CSV、分标签质量、检索延迟、排序稳�
 `python -m evaluation.benchmark` 继续比较三类 Agent 的回答要点、声明支持、引用精确率/召回率、
 拒答、上下文改写、延迟和 Token。
 
+当前查询链路已经启用 Token 成本治理：所有模型调用按阶段记录输入、输出、reasoning、缓存命中/
+未命中和本地估算；中间结构化阶段默认关闭 Thinking，并设置独立输出上限。DeepSearch 默认最多
+2 轮，候选、重排、最终证据和单段/总证据 Token 均有上限；查询级预算最多允许 8 次 LLM 调用，
+并在可选检索或反思前预留最终回答与必需 Trust 调用。Provider 未返回 usage 时，预算使用调用前
+确定性估算，不会将未知消耗当成 0。Trace 只保存统计，不保存 Prompt 或 reasoning 正文。
+
+以 `v0.3.0-rc.1` 的 24 题 `answer_stratified_v1` 基线为参照，2026-08-13 使用相同样本、
+`max_iter=2` 的真实回答复测中，NaiveRAG、DeepSearch、ChainOfRAG 平均 Token 从
+`2987.54/15139.17/9163.46` 降至 `2098.46/4211.04/5239.92`；平均 LLM 调用数为
+`1.21/3.92/4.75`，单题最大分别为 `2/6/7`。`5000` 是 ChainOfRAG 的优化目标而非发布硬上限；
+当前结果已降低约 42.8%，仍有继续压缩空间。固定 Full Quality Gate 中 ChainOfRAG Claim Support
+为 `0.625`，低于 `0.65` 门槛，因此该次报告保留为质量观察，不能表述为完整门禁通过；检索、上下文、
+NaiveRAG、DeepSearch 及独立 Entailment live 校准均通过各自固定门槛。
+
 2026-08-13 的 `2.2.0` 三重复真实检索报告中，加权 RRF 使用 Dense:BM25=`1.5:1`、`k=5`、
 候选倍率 `1`，并保留 Dense 前两名。相对 Dense，Hybrid 的 MRR 为 71.07%、
 Recall@8 从 84.62% 升至 87.44%、召回答案要点覆盖率从 81.69% 升至 82.35%，8 道跨文档题的
@@ -675,6 +689,9 @@ NaiveRAG 作为路由解析失败时的默认 Agent。
 完整档先通过快速档，再使用 `evaluation/quality_gate.json` 中的固定样本与门槛校验新报告；
 它需要本机 Milvus 和 `.env` 中的真实 Provider 配置。GitHub Actions 默认执行快速档，并上传
 14 天可下载的质量日志与 JSON 结果。
+
+Full Gate 的回答阶段显式使用 `max_iter=2`，与当前 DeepSearch/ChainOfRAG 默认成本口径一致。
+成本目标用于观察和优化，不会替代 `evaluation/quality_gate.json` 中既有的质量阈值。
 
 ---
 ## 🧭 用户学习工作台
