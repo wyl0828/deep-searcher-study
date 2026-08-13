@@ -178,7 +178,26 @@ class ModuleFactory:
         Returns:
             An instance of a BaseLLM implementation.
         """
-        return self._create_module_instance("llm", "deepsearcher.llm")
+        settings = self.config.provide_settings["llm"]
+        candidate_settings = settings.get("candidates")
+        if not candidate_settings:
+            return self._create_module_instance("llm", "deepsearcher.llm")
+        if not isinstance(candidate_settings, list):
+            raise ValueError("llm.candidates must be a list")
+        module = __import__("deepsearcher.llm", fromlist=["RoutingLLM"])
+        candidates = []
+        for candidate in candidate_settings:
+            if not isinstance(candidate, dict):
+                raise ValueError("each llm candidate must be a mapping")
+            provider = str(candidate.get("provider") or "").strip()
+            config = candidate.get("config") or {}
+            if not provider or not isinstance(config, dict):
+                raise ValueError("each llm candidate requires provider and config")
+            candidates.append(getattr(module, provider)(**config))
+        routing = settings.get("routing") or {}
+        if not isinstance(routing, dict):
+            raise ValueError("llm.routing must be a mapping")
+        return module.RoutingLLM(candidates, **routing)
 
     def create_embedding(self) -> BaseEmbedding:
         """

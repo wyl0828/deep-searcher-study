@@ -10,6 +10,7 @@ from .novita import Novita
 from .ollama import Ollama
 from .openai_llm import OpenAI
 from .ppio import PPIO
+from .routing import RoutingLLM, StreamEvent
 from .siliconflow import SiliconFlow
 from .together_ai import TogetherAI
 from .volcengine import Volcengine
@@ -34,4 +35,6 @@ __all__ = [
     "Aliyun",
     "WatsonX",
     "JiekouAI",
+    "RoutingLLM",
+    "StreamEvent",
 ]

@@ -8,6 +8,35 @@ from deepsearcher.llm.base import (
     TokenUsage,
     _safe_usage_int,
 )
+from deepsearcher.llm.routing import StreamEvent
+
+
+class _DeepSeekStream:
+    def __init__(self, stream):
+        self.stream = stream
+        self.iterator = iter(stream)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> StreamEvent:
+        while True:
+            chunk = next(self.iterator)
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            delta = choices[0].delta
+            content = getattr(delta, "content", None)
+            if content is not None:
+                return StreamEvent("content", str(content))
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning is not None:
+                return StreamEvent("thinking", str(reasoning))
+
+    def cancel(self) -> None:
+        close = getattr(self.stream, "close", None)
+        if callable(close):
+            close()
 
 
 class DeepSeek(BaseLLM):
@@ -132,3 +161,24 @@ class DeepSeek(BaseLLM):
                 usage_source=usage_source,
             ),
         )
+
+    def stream_with_options(
+        self,
+        messages: List[Dict],
+        options: ChatOptions | None = None,
+    ) -> _DeepSeekStream:
+        options = options or ChatOptions()
+        request: Dict = {"model": self.model, "messages": list(messages), "stream": True}
+        if options.thinking is None:
+            request["temperature"] = self.temperature
+        else:
+            request["extra_body"] = {
+                "thinking": {"type": "enabled" if options.thinking else "disabled"}
+            }
+            if not options.thinking:
+                request["temperature"] = self.temperature
+        if options.max_tokens is not None:
+            request["max_tokens"] = max(int(options.max_tokens), 1)
+        if options.response_format is not None:
+            request["response_format"] = options.response_format
+        return _DeepSeekStream(self.client.chat.completions.create(**request))

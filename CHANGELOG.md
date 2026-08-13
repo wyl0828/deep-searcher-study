@@ -16,6 +16,8 @@
   原文预览、索引重建和删除共用 Bucket/Object Key 语义，且不把对象上传宣称为消息事务的一部分。
 - 增加可选 RocketMQ 5.x 事务入库模式，以官方 Python 客户端保护 Document/IngestJob 状态迁移与
   处理消息投递；本地轮询 Worker 继续作为默认模式，不引入 Outbox 或自定义消息状态表。
+- 增加可选的有序 Chat 候选路由、有效首包探测与进程内 `CLOSED/OPEN/HALF_OPEN` 熔断；单模型配置
+  保持兼容，Trace 记录最终实际模型和脱敏 fallback 原因。
 - 增加 Provider-neutral `ChatOptions`、完整 `TokenUsage`、调用前 Token 估算和按阶段 Trace；DeepSeek
   V4 Thinking 通过 `extra_body` 显式启停，reasoning 作为输出 Token 子集统计，不重复计入总量。
 - 增加查询级 LLM 调用、输入、输出、reasoning 预算以及最终回答/必需 Trust 预留；Provider usage

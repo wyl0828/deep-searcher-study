@@ -3,10 +3,50 @@ from types import SimpleNamespace
 import pytest
 
 from deepsearcher import configuration
+from deepsearcher.llm.routing import RoutingLLM
 
 
 class FakeConfig:
     query_settings = {"max_iter": 3}
+
+
+def test_module_factory_keeps_single_llm_configuration(monkeypatch):
+    sentinel = object()
+    config = SimpleNamespace(
+        provide_settings={"llm": {"provider": "Fake", "config": {"model": "one"}}}
+    )
+    factory = configuration.ModuleFactory(config)
+    monkeypatch.setattr(factory, "_create_module_instance", lambda *_args: sentinel)
+
+    assert factory.create_llm() is sentinel
+
+
+def test_module_factory_builds_ordered_chat_candidates(monkeypatch):
+    import deepsearcher.llm as llm_module
+
+    class FakeProvider:
+        def __init__(self, model):
+            self.model = model
+
+    monkeypatch.setattr(llm_module, "FakeProvider", FakeProvider, raising=False)
+    config = SimpleNamespace(
+        provide_settings={
+            "llm": {
+                "provider": "FakeProvider",
+                "config": {"model": "legacy"},
+                "candidates": [
+                    {"provider": "FakeProvider", "config": {"model": "first"}},
+                    {"provider": "FakeProvider", "config": {"model": "second"}},
+                ],
+                "routing": {"failure_threshold": 2},
+            }
+        }
+    )
+
+    result = configuration.ModuleFactory(config).create_llm()
+
+    assert isinstance(result, RoutingLLM)
+    assert [candidate.model for candidate in result.candidates] == ["first", "second"]
 
 
 def test_configuration_reads_utf8_yaml_on_windows(tmp_path):

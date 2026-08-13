@@ -8,6 +8,7 @@ logging.disable(logging.CRITICAL)
 
 from deepsearcher.llm import DeepSeek  # noqa: E402
 from deepsearcher.llm.base import ChatOptions, ChatResponse  # noqa: E402
+from deepsearcher.llm.routing import StreamEvent  # noqa: E402
 
 
 class TestDeepSeek(unittest.TestCase):
@@ -198,6 +199,29 @@ class TestDeepSeek(unittest.TestCase):
         self.assertEqual(response.total_tokens, 0)
         self.assertEqual(response.usage.usage_source, "estimated")
         self.assertGreater(response.usage.estimated_input_tokens, 0)
+
+    def test_stream_maps_content_and_can_cancel_http_stream(self):
+        with patch.dict("os.environ", {}, clear=True):
+            llm = DeepSeek()
+        delta = MagicMock()
+        delta.content = "answer"
+        delta.reasoning_content = None
+        chunk = MagicMock()
+        chunk.choices = [MagicMock(delta=delta)]
+        raw_stream = MagicMock()
+        raw_stream.__iter__.return_value = iter([chunk])
+        self.mock_completions.create.return_value = raw_stream
+
+        stream = llm.stream_with_options(
+            [{"role": "user", "content": "Hello"}],
+            ChatOptions(stage="final_answer", thinking=False, max_tokens=128),
+        )
+
+        self.assertEqual(next(stream), StreamEvent("content", "answer"))
+        stream.cancel()
+        raw_stream.close.assert_called_once()
+        request = self.mock_completions.create.call_args.kwargs
+        self.assertTrue(request["stream"])
 
 
 if __name__ == "__main__":

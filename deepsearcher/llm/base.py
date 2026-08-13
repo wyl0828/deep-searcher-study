@@ -116,6 +116,8 @@ class ChatResponse(ABC):
             raise ValueError("total_tokens must match usage.total_tokens")
         self.usage = usage
         self.total_tokens = usage.total_tokens
+        self.model: str | None = None
+        self.fallback_reason: str | None = None
 
     def __repr__(self) -> str:
         """
@@ -321,7 +323,8 @@ def chat_with_stage(
         trace_collector.record_llm_call(
             stage=stage,
             iteration=iteration,
-            model=str(getattr(llm, "model", llm.__class__.__name__)),
+            model=str(response.model or getattr(llm, "model", llm.__class__.__name__)),
+            fallback_reason=response.fallback_reason,
             thinking=thinking,
             max_tokens=effective_max_tokens,
             usage=response.usage,

@@ -384,6 +384,7 @@ class TraceCollector:
         iteration: int | None = None,
         input_evidence_count: int = 0,
         input_evidence_tokens: int = 0,
+        fallback_reason: str | None = None,
     ) -> None:
         """Record token metadata without retaining prompts or hidden reasoning."""
 
@@ -411,28 +412,29 @@ class TraceCollector:
             self._budget_state["output_tokens"] += usage.output_tokens
             self._budget_state["reasoning_tokens"] += usage.reasoning_tokens
             call_index = len(self._llm_calls) + 1
-            self._llm_calls.append(
-                {
-                    "call_index": call_index,
-                    "stage": self._safe_identifier(stage) or "unspecified",
-                    "iteration": max(int(iteration), 0) if iteration is not None else None,
-                    "model": self._safe_identifier(model) or "unknown",
-                    "thinking": thinking,
-                    "max_tokens": max(int(max_tokens), 0) if max_tokens is not None else None,
-                    "input_evidence_count": max(int(input_evidence_count or 0), 0),
-                    "input_evidence_tokens": max(int(input_evidence_tokens or 0), 0),
-                    "usage": {
-                        "input_tokens": usage.input_tokens,
-                        "cache_hit_tokens": usage.cache_hit_tokens,
-                        "cache_miss_tokens": usage.cache_miss_tokens,
-                        "output_tokens": usage.output_tokens,
-                        "reasoning_tokens": usage.reasoning_tokens,
-                        "total_tokens": usage.total_tokens,
-                        "estimated_input_tokens": usage.estimated_input_tokens,
-                        "usage_source": usage.usage_source,
-                    },
-                }
-            )
+            call = {
+                "call_index": call_index,
+                "stage": self._safe_identifier(stage) or "unspecified",
+                "iteration": max(int(iteration), 0) if iteration is not None else None,
+                "model": self._safe_identifier(model) or "unknown",
+                "thinking": thinking,
+                "max_tokens": max(int(max_tokens), 0) if max_tokens is not None else None,
+                "input_evidence_count": max(int(input_evidence_count or 0), 0),
+                "input_evidence_tokens": max(int(input_evidence_tokens or 0), 0),
+                "usage": {
+                    "input_tokens": usage.input_tokens,
+                    "cache_hit_tokens": usage.cache_hit_tokens,
+                    "cache_miss_tokens": usage.cache_miss_tokens,
+                    "output_tokens": usage.output_tokens,
+                    "reasoning_tokens": usage.reasoning_tokens,
+                    "total_tokens": usage.total_tokens,
+                    "estimated_input_tokens": usage.estimated_input_tokens,
+                    "usage_source": usage.usage_source,
+                },
+            }
+            if fallback_reason:
+                call["fallback_reason"] = self._safe_identifier(fallback_reason)
+            self._llm_calls.append(call)
 
     def reserve_llm_call(
         self,
