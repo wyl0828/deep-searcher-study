@@ -163,6 +163,15 @@ class ChainOfRAG(RAGAgent):
         self.text_window_splitter = text_window_splitter
         self.min_evidence_for_stop = max(int(min_evidence_for_stop), 1)
         self.max_followup_query_length = max(int(max_followup_query_length), 1)
+        token_control = kwargs.get("token_control") or {}
+        self.answer_evidence_limit = max(int(token_control.get("answer_evidence_limit", 8)), 1)
+        self.max_tokens_per_chunk = max(int(token_control.get("max_tokens_per_chunk", 1200)), 1)
+        self.max_answer_evidence_tokens = max(
+            int(token_control.get("max_answer_evidence_tokens", 10000)), 1
+        )
+        self.max_reflection_evidence_tokens = max(
+            int(token_control.get("max_reflection_evidence_tokens", 2500)), 1
+        )
         self._last_supported_docs_decision = ContextVar(
             f"chain_of_rag_supported_docs_decision_{id(self)}",
             default=None,
@@ -777,6 +786,12 @@ class ChainOfRAG(RAGAgent):
             all_retrieved_results,
             use_wider_text=self.text_window_splitter,
             trace_collector=trace_collector,
+            max_results=self.answer_evidence_limit,
+            max_tokens_per_chunk=self.max_tokens_per_chunk,
+            max_total_tokens=self.max_answer_evidence_tokens,
+            token_estimator=lambda text: self.llm.estimate_tokens(
+                [{"role": "user", "content": text}]
+            ),
         )
         final_prompt = FINAL_ANSWER_PROMPT.format(
             retrieved_documents=formatted_evidence,

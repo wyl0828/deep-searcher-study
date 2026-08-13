@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import re
 from contextvars import ContextVar
 from typing import Any, Callable, List, Tuple
 
@@ -154,6 +155,17 @@ class DeepSearch(RAGAgent):
         self.text_window_splitter = text_window_splitter
         self.rerank_batch_size = max(int(rerank_batch_size), 1)
         self.rerank_candidate_limit = max(int(rerank_candidate_limit), 1)
+        token_control = kwargs.get("token_control") or {}
+        self.candidate_limit = max(int(token_control.get("candidate_limit", 16)), 1)
+        self.rerank_limit = max(int(token_control.get("rerank_limit", 12)), 1)
+        self.answer_evidence_limit = max(int(token_control.get("answer_evidence_limit", 8)), 1)
+        self.max_tokens_per_chunk = max(int(token_control.get("max_tokens_per_chunk", 1200)), 1)
+        self.max_answer_evidence_tokens = max(
+            int(token_control.get("max_answer_evidence_tokens", 10000)), 1
+        )
+        self.max_reflection_evidence_tokens = max(
+            int(token_control.get("max_reflection_evidence_tokens", 2500)), 1
+        )
         self.retrieval_concurrency = max(int(retrieval_concurrency), 1)
         self.external_call_timeout_seconds = max(
             float(external_call_timeout_seconds),
@@ -672,10 +684,11 @@ class DeepSearch(RAGAgent):
         trace_collector=None,
         iteration=None,
     ) -> Tuple[List[str], int]:
+        reflection_summary = self._reflection_summary(all_chunks)
         reflect_prompt = REFLECT_PROMPT.format(
             question=original_query,
             mini_questions=all_sub_queries,
-            mini_chunk_str=self._format_chunk_texts([chunk.text for chunk in all_chunks])
+            mini_chunk_str=reflection_summary
             if len(all_chunks) > 0
             else "NO RELATED CHUNKS FOUND.",
         )
@@ -698,6 +711,57 @@ class DeepSearch(RAGAgent):
             excluded=all_sub_queries,
         )
         return gap_queries, chat_response.total_tokens
+
+    def _reflection_summary(self, chunks: List[RetrievalResult]) -> str:
+        lines = []
+        used = 0
+        for index, chunk in enumerate(deduplicate_results(chunks), start=1):
+            source = str(chunk.metadata.get("display_name") or chunk.reference or "unknown")
+            excerpt = re.sub(r"\s+", " ", str(chunk.text or "")).strip()
+            candidate = f"E{index} [{source}]: {excerpt}"
+            estimate = self.llm.estimate_tokens([{"role": "user", "content": candidate}])
+            if used + estimate > self.max_reflection_evidence_tokens:
+                remaining = self.max_reflection_evidence_tokens - used
+                if remaining <= 0:
+                    break
+                ratio = max(min(remaining / max(estimate, 1), 1.0), 0.0)
+                candidate = candidate[: max(int(len(candidate) * ratio), 1)].rstrip()
+                estimate = self.llm.estimate_tokens([{"role": "user", "content": candidate}])
+            lines.append(candidate)
+            used += estimate
+            if used >= self.max_reflection_evidence_tokens:
+                break
+        return "\n".join(lines) or "NO RELATED CHUNKS FOUND."
+
+    @staticmethod
+    def _is_comprehensive_query(query: str) -> bool:
+        normalized = str(query or "").casefold()
+        markers = (
+            "report",
+            "comprehensive",
+            "compare",
+            "comparison",
+            "报告",
+            "全面",
+            "综合",
+            "比较",
+            "对比",
+        )
+        return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _evidence_source_count(results: List[RetrievalResult]) -> int:
+        return len(
+            {
+                str(
+                    result.metadata.get("document_id")
+                    or result.metadata.get("display_name")
+                    or result.reference
+                    or ""
+                )
+                for result in results
+            }
+        )
 
     def retrieve(self, original_query: str, **kwargs) -> Tuple[List[RetrievalResult], int, dict]:
         """
@@ -900,8 +964,9 @@ class DeepSearch(RAGAgent):
             candidate_groups.extend(web_candidate_groups)
             candidates = self._merge_ranked_candidates(
                 candidate_groups,
-                limit=self.rerank_candidate_limit,
+                limit=min(self.candidate_limit, self.rerank_candidate_limit),
             )
+            candidates = candidates[: self.rerank_limit]
             accepted_results, consumed_token = await self._async_batch_rerank_chunks(
                 [original_query] + all_sub_queries,
                 candidates,
@@ -920,6 +985,22 @@ class DeepSearch(RAGAgent):
                 trace_collector.record_documents_retrieved(accepted_results)
                 trace_collector.record_documents_supported(accepted_results)
             all_search_res.extend(accepted_results)
+            risk_level = (
+                str(trace_collector.risk_profile.get("risk_level") or "medium")
+                if trace_collector is not None
+                else "medium"
+            )
+            if (
+                iter == 0
+                and not use_web_search
+                and not self._is_comprehensive_query(original_query)
+                and risk_level != "high"
+                and len(deduplicate_results(all_search_res)) >= 4
+                and self._evidence_source_count(deduplicate_results(all_search_res)) >= 2
+            ):
+                if trace_collector is not None:
+                    trace_collector.record_reflection(True)
+                break
             if iter == max_iter - 1:
                 if trace_collector is not None:
                     trace_collector.record_reflection(False)
@@ -996,6 +1077,12 @@ class DeepSearch(RAGAgent):
                 all_retrieved_results,
                 use_wider_text=self.text_window_splitter,
                 trace_collector=trace_collector,
+                max_results=self.answer_evidence_limit,
+                max_tokens_per_chunk=self.max_tokens_per_chunk,
+                max_total_tokens=self.max_answer_evidence_tokens,
+                token_estimator=lambda text: self.llm.estimate_tokens(
+                    [{"role": "user", "content": text}]
+                ),
             ),
             grounding_instructions=GROUNDING_PROMPT,
         )

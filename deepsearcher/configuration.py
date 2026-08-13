@@ -291,6 +291,7 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
     def create_searchers():
         chain_settings = config.query_settings.get("chain_of_rag", {})
         deep_search_settings = config.query_settings.get("deep_search", {})
+        token_settings = config.query_settings.get("token_control", {})
         naive = naive_rag_class(
             llm=llm_instance,
             embedding_model=embedding_instance,
@@ -303,6 +304,7 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
                     "enabled", False
                 )
             ),
+            token_control=token_settings,
         )
         agents = {
             "deep_search": deep_search_class(
@@ -321,6 +323,7 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
                     int(deep_search_settings.get("web_search_results_per_query", 5)),
                     1,
                 ),
+                token_control=token_settings,
             ),
             "chain_of_rag": chain_of_rag_class(
                 llm=llm_instance,
@@ -334,6 +337,7 @@ def build_runtime(config: Configuration) -> RuntimeComponents:
                 ),
                 route_collection=True,
                 text_window_splitter=True,
+                token_control=token_settings,
             ),
             "naive": naive,
         }

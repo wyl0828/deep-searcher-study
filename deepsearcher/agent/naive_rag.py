@@ -77,6 +77,12 @@ class NaiveRAG(RAGAgent):
             )
         self.text_window_splitter = text_window_splitter
         self.query_decomposition_enabled = bool(query_decomposition_enabled)
+        token_control = kwargs.get("token_control") or {}
+        self.answer_evidence_limit = max(int(token_control.get("answer_evidence_limit", 8)), 1)
+        self.max_tokens_per_chunk = max(int(token_control.get("max_tokens_per_chunk", 1200)), 1)
+        self.max_answer_evidence_tokens = max(
+            int(token_control.get("max_answer_evidence_tokens", 10000)), 1
+        )
 
     def retrieve(self, query: str, **kwargs) -> Tuple[List[RetrievalResult], int, dict]:
         """
@@ -214,6 +220,12 @@ class NaiveRAG(RAGAgent):
             all_retrieved_results,
             use_wider_text=self.text_window_splitter,
             trace_collector=trace_collector,
+            max_results=self.answer_evidence_limit,
+            max_tokens_per_chunk=self.max_tokens_per_chunk,
+            max_total_tokens=self.max_answer_evidence_tokens,
+            token_estimator=lambda text: self.llm.estimate_tokens(
+                [{"role": "user", "content": text}]
+            ),
         )
         summary_prompt = SUMMARY_PROMPT.format(
             query=query,

@@ -194,6 +194,13 @@ provide_settings:
 
 query_settings:
   max_iter: 2
+  token_control:
+    candidate_limit: 16
+    rerank_limit: 12
+    answer_evidence_limit: 8
+    max_tokens_per_chunk: 1200
+    max_answer_evidence_tokens: 10000
+    max_reflection_evidence_tokens: 2500
   document_aware_query_decomposition:
     # Promoted only after the focused and full v0.3 quality gates pass.
     enabled: false
