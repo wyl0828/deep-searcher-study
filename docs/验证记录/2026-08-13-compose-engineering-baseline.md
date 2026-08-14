@@ -107,9 +107,38 @@ RocketMQ/Consumer，也不调用未配置密钥的真实模型。验证结果：
 - 深度健康中 FastAPI/Milvus 为 ready，未启动 Consumer 和未执行模型探针使总体状态为预期的 degraded；
 - 八个运行进程实测合计约 833 MiB，停止后项目容器和网络均移除，所有命名卷保留。
 
+## 本地短时完整拓扑冒烟
+
+2026-08-14 启动 2 API、2 RocketMQ Consumer、PostgreSQL、Redis、MinIO、RocketMQ、Milvus 与 etcd。
+本轮使用被 Git 忽略的 `.env` 提供真实模型配置，启动脚本会拒绝空值和示例占位符。真实执行发现并修复：
+
+1. Windows 保留 9000 段导致本地调试端口冲突；仅在本机 `.env.compose` 将 MinIO/Milvus 诊断端口
+   移到 19000 段，容器内部端口与服务器基础 Compose 不变。
+2. Consumer 下载的 S3 临时文件原先只存在于 Consumer 容器，Core API 无法访问。应用容器改用同一
+   `shared-ingest-tmp` 临时卷与绝对路径，调用结束后现有上下文会删除临时文件。
+3. PostgreSQL `citations.id` 为 `VARCHAR(40)`，但 `citation_` 前缀 UUID 长 41。Alembic
+   `20260814_0016` 将该主键扩到 48，模型和迁移保持一致。
+4. Playwright 原固定端口 8766 落入本机 Windows 保留段，默认端口调整为 18766，并允许通过
+   `DEEPSEARCHER_E2E_PORT` 覆盖。
+
+修复后的最终结果：
+
+- 全部常驻服务健康，迁移、Bucket、Topic 与 Consumer Group 初始化任务退出码均为 0；
+- 停止 Consumer A 后，API A 上传真实 `WhatisMilvus.pdf`，Consumer B 在首次投递完成解析、16 个分块
+  Embedding、Milvus 写入与 ACK，API B 可预览原文；
+- API B 发起真实知识库问答，Core API 返回 200，回答为 `fully_grounded`，持久化 10 条 Citation；
+- 重启 Core API、两个产品 API 与两个 Consumer 后，文档、2 条消息、10 条 Citation 和 Trust 状态仍存在；
+- 共享临时卷在入库完成后为空；
+- 产品知识库删除接口同时清理 PostgreSQL、MinIO 对象与 Milvus Collection；
+- 本轮专用用户和业务数据已清理，全部容器与网络已移除，命名卷保留；
+- 完整拓扑稳定时实测内存合计约 2.1 GiB，未出现容器被杀或持续增长。
+
+最终 Fast Gate 通过：994 项 Python 测试、35 项前端测试、2 项浏览器 E2E、SQLite 全量 Alembic
+升级、Trust/风险/Provenance 报告门禁与 MkDocs 构建全部通过；另有 11 项依赖外部服务的测试按既有
+条件跳过。真实 PostgreSQL 空库迁移、Schema 校验和任务抢占集成测试另行通过。
+
 ## 尚未完成
 
-- 本地短时完整冒烟；
 - Linux 服务器反向代理覆盖与完整多实例验收。
 
 后续记录必须基于真实执行结果更新，不把静态 Compose 校验写成运行时能力证明。

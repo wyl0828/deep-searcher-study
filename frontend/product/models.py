@@ -313,7 +313,7 @@ class Citation(TimestampMixin, Base):
     __tablename__ = "citations"
 
     id: Mapped[str] = mapped_column(
-        String(40), primary_key=True, default=lambda: make_id("citation")
+        String(48), primary_key=True, default=lambda: make_id("citation")
     )
     message_id: Mapped[str] = mapped_column(
         ForeignKey("messages.id", ondelete="CASCADE"),

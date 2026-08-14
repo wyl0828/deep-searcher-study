@@ -8,6 +8,8 @@ param(
 
     [string]$EnvFile = ".env.compose",
 
+    [string]$ProviderEnvFile = ".env",
+
     [switch]$Build
 )
 
@@ -38,6 +40,33 @@ $services = @{
     full   = @()
 }
 
+function Import-ProviderEnvironment {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "未找到 Provider 环境文件：$Path。app/full 模式需要有效的模型与 Embedding 凭据。"
+    }
+    $values = @{}
+    Get-Content -LiteralPath $Path | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $name, $value = $line.Split("=", 2)
+            $values[$name.Trim()] = $value.Trim()
+        }
+    }
+    foreach ($required in @("DEEPSEEK_API_KEY", "OPENAI_API_KEY")) {
+        $value = [string]$values[$required]
+        if (-not $value -or $value -match "^(your|change-this|replace|example|sk-xxxx|xxxx)") {
+            throw "$required 未配置或仍是示例占位符，拒绝启动 app/full 模式。"
+        }
+    }
+    foreach ($name in @("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL")) {
+        if ($values.ContainsKey($name) -and $values[$name]) {
+            Set-Item -Path "Env:$name" -Value $values[$name]
+        }
+    }
+}
+
 Push-Location $projectRoot
 try {
     switch ($Action) {
@@ -45,6 +74,14 @@ try {
             & docker @composeArgs config --quiet
         }
         "up" {
+            if ($Group -in @("app", "full")) {
+                $providerPath = if ([System.IO.Path]::IsPathRooted($ProviderEnvFile)) {
+                    $ProviderEnvFile
+                } else {
+                    Join-Path $projectRoot $ProviderEnvFile
+                }
+                Import-ProviderEnvironment -Path $providerPath
+            }
             $upArgs = @("up", "-d")
             if ($Build) { $upArgs += "--build" }
             $upArgs += $services[$Group]

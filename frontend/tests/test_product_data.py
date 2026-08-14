@@ -44,7 +44,16 @@ def make_session(tmp_path) -> Session:
 
 
 def test_required_alembic_revision_matches_repository_head():
-    assert required_alembic_heads() == ("20260813_0015",)
+    assert required_alembic_heads() == ("20260814_0016",)
+
+
+def test_citation_id_column_fits_generated_identifier():
+    column = Citation.__table__.c.id
+    citation = Citation(message_id="msg", index=1, display_name="paper.pdf", text="evidence")
+    generated = column.default.arg(None)
+
+    assert generated.startswith("citation_")
+    assert len(generated) <= column.type.length
 
 
 def test_postgresql_schema_validation_rejects_missing_revision(monkeypatch):

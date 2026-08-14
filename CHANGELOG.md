@@ -29,6 +29,12 @@
 
 ### 变更
 
+- Compose 应用容器共享受控入库临时卷，使 Consumer 从 S3 物化的短期文件可由 Core API 读取；处理完成
+  后仍立即删除，不将临时卷作为长期存储或扩大消息事务边界。
+- 工程启动脚本从被 Git 忽略的 Provider 环境文件注入模型配置，并拒绝空值与示例占位符。
+- Citation 主键由 40 扩到 48 字符并增加 Alembic `20260814_0016`，容纳 `citation_` 前缀 UUID。
+- Playwright 本地 E2E 默认端口移到 18766，并支持 `DEEPSEARCHER_E2E_PORT` 覆盖，避开 Windows
+  动态保留端口段。
 - 入库任务在 PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 抢占，在 SQLite 保持原有条件更新，二者维持相同
   的单任务单 Worker 业务语义。
 - DeepSearch 默认迭代数由 3 调整为 2；候选、重排、回答证据、单段证据和反思上下文均改为有界输入，
@@ -48,6 +54,8 @@
   项目既有 Milvus/Citation/Manifest/Collection 版本集成测试全部通过。
 - Compose 双 API 分组完成共享认证、知识库、会话、MinIO 原文预览、单实例停止接管、应用重启恢复与
   Redis 摘要锁并发验证；同一会话仅生成一条有效摘要且锁在完成后释放。
+- 本地完整拓扑完成真实 PDF 上传、指定 Consumer 处理、Embedding/Milvus 入库、跨 API 原文预览、
+  真实问答、10 条 Citation/Trust 持久化、应用重启恢复和 PostgreSQL/MinIO/Milvus 联动删除。
 - 使用真实 RocketMQ 5.3.2 Broker/Proxy 完成官方 Python 5.1.1 客户端 Spike：Commit、Rollback、
   Broker 回查、未 ACK 重试、ACK 后停止投递，以及长耗时消费的可见期续租均通过。
 

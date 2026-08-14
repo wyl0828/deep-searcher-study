@@ -3,6 +3,13 @@ from pathlib import Path
 import yaml
 
 
+def test_compose_launcher_rejects_placeholder_provider_credentials():
+    script = (ROOT / "scripts" / "compose-environment.ps1").read_text(encoding="utf-8")
+    assert "Import-ProviderEnvironment" in script
+    assert '"DEEPSEEK_API_KEY", "OPENAI_API_KEY"' in script
+    assert "示例占位符" in script
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,7 +46,14 @@ def test_engineering_topology_contains_expected_services_and_persistence():
         "rocketmq-store",
         "etcd-data",
         "milvus-data",
+        "shared-ingest-tmp",
     }.issubset(compose["volumes"])
+
+
+def test_app_containers_share_the_ingest_materialization_directory():
+    compose = _load("compose.yaml")
+    assert compose["x-app-environment"]["TMPDIR"] == "/app/shared-tmp"
+    assert "shared-ingest-tmp:/app/shared-tmp" in compose["x-app-service"]["volumes"]
 
 
 def test_base_topology_does_not_publish_host_ports():

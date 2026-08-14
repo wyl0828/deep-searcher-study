@@ -129,10 +129,11 @@ def main() -> None:
     _seed_workspace()
     import uvicorn
 
+    port = int(os.environ.get("DEEPSEARCHER_E2E_PORT", "18766"))
     uvicorn.run(
         "frontend.server:app",
         host="127.0.0.1",
-        port=8766,
+        port=port,
         log_level="warning",
     )
 

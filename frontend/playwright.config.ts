@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(frontendRoot, "..");
+const e2ePort = process.env.DEEPSEARCHER_E2E_PORT ?? "18766";
+const e2eBaseURL = `http://127.0.0.1:${e2ePort}`;
 const venvPython = path.join(
   projectRoot,
   process.platform === "win32" ? ".venv/Scripts/python.exe" : ".venv/bin/python",
@@ -32,7 +34,7 @@ export default defineConfig({
   ],
   outputDir: path.join(projectRoot, "output/playwright/e2e-results/artifacts"),
   use: {
-    baseURL: "http://127.0.0.1:8766",
+    baseURL: e2eBaseURL,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
     video: "retain-on-failure",
@@ -40,7 +42,7 @@ export default defineConfig({
   webServer: {
     command: `"${venvPython}" scripts/e2e_workspace_server.py`,
     cwd: projectRoot,
-    url: "http://127.0.0.1:8766/api/health/live",
+    url: `${e2eBaseURL}/api/health/live`,
     reuseExistingServer: false,
     timeout: 30_000,
   },

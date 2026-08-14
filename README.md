@@ -749,7 +749,9 @@ Chat 默认继续使用原有单模型配置。需要容错时可在 `provide_se
 
 根目录的 `compose.yaml` 定义 PostgreSQL、Redis、MinIO、RocketMQ 5.x、Milvus、2 个产品 API 和
 2 个 RocketMQ Consumer；`compose.local.yaml` 只为本机调试将端口绑定到 `127.0.0.1`。先复制
-`env.compose.example` 为 `.env.compose`，替换示例密码、服务令牌和模型密钥，再执行：
+`env.compose.example` 为 `.env.compose` 并替换示例密码与服务令牌；模型与 Embedding 密钥继续放在被
+Git 忽略的 `.env`。`app/full` 启动会安全加载 `.env`，空值或 `your...` 等示例占位符会被预检拒绝。
+然后执行：
 
 ```powershell
 # 只校验 Compose，不启动容器
@@ -775,6 +777,10 @@ PostgreSQL 启动后由一次性 `migrate` 容器执行 Alembic，API/Consumer �
 MinIO 初始化容器只创建缺失的业务与 Milvus Bucket；RocketMQ 初始化容器只创建 TRANSACTION Topic
 和既有 Consumer Group。基础 Compose 不发布宿主机端口，服务器部署应通过单独的反向代理覆盖文件只暴露
 Web/API 入口，不应直接复用本地端口覆盖文件。
+
+Consumer 从对象存储读取的文件只在调用 Core API 期间存在于 `shared-ingest-tmp` 临时卷；Core API 与
+Consumer 使用相同绝对路径，调用结束后仍由现有存储上下文删除。该卷只解决同一 Compose 部署内的临时
+文件可见性，不是长期文件存储，也不扩大 RocketMQ 事务边界。
 
 知识库详情页也支持整体删除，并同步清理该知识库的 Milvus 集合、上传目录、文档、对话和引用；删除当前知识库后会自动切换到最近更新的其他知识库。对话页可单独删除当前对话及其消息、引用，不影响知识库、文档或向量数据。
 

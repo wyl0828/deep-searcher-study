@@ -24,6 +24,7 @@ x-app-environment: &app-environment
   DEEPSEARCHER_SUMMARY_LOCK: redis
   DEEPSEARCHER_REDIS_URL: redis://redis:6379/0
   DEEPSEARCHER_SUMMARY_LOCK_SECONDS: 120
+  TMPDIR: /app/shared-tmp
 
 x-app-service: &app-service
   build:
@@ -34,6 +35,8 @@ x-app-service: &app-service
   environment: *app-environment
   networks:
     - deepsearcher
+  volumes:
+    - shared-ingest-tmp:/app/shared-tmp
 
 services:
   postgres:
@@ -330,6 +333,7 @@ volumes:
   rocketmq-logs:
   etcd-data:
   milvus-data:
+  shared-ingest-tmp:
 
 networks:
   deepsearcher:
