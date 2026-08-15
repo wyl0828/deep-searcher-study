@@ -12,6 +12,14 @@ WORKDIR /app
 
 RUN mkdir -p /tmp/uv-cache /app/data /app/logs
 
+# 国内网络适配：uv 使用阿里云 PyPI 镜像，放宽超时并降低并发连接数
+ENV UV_HTTP_TIMEOUT=600
+ENV UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple/
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV UV_CONCURRENT_DOWNLOADS=8
+ENV UV_CONCURRENT_BUILDS=1
+
 COPY pyproject.toml uv.lock LICENSE README.md ./
 LABEL org.opencontainers.image.source="https://github.com/wyl0828/deep-searcher-study"
 
