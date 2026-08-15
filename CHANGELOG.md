@@ -62,6 +62,10 @@
   真实问答、10 条 Citation/Trust 持久化、应用重启恢复和 PostgreSQL/MinIO/Milvus 联动删除。
 - 使用真实 RocketMQ 5.3.2 Broker/Proxy 完成官方 Python 5.1.1 客户端 Spike：Commit、Rollback、
   Broker 回查、未 ACK 重试、ACK 后停止投递，以及长耗时消费的可见期续租均通过。
+- 阿里云 ECS 完整拓扑部署与验收：Storage/Vector/Messaging 分组真实验证、双 API 双 Consumer
+  真实链路（上传→事务消息→解析/Embedding→Milvus→查询引用→原文预览）、故障恢复（API/Consumer
+  接管、消息重投自愈、中间件重启恢复）与 Nginx 反向代理接入全部通过；记录见
+  docs/验证记录/2026-08-15-server-full-deployment.md。
 
 - PostgreSQL Schema 校验与抢占分支单测进入 Fast Gate；提供通过 `DEEPSEARCHER_TEST_POSTGRES_URL` 显式
   启用的真实 PostgreSQL 迁移/抢占集成测试，本地未配置 PostgreSQL 时不会伪造执行结果。

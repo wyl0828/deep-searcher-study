@@ -52,6 +52,7 @@ if (-not $Release) {
     $Release = "$today-01"
 }
 $SshArgs = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=15", $Server)
+$ScpArgs = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=15")
 
 function Invoke-Ssh {
     param([string]$Command)
@@ -104,7 +105,7 @@ switch ($Action) {
         if (-not (Test-Path -LiteralPath $tarball)) { throw "未找到部署包：$tarball，请先执行 package" }
         Invoke-Ssh "mkdir -p $releaseRemote"
         Write-Host "[scp] $tarball -> $Server`:$releaseRemote/"
-        & scp @SshArgs $tarball "$Server`:$releaseRemote/"
+        & scp @ScpArgs $tarball "$Server`:$releaseRemote/"
         if ($LASTEXITCODE -ne 0) { throw "scp 失败" }
         Invoke-Ssh "tar -xzf $releaseRemote/$Release.tar.gz -C $releaseRemote && chmod -R u+rwX,go+rX $releaseRemote && rm -f $releaseRemote/$Release.tar.gz"
         Invoke-Ssh "ls -la $releaseRemote | head -30"
@@ -155,16 +156,24 @@ switch ($Action) {
             $temp = Join-Path $env:TEMP "deepsearcher-env-server-$PID"
             [System.IO.File]::WriteAllLines($temp, $rendered, (New-Object System.Text.UTF8Encoding($false)))
             try {
-                & scp @SshArgs $temp "$Server`:$envFileRemote"
+                & scp @ScpArgs $temp "$Server`:$envFileRemote"
                 if ($LASTEXITCODE -ne 0) { throw "scp .env.server 失败" }
             } finally {
                 Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
             }
             Write-Host "ENV   已生成 $envFileRemote"
         }
-        $summary = (& ssh @SshArgs "awk -F= '/^(POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD|DEEPSEARCHER_SERVICE_TOKEN|DEEPSEARCHER_ADMIN_TOKEN|DEEPSEARCHER_SESSION_SECRET|DEEPSEEK_API_KEY|OPENAI_API_KEY)=/ {v=\$2; gsub(/[\r ]/,\"\",v); print \$1\"=\"length(v)}'" $envFileRemote)
+        $summaryCmd = @(
+            "echo -n POSTGRES_PASSWORD=; grep -E '^POSTGRES_PASSWORD=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n MINIO_ROOT_PASSWORD=; grep -E '^MINIO_ROOT_PASSWORD=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n DEEPSEARCHER_SERVICE_TOKEN=; grep -E '^DEEPSEARCHER_SERVICE_TOKEN=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n DEEPSEARCHER_ADMIN_TOKEN=; grep -E '^DEEPSEARCHER_ADMIN_TOKEN=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n DEEPSEARCHER_SESSION_SECRET=; grep -E '^DEEPSEARCHER_SESSION_SECRET=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n DEEPSEEK_API_KEY=; grep -E '^DEEPSEEK_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n OPENAI_API_KEY=; grep -E '^OPENAI_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c"
+        ) -join " "
         Write-Host "ENV   密钥项（键=长度，不显示值）："
-        $summary | ForEach-Object { Write-Host "      $_" }
+        (& ssh @SshArgs $summaryCmd) | ForEach-Object { Write-Host "      $_" }
         $missing = @()
         foreach ($k in @("DEEPSEEK_API_KEY", "OPENAI_API_KEY")) {
             $val = (& ssh @SshArgs "grep -E '^$k=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]'")

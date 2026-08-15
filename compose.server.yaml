@@ -117,6 +117,9 @@ services:
   product-api-a:
     ports:
       - 127.0.0.1:${PRODUCT_API_A_SERVER_PORT:-18700}:8700
+    environment:
+      DEEPSEARCHER_WORKSPACE_ALLOWED_HOSTS: ${DEEPSEARCHER_WORKSPACE_ALLOWED_HOSTS:-}
+      DEEPSEARCHER_WORKSPACE_PUBLIC_ORIGIN: ${DEEPSEARCHER_WORKSPACE_PUBLIC_ORIGIN:-}
     logging:
       driver: json-file
       options:
@@ -127,6 +130,9 @@ services:
   product-api-b:
     ports:
       - 127.0.0.1:${PRODUCT_API_B_SERVER_PORT:-18701}:8700
+    environment:
+      DEEPSEARCHER_WORKSPACE_ALLOWED_HOSTS: ${DEEPSEARCHER_WORKSPACE_ALLOWED_HOSTS:-}
+      DEEPSEARCHER_WORKSPACE_PUBLIC_ORIGIN: ${DEEPSEARCHER_WORKSPACE_PUBLIC_ORIGIN:-}
     logging:
       driver: json-file
       options:
@@ -142,6 +148,7 @@ services:
         max-file: "3"
     cpus: "0.75"
     healthcheck:
+      disable: false
       test: ["CMD-SHELL", "test -d /proc/1"]
       interval: 30s
       timeout: 5s
@@ -156,6 +163,7 @@ services:
         max-file: "3"
     cpus: "0.75"
     healthcheck:
+      disable: false
       test: ["CMD-SHELL", "test -d /proc/1"]
       interval: 30s
       timeout: 5s
