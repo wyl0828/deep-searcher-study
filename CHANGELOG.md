@@ -12,6 +12,10 @@
 
 - 增加分项可启动的工程 Compose 拓扑，统一 PostgreSQL、Redis、MinIO、RocketMQ、Milvus、双 API 与
   双 Consumer；本地端口只绑定回环地址，并提供配置校验、分组启停和 API 冒烟脚本。
+- 增加服务器部署文件：compose.server.yaml（与 compose.yaml 叠加，仅 API 绑定服务器回环
+  18700/18701、引擎诊断 18702，中间件不发布端口，日志轮转 10 MB × 3 与 CPU 限制）、
+  .env.server.example、deploy/server/ 打包/上传/构建/分组启停与状态、冒烟脚本，以及
+  deploy/nginx/deepsearcher.conf.example 反向代理模板和服务器部署与验收文档。
 - 增加可选 PostgreSQL 产品数据库支持；正式 PostgreSQL Schema 只允许通过 Alembic 升级，服务启动时
   校验当前 revision，SQLite 继续保留本地自动建表和旧库兼容升级。
 - 增加统一 PDF 对象存储接口，保留本地实现并提供可选 S3/MinIO/RustFS 实现；上传、Worker 读取、

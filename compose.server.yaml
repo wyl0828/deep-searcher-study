@@ -1,0 +1,163 @@
+# 服务器部署覆盖文件（与 compose.yaml 叠加使用）
+#
+# 设计约束：
+# - 仅产品 API A/B 与 Core API 诊断端口绑定服务器回环地址 127.0.0.1；
+# - PostgreSQL、Redis、MinIO、RocketMQ、etcd、Milvus 均不发布宿主机端口；
+# - 每个容器配置日志轮转（json-file，单文件 10MB、最多保留 3 份）与 CPU 限制；
+# - 内存限制沿用 compose.yaml 的 mem_limit，不在此重复；
+# - 一次性初始化/迁移任务以退出码 0 表示完成，不设置健康检查；
+# - Consumer 是常驻 Worker，无 HTTP 端口，使用进程存活探针作为健康检查。
+#
+# 使用方式（在服务器 release 目录执行）：
+#   docker compose --env-file /opt/deepsearcher-study/.env.server \
+#     -f compose.yaml -f compose.server.yaml config --quiet
+#   docker compose --env-file /opt/deepsearcher-study/.env.server \
+#     -f compose.yaml -f compose.server.yaml up -d [服务]
+
+services:
+  postgres:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "1.0"
+
+  redis:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.5"
+
+  minio:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.5"
+
+  minio-init:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.25"
+
+  rocketmq-namesrv:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.5"
+
+  rocketmq-permissions:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.25"
+
+  rocketmq-broker:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "1.0"
+
+  rocketmq-init:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.25"
+
+  etcd:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.5"
+
+  milvus:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "2.0"
+
+  migrate:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.5"
+
+  # Core API 是产品 API 的引擎依赖，仅提供回环诊断端口，不对外暴露。
+  core-api:
+    ports:
+      - 127.0.0.1:${CORE_API_SERVER_PORT:-18702}:8000
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "1.0"
+
+  product-api-a:
+    ports:
+      - 127.0.0.1:${PRODUCT_API_A_SERVER_PORT:-18700}:8700
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.75"
+
+  product-api-b:
+    ports:
+      - 127.0.0.1:${PRODUCT_API_B_SERVER_PORT:-18701}:8700
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.75"
+
+  consumer-a:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.75"
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /proc/1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  consumer-b:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    cpus: "0.75"
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /proc/1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

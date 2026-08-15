@@ -782,6 +782,30 @@ Consumer 从对象存储读取的文件只在调用 Core API 期间存在于 `sh
 Consumer 使用相同绝对路径，调用结束后仍由现有存储上下文删除。该卷只解决同一 Compose 部署内的临时
 文件可见性，不是长期文件存储，也不扩大 RocketMQ 事务边界。
 
+### 服务器部署（阿里云 ECS）
+
+完整拓扑的服务器部署与验收步骤见 [`docs/部署/服务器部署与验收.md`](docs/部署/服务器部署与验收.md)。
+`compose.server.yaml` 与 `compose.yaml` 叠加：仅产品 API 绑定 `127.0.0.1:18700/18701`、引擎诊断
+`127.0.0.1:18702`，中间件不发布端口，每个容器配置日志轮转（10 MB × 3）与 CPU 限制；模板见
+`.env.server.example`。常用命令：
+
+```powershell
+# 部署（打包 -> 上传 -> 生成 .env.server -> 构建）
+.\deploy\server\deploy.ps1 -Action deploy -Release 20260815-01
+
+# 按分组启动（storage -> vector -> messaging -> app）
+.\deploy\server\deploy.ps1 -Action start -Group storage
+.\deploy\server\deploy.ps1 -Action start -Group vector
+.\deploy\server\deploy.ps1 -Action start -Group messaging
+.\deploy\server\deploy.ps1 -Action start -Group app
+
+# 状态与冒烟
+.\deploy\server\status.ps1
+.\deploy\server\smoke.ps1
+```
+
+Provider 密钥只放服务器 `/opt/deepsearcher-study/.env.server`，不进入 Git 与镜像。
+
 知识库详情页也支持整体删除，并同步清理该知识库的 Milvus 集合、上传目录、文档、对话和引用；删除当前知识库后会自动切换到最近更新的其他知识库。对话页可单独删除当前对话及其消息、引用，不影响知识库、文档或向量数据。
 
 问答链路会区分“检索成功但没有命中”和“向量检索服务故障”。Milvus 离线时，工作台会显示可恢复的系统故障并提供重试；Collection 不存在或向量维度不匹配时，会引导用户检查知识库索引，不会把这些失败伪装成“知识库没有相关资料”。

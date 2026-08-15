@@ -2,6 +2,7 @@
 .github
 .venv
 dist
+deploy
 .pytest_cache
 .ruff_cache
 .mypy_cache

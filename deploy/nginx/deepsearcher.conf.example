@@ -1,0 +1,50 @@
+# deep-searcher-study Nginx 反向代理示例
+#
+# 适用条件：
+# - 完整内部验收通过后，再把本项目 Web/API 入口接入 Nginx；
+# - 仅暴露 Web/API 入口，数据库与中间件仍不开放公网；
+# - API A（127.0.0.1:18700）作为主节点，API B（127.0.0.1:18701）作为 backup 故障转移；
+# - SSE 关闭缓冲、增大上传体积、加长请求超时。
+#
+# 使用步骤：
+#   1. 备份现有配置：cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak-YYYYMMDD
+#   2. 复制本文件到 /etc/nginx/conf.d/deepsearcher.conf 并替换 server_name
+#   3. nginx -t
+#   4. systemctl reload nginx（仅当 nginx -t 通过）
+#   5. reload 失败则恢复备份并再次 nginx -t
+
+upstream deepsearcher_api {
+    server 127.0.0.1:18700 max_fails=3 fail_timeout=10s;
+    server 127.0.0.1:18701 backup;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name deepsearcher.example.com;  # TODO: 替换为实际域名或保留 IP 场景下删除本行
+
+    # 上传体积限制：PDF 上传增大到 200MB
+    client_max_body_size 200m;
+
+    # 长请求与 SSE 超时
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600s;
+
+    # SSE：关闭代理缓冲与缓存
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection "";
+    chunked_transfer_encoding on;
+
+    location / {
+        proxy_pass http://deepsearcher_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
