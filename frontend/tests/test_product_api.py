@@ -2045,3 +2045,51 @@ def test_citation_maps_product_document_id_back_to_original_filename(
     citation = answer["assistant_message"]["citations"][0]
     assert citation["document_id"] == captured["document_id"]
     assert citation["display_name"] == "WhatisMilvus.pdf"
+
+
+def test_knowledge_health_trend_and_actions_api(tmp_path):
+    with product_client(tmp_path) as client:
+        created = client.post(
+            "/api/knowledge-bases",
+            json={"name": "健康测试", "description": ""},
+        )
+        assert created.status_code == 201
+        knowledge_base_id = created.json()["id"]
+
+        health = client.get(f"/api/knowledge-bases/{knowledge_base_id}/health")
+        assert health.status_code == 200
+        current = health.json()["current"]
+        assert current["formula_version"] == "1.1"
+        assert "level" in current
+        assert "attribution" in current["metrics"]["retrieval"]
+
+        snapshot_response = client.post(
+            f"/api/knowledge-bases/{knowledge_base_id}/health/snapshot"
+        )
+        assert snapshot_response.status_code == 201
+        snapshot = snapshot_response.json()["snapshot"]
+        assert snapshot["id"].startswith("khs_")
+        assert "level" in snapshot
+
+        trend = client.get(f"/api/knowledge-bases/{knowledge_base_id}/health/trend")
+        assert trend.status_code == 200
+        items = trend.json()["items"]
+        assert len(items) == 1
+        assert "level" in items[0]
+        assert items[0]["overall"] is None  # empty knowledge base -> partial
+
+        actions = client.post(
+            f"/api/knowledge-bases/{knowledge_base_id}/health/actions/run",
+            json={"actions": ["UPLOAD_DOCUMENTS"]},
+        )
+        assert actions.status_code == 200
+        action_result = actions.json()
+        assert action_result["results"][0]["status"] == "requires_user_action"
+        assert action_result["snapshot"]["id"].startswith("khs_")
+        assert action_result["delta"]["direction"] == "changed"
+
+        bad = client.post(
+            f"/api/knowledge-bases/{knowledge_base_id}/health/actions/run",
+            json={"actions": ["NOPE"]},
+        )
+        assert bad.status_code == 400

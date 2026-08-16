@@ -36,6 +36,7 @@ export type KnowledgeBase = {
 export type KnowledgeHealthComputed = {
   formula_version: string;
   status: "complete" | "partial";
+  level: "healthy" | "warning" | "critical" | null;
   overall_score: number | null;
   data_score: number | null;
   retrieval_score: number | null;
@@ -49,6 +50,7 @@ export type KnowledgeHealthComputed = {
       total_pages: number;
       index_verified: boolean;
       temporal_metadata_ratio: number;
+      series_penalty: number;
     };
     retrieval: {
       message_sample_count: number;
@@ -57,6 +59,22 @@ export type KnowledgeHealthComputed = {
       refusal_rate: number;
       insufficient_evidence_rate: number;
       web_source_rate: number;
+      attribution: {
+        unreferenced_documents: { id: string; display_name: string }[];
+        referenced_ready_coverage: number | null;
+        refusal_by_query_type: {
+          query_type: string;
+          sample_count: number;
+          count: number;
+          rate: number;
+        }[];
+        insufficient_by_query_type: {
+          query_type: string;
+          sample_count: number;
+          count: number;
+          rate: number;
+        }[];
+      };
     };
     trust: {
       claim_count: number;
@@ -67,7 +85,13 @@ export type KnowledgeHealthComputed = {
       entailment_contradiction_rate: number;
     };
   };
-  deductions: { code: string; reason: string; impact: string }[];
+  deductions: {
+    code: string;
+    reason: string;
+    impact: string;
+    document_ids?: string[];
+    version_family?: string;
+  }[];
   actions: {
     code: string;
     action: string;
@@ -96,6 +120,28 @@ export type KnowledgeHealthSnapshotResult = {
     retrieval_delta: number | null;
     trust_delta: number | null;
   };
+};
+
+export type HealthTrendItem = {
+  created_at: string;
+  overall: number | null;
+  data: number | null;
+  retrieval: number | null;
+  trust: number | null;
+  level: "healthy" | "warning" | "critical" | null;
+};
+
+export type HealthActionResult = {
+  code: string;
+  status: "succeeded" | "failed" | "requires_user_action";
+  affected_count: number;
+  message: string;
+};
+
+export type HealthActionsRunResult = {
+  results: HealthActionResult[];
+  snapshot: KnowledgeHealthSnapshot;
+  delta: KnowledgeHealthSnapshotResult["change"];
 };
 
 export type ProductUser = {
@@ -926,4 +972,21 @@ export async function streamMessage(
     "QUERY_STREAM_INCOMPLETE",
     true,
   );
+}
+
+export function getKnowledgeHealthTrend(
+  id: string,
+  limit = 30,
+): Promise<{ items: HealthTrendItem[] }> {
+  return requestJson(`/api/knowledge-bases/${id}/health/trend?limit=${limit}`);
+}
+
+export function runKnowledgeHealthActions(
+  id: string,
+  actions: string[],
+): Promise<HealthActionsRunResult> {
+  return requestJson(`/api/knowledge-bases/${id}/health/actions/run`, {
+    method: "POST",
+    body: JSON.stringify({ actions }),
+  });
 }

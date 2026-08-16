@@ -46,6 +46,7 @@ from frontend.product.schemas import (
     ConversationCreate,
     DocumentGovernanceUpdate,
     DocumentTemporalUpdate,
+    HealthActionsRun,
     KnowledgeBaseCreate,
     MessageCreate,
     MessageResponse,
@@ -67,9 +68,11 @@ from frontend.product.services.knowledge_bases import (
 from frontend.product.services.knowledge_health import (
     assemble_health_payload,
     create_health_snapshot,
+    health_trend_payload,
     health_snapshot_response,
     latest_health_snapshot,
     list_health_snapshots,
+    run_health_actions,
 )
 
 router = APIRouter(prefix="/api")
@@ -466,6 +469,29 @@ def knowledge_health_history(
     _owned_knowledge_base(session, knowledge_base_id, user.id)
     items = list_health_snapshots(session, knowledge_base_id)
     return {"items": [health_snapshot_response(item) for item in items]}
+
+
+@router.get("/knowledge-bases/{knowledge_base_id}/health/trend")
+def knowledge_health_trend(
+    knowledge_base_id: str,
+    limit: int = Query(default=30, ge=1, le=100),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    _owned_knowledge_base(session, knowledge_base_id, user.id)
+    snapshots = list_health_snapshots(session, knowledge_base_id, limit=limit)
+    return health_trend_payload(snapshots)
+
+
+@router.post("/knowledge-bases/{knowledge_base_id}/health/actions/run")
+async def run_knowledge_health_actions_route(
+    knowledge_base_id: str,
+    payload: HealthActionsRun,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    return await run_health_actions(session, knowledge_base, user.id, payload.actions)
 
 
 @router.get("/knowledge-bases/{knowledge_base_id}/documents")

@@ -44,7 +44,7 @@ def make_session(tmp_path) -> Session:
 
 
 def test_required_alembic_revision_matches_repository_head():
-    assert required_alembic_heads() == ("20260814_0016",)
+    assert required_alembic_heads() == ("20260816_0017",)
 
 
 def test_citation_id_column_fits_generated_identifier():

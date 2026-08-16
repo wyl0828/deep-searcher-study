@@ -19,6 +19,16 @@
   GET /knowledge-bases/{id}/health/history。
 - 产品工作台知识库详情页增加“知识健康”面板：综合分、数据/检索/可信三维评分条、指标明细、扣分原因、
   建议动作和快照历史。
+- 知识健康公式升级 1.1：数据健康增加 version family 语义检测（同系列重复版本、时间重叠、断代、
+  取代异常与孤立文档），异常按关系/分组扣一次，series penalty 封顶 40 并 clamp 到 0；旧 1.0 快照
+  保留各自公式版本，不动态套用。
+- 检索健康增加归因：最近样本中未被引用的 ready 文档、按问题类型（含 unknown）聚类的拒答/证据不足
+  占比（sample_count/count/rate），纯统计、不引入 LLM。
+- 增加健康等级机器码 healthy/warning/critical（阈值 60/40）与趋势接口
+  GET /knowledge-bases/{id}/health/trend；health/snapshot/trend 共用同一等级函数。
+- 增加建议动作闭环 POST /knowledge-bases/{id}/health/actions/run（重试失败文档、重建索引、去上传），
+  执行后即时重新快照；delta 为即时重新评估值，不隐含异步完成。
+- 前端知识健康面板增加等级徽标、趋势等宽 bar 与可点击动作按钮及执行结果。
 
 ### 验证
 
@@ -26,6 +36,8 @@
   声明扣分、快照持久化与 delta 对比；Python 全量 911 passed、6 skipped。
 - API 冒烟验证：认证后创建知识库、真实文档与 3 条 grounded 问答，GET health 返回 complete 100 分，
   POST snapshot 生成 khs_ 快照，history 返回 1 条；前端类型检查、4 文件 35 项测试与生产构建通过。
+- 知识健康深化回归：tests/test_knowledge_health.py 扩展至 29 项（series 检测/归因/等级边界/趋势/动作），
+  frontend/tests 128 项（含 trend 与 actions/run 路由测试），前端 typecheck、35 项测试与生产构建通过。
 
 ## [v0.3.0] - 2026-08-16
 

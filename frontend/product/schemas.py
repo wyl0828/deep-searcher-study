@@ -31,6 +31,10 @@ class KnowledgeBaseCreate(BaseModel):
     description: str = Field(default="", max_length=200)
 
 
+class HealthActionsRun(BaseModel):
+    actions: list[str] = Field(min_length=1)
+
+
 class ConversationCreate(BaseModel):
     knowledge_base_id: str
 

@@ -80,6 +80,7 @@ import {
   getAuthStatus,
   getKnowledgeBase,
   getKnowledgeHealth,
+  getKnowledgeHealthTrend,
   listConversations,
   listDocuments,
   listKnowledgeBases,
@@ -89,6 +90,7 @@ import {
   logoutWorkspace,
   reindexKnowledgeBase,
   retryDocument,
+  runKnowledgeHealthActions,
   setCurrentKnowledgeBase,
   setupWorkspace,
   streamMessage,
@@ -2247,10 +2249,12 @@ function KnowledgeHealthDialog({
   open,
   knowledgeBaseId,
   onClose,
+  onUpload,
 }: {
   open: boolean;
   knowledgeBaseId: string;
   onClose: () => void;
+  onUpload?: () => void;
 }) {
   const titleId = useId();
   const queryCache = useQueryClient();
@@ -2263,6 +2267,26 @@ function KnowledgeHealthDialog({
         }),
         queryCache.invalidateQueries({
           queryKey: ["knowledge-health-history", knowledgeBaseId],
+        }),
+        queryCache.invalidateQueries({
+          queryKey: ["knowledge-health-trend", knowledgeBaseId],
+        }),
+      ]);
+    },
+  });
+  const runActions = useMutation({
+    mutationFn: (actions: string[]) =>
+      runKnowledgeHealthActions(knowledgeBaseId, actions),
+    onSuccess: async () => {
+      await Promise.all([
+        queryCache.invalidateQueries({
+          queryKey: ["knowledge-health", knowledgeBaseId],
+        }),
+        queryCache.invalidateQueries({
+          queryKey: ["knowledge-health-history", knowledgeBaseId],
+        }),
+        queryCache.invalidateQueries({
+          queryKey: ["knowledge-health-trend", knowledgeBaseId],
         }),
       ]);
     },
@@ -2284,6 +2308,11 @@ function KnowledgeHealthDialog({
   const history = useQuery({
     queryKey: ["knowledge-health-history", knowledgeBaseId],
     queryFn: () => listKnowledgeHealthHistory(knowledgeBaseId),
+    enabled: open,
+  });
+  const trend = useQuery({
+    queryKey: ["knowledge-health-trend", knowledgeBaseId],
+    queryFn: () => getKnowledgeHealthTrend(knowledgeBaseId),
     enabled: open,
   });
   if (!open) return null;
@@ -2333,9 +2362,20 @@ function KnowledgeHealthDialog({
                   {current.overall_score === null ? "—" : current.overall_score.toFixed(1)}
                 </strong>
               </div>
-              <span className="health-status-badge">
-                {current.status === "complete" ? "可评估" : "样本不足"}
-              </span>
+              <div className="health-badges">
+                <span className="health-status-badge">
+                  {current.status === "complete" ? "可评估" : "样本不足"}
+                </span>
+                {current.level ? (
+                  <span className={`health-level-badge health-level-badge--${current.level}`}>
+                    {current.level === "healthy"
+                      ? "健康"
+                      : current.level === "warning"
+                        ? "偏低"
+                        : "严重"}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className="health-scores">
               <HealthScoreBar
@@ -2420,13 +2460,44 @@ function KnowledgeHealthDialog({
               <section className="health-list-block" aria-labelledby="health-actions-title">
                 <h3 id="health-actions-title">建议动作</h3>
                 <ul>
-                  {current.actions.map((action) => (
-                    <li key={action.code}>
-                      <strong>{action.action}</strong>
-                      <span>{action.priority === "high" ? "优先处理" : "可选"}</span>
-                    </li>
-                  ))}
+                  {current.actions.map((action) => {
+                    const result = runActions.data?.results.find(
+                      (item) => item.code === action.code,
+                    );
+                    return (
+                      <li key={action.code}>
+                        <strong>{action.action}</strong>
+                        <span>{action.priority === "high" ? "优先处理" : "可选"}</span>
+                        <button
+                          className="health-action-button"
+                          type="button"
+                          disabled={runActions.isPending}
+                          onClick={() => {
+                            if (action.code === "UPLOAD_DOCUMENTS" && onUpload) {
+                              onUpload();
+                              return;
+                            }
+                            runActions.mutate([action.code]);
+                          }}
+                        >
+                          {action.code === "UPLOAD_DOCUMENTS" ? "去上传" : "执行"}
+                        </button>
+                        {result ? (
+                          <span
+                            className={
+                              "health-action-result health-action-result--" + result.status
+                            }
+                          >
+                            {result.message}
+                          </span>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
+                {runActions.isError ? (
+                  <ErrorState message={runActions.error.message} />
+                ) : null}
               </section>
             ) : null}
             {items.length ? (
@@ -2464,6 +2535,48 @@ function KnowledgeHealthDialog({
                     );
                   })}
                 </ul>
+              </section>
+            ) : null}
+            {trend.data && trend.data.items.length ? (
+              <section className="health-list-block" aria-labelledby="health-trend-title">
+                <h3 id="health-trend-title">
+                  健康趋势（最近 {trend.data.items.length} 次快照）
+                </h3>
+                <div
+                  className="health-trend"
+                  role="img"
+                  aria-label="综合健康分趋势"
+                >
+                  {trend.data.items.slice(-10).map((item) => (
+                    <div
+                      key={item.created_at}
+                      className="health-trend-col"
+                      title={
+                        "".concat(
+                          new Date(item.created_at).toLocaleString(),
+                          "：",
+                          item.overall === null ? "—" : item.overall.toFixed(0),
+                          " 分",
+                        )
+                      }
+                    >
+                      <div className="health-trend-bar-wrap">
+                        <div
+                          className={
+                            "health-trend-bar health-trend-bar--" +
+                            (item.level ?? "unknown")
+                          }
+                          style={{
+                            height:
+                              item.overall === null
+                                ? "4%"
+                                : Math.max(4, Math.min(100, item.overall)) + "%",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </section>
             ) : null}
             {createSnapshot.isSuccess ? (
@@ -2945,6 +3058,10 @@ function KnowledgeDetailPage() {
         open={showHealthDialog}
         knowledgeBaseId={knowledgeBaseId}
         onClose={() => setShowHealthDialog(false)}
+        onUpload={() => {
+          setShowHealthDialog(false);
+          setShowTemporalDialog(true);
+        }}
       />
       <DangerConfirmDialog
         open={Boolean(documentToDelete)}
