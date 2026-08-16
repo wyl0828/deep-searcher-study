@@ -17,13 +17,14 @@ DeepSearcher Study 是基于 [zilliztech/deep-searcher](https://github.com/zilli
 - **Evidence 与谱系**：回答中的 Claim 可定位到模型实际看到的证据片段；Trust Provenance 绑定运行时、模型、索引、证据快照和策略版本，同时排除问题正文、密钥和其他敏感原值。
 - **质量评测**：检索、回答和 Trust Layer 使用版本化金标集与机器可读报告；确定性规则、Citation Span、风险分类和谱系不变量进入快速质量门禁。
 - **可用产品路径**：中文学习工作台提供知识库、文档入库、带引用问答、流式进度和审计视图，并通过独立 Worker、迁移与端到端测试维护可恢复性。
+- **知识质量控制（v0.4 起步）**：知识库健康分不是黑盒数字；每次快照保存公式版本、数据/检索/可信三维得分、原始指标、扣分原因与建议动作，并支持快照历史对比，让“知识库质量为什么变化”可解释、可审计。
 
 ## 维护证据与导航
 
 | 你可以核验什么 | 对应材料 |
 | --- | --- |
 | 当前开发线的功能变更、质量边界和已知限制 | [CHANGELOG.md](CHANGELOG.md) |
-| v0.3 已实现能力、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
+| v0.3 与 v0.4 已实现能力、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
 | 设计取舍与 fail-closed 边界 | [架构决策记录（ADR）](docs/adr/) |
 | 可运行的业务、引用、风险和谱系评测 | [evaluation/README.md](evaluation/README.md) |
 | 上游来源、许可与贡献原则 | [UPSTREAM.md](UPSTREAM.md) |
@@ -49,6 +50,7 @@ DeepSearcher Study 结合大语言模型与向量数据库，对私有资料执�
 - **可审计可信度**：风险 Profile、时效策略、Citation Span 和 Trust Provenance 让“为什么保留、降级或拒答”可追溯。
 - **版本化知识治理**：文档的发布日期、生效日期、失效日期和版本系列贯穿入库、检索、Citation 与索引 Manifest。
 - **可复现评测**：业务检索/回答基线与 Trust 金标集分开维护；快速门禁验证契约和回归，真实模型评测显式执行。
+- **可解释的知识健康**：知识库详情页展示数据/检索/可信三维健康分与指标明细、扣分原因和建议动作，可生成快照并与历史对比，空库与样本不足时给出明确提示而非猜测性分数。
 - **中文用户工作台**：通过本地 Milvus、持久化入库 Worker、带引用的流式问答和审计视图，提供完整的本地体验。
 
 ---

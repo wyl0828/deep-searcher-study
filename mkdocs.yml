@@ -97,6 +97,7 @@ nav:
     - "Trust Provenance": adr/0007-trust-trace-provenance.md
     - "Freshness Policy": adr/0008-freshness-policy.md
     - "文档版本系列": adr/0009-document-version-family.md
+    - "Knowledge Health 契约": adr/0010-knowledge-health-contract.md
 
 markdown_extensions:
   - pymdownx.superfences
