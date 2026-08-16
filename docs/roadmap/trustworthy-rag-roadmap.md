@@ -1,5 +1,7 @@
 # Trustworthy RAG Platform 路线图
 
+> 当前执行级优化计划（含对标 ragent 的落地清单）：[2026-08-16 企业级缺口优化计划](../开发记录/实施计划/2026-08-16-ragent-enterprise-gap-plan.md)
+
 ## 产品定位
 
 DeepSearcher Study 的目标不是扩展成另一个通用工作流平台，而是建设一套可信 RAG
@@ -230,6 +232,20 @@ Retriever、Rerank、Cache、Trace 和 Agent Tool 均不得接触未授权证据
   工作区成员；四条 ACL 数据规则由复合 FK + cascade + 行锁双保险。
 - 待办：Organization 顶层、工作区所有权转移与删除/重命名、Milvus 侧 ACL（当前依赖集合随机名 +
   API 白名单，检索核心零侵入）。
+
+## 企业级优化计划执行状态（对标 ragent）
+
+> 完整落地清单见 [2026-08-16 企业级缺口优化计划](../开发记录/实施计划/2026-08-16-ragent-enterprise-gap-plan.md)
+
+| 阶段 | 状态 | 证据 |
+| --- | --- | --- |
+| P0 收尾验证（多实例故障切换六场景 + Chat 双 Provider fallback） | ✅ 已验证 2026-08-16 | `../开发记录/验证记录/2026-08-16-failover-verification.md` |
+| P1-4.1 操作审计（BizChangeLog 等价：OperationAuditLog + /api/admin/audit-logs） | ✅ 已实现 2026-08-16 | `../开发记录/验证记录/2026-08-16-operation-audit-verification.md` |
+| P1-4.2 用户反馈闭环（MessageFeedback 点赞/点踩） | ⬜ 待实施 | — |
+| P2 企业文档能力（多格式解析/分块 + 可编排入库） | ⬜ 待实施 | — |
+| P3 v0.6 连接器（本地目录 + 定时刷新） | ⬜ 待实施 | — |
+| P4 运营大盘（Dashboard） | ⬜ 待实施 | — |
+| P5 流量治理（按需，Redis 公平排队） | ⬜ 按需启动 | — |
 
 ## v0.6 Enterprise Connect
 

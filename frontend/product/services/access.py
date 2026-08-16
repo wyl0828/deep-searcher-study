@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from frontend.product.errors import ProductError
@@ -30,6 +30,7 @@ from frontend.product.models import (
     Workspace,
     WorkspaceMember,
 )
+from frontend.product.services.audit import audit_operation
 
 Permission = Literal["read", "write", "admin"]
 
@@ -46,6 +47,44 @@ ROLE_RANK: dict[str, int] = {VIEWER: 10, EDITOR: 20}
 
 VALID_ROLES = frozenset({OWNER, EDITOR, VIEWER})
 ADDABLE_ROLES = frozenset({EDITOR, VIEWER})
+
+
+def _audit_member_snapshot(
+    session: Session,
+    workspace_id: str,
+    user_id: str,
+) -> dict[str, Any] | None:
+    """Snapshot a workspace membership row for the operation audit (before-state)."""
+    member = session.scalar(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+        )
+    )
+    if member is None:
+        return None
+    return {"user_id": member.user_id, "role": member.role}
+
+
+def _audit_kb_member_snapshot(
+    session: Session,
+    knowledge_base_id: str,
+    user_id: str,
+) -> dict[str, Any] | None:
+    """Snapshot a KB override row for the operation audit (before-state)."""
+    member = session.scalar(
+        select(KnowledgeBaseMember).where(
+            KnowledgeBaseMember.knowledge_base_id == knowledge_base_id,
+            KnowledgeBaseMember.user_id == user_id,
+        )
+    )
+    if member is None:
+        return None
+    return {
+        "knowledge_base_id": member.knowledge_base_id,
+        "user_id": member.user_id,
+        "role": member.role,
+    }
 
 
 def _lock_workspace_member(
@@ -237,16 +276,12 @@ def workspace_response(
         "role": role,
         "member_count": len(
             session.scalars(
-                select(WorkspaceMember.id).where(
-                    WorkspaceMember.workspace_id == workspace.id
-                )
+                select(WorkspaceMember.id).where(WorkspaceMember.workspace_id == workspace.id)
             ).all()
         ),
         "knowledge_base_count": len(
             session.scalars(
-                select(KnowledgeBase.id).where(
-                    KnowledgeBase.workspace_id == workspace.id
-                )
+                select(KnowledgeBase.id).where(KnowledgeBase.workspace_id == workspace.id)
             ).all()
         ),
         "created_at": workspace.created_at,
@@ -260,10 +295,7 @@ def list_workspaces(session: Session, user_id: str) -> list[dict[str, Any]]:
         .where(WorkspaceMember.user_id == user_id)
         .order_by(Workspace.created_at, Workspace.id)
     ).all()
-    return [
-        workspace_response(session, workspace, role=role)
-        for workspace, role in rows
-    ]
+    return [workspace_response(session, workspace, role=role) for workspace, role in rows]
 
 
 def create_workspace(
@@ -329,6 +361,12 @@ def _delete_user_acls(session: Session, workspace_id: str, user_id: str) -> None
     )
 
 
+@audit_operation(
+    biz_type="workspace_member",
+    operation_type="ADD_WORKSPACE_MEMBER",
+    action_desc=lambda hook: f"添加工作区成员 {hook.arg('user_id')} 为 {hook.arg('role')} 角色",
+    biz_id="workspace",
+)
 def add_workspace_member(
     session: Session,
     workspace: Workspace,
@@ -364,6 +402,15 @@ def add_workspace_member(
     return member
 
 
+@audit_operation(
+    biz_type="workspace_member",
+    operation_type="SET_MEMBER_ROLE",
+    action_desc=lambda hook: f"修改工作区成员 {hook.arg('target_user_id')} 角色为 {hook.arg('role')}",
+    biz_id="workspace",
+    before=lambda hook: _audit_member_snapshot(
+        hook.arg("session"), hook.arg("workspace").id, hook.arg("target_user_id")
+    ),
+)
 def set_member_role(
     session: Session,
     workspace: Workspace,
@@ -395,6 +442,15 @@ def set_member_role(
     return locked
 
 
+@audit_operation(
+    biz_type="workspace_member",
+    operation_type="PROMOTE_MEMBER_TO_OWNER",
+    action_desc=lambda hook: f"提升工作区成员 {hook.arg('target_user_id')} 为 owner",
+    biz_id="workspace",
+    before=lambda hook: _audit_member_snapshot(
+        hook.arg("session"), hook.arg("workspace").id, hook.arg("target_user_id")
+    ),
+)
 def promote_member_to_owner(
     session: Session,
     workspace: Workspace,
@@ -420,6 +476,15 @@ def promote_member_to_owner(
     return locked
 
 
+@audit_operation(
+    biz_type="workspace_member",
+    operation_type="REMOVE_WORKSPACE_MEMBER",
+    action_desc=lambda hook: f"移除工作区成员 {hook.arg('target_user_id')}",
+    biz_id="workspace",
+    before=lambda hook: _audit_member_snapshot(
+        hook.arg("session"), hook.arg("workspace").id, hook.arg("target_user_id")
+    ),
+)
 def remove_workspace_member(
     session: Session,
     workspace: Workspace,
@@ -476,6 +541,12 @@ def list_kb_members(
     ]
 
 
+@audit_operation(
+    biz_type="kb_member",
+    operation_type="ADD_KB_MEMBER",
+    action_desc=lambda hook: f"为知识库 {hook.arg('knowledge_base').name} 添加成员 {hook.arg('target_user_id')} 为 {hook.arg('role')} 角色",
+    biz_id="knowledge_base",
+)
 def add_kb_member(
     session: Session,
     knowledge_base: KnowledgeBase,
@@ -524,6 +595,15 @@ def add_kb_member(
     return member
 
 
+@audit_operation(
+    biz_type="kb_member",
+    operation_type="SET_KB_MEMBER_ROLE",
+    action_desc=lambda hook: f"修改知识库 {hook.arg('knowledge_base').name} 成员 {hook.arg('target_user_id')} 角色为 {hook.arg('role')}",
+    biz_id="knowledge_base",
+    before=lambda hook: _audit_kb_member_snapshot(
+        hook.arg("session"), hook.arg("knowledge_base").id, hook.arg("target_user_id")
+    ),
+)
 def set_kb_member_role(
     session: Session,
     knowledge_base: KnowledgeBase,
@@ -560,6 +640,15 @@ def set_kb_member_role(
     return member
 
 
+@audit_operation(
+    biz_type="kb_member",
+    operation_type="REMOVE_KB_MEMBER",
+    action_desc=lambda hook: f"移除知识库 {hook.arg('knowledge_base').name} 成员 {hook.arg('target_user_id')}",
+    biz_id="knowledge_base",
+    before=lambda hook: _audit_kb_member_snapshot(
+        hook.arg("session"), hook.arg("knowledge_base").id, hook.arg("target_user_id")
+    ),
+)
 def remove_kb_member(
     session: Session,
     knowledge_base: KnowledgeBase,
@@ -617,6 +706,12 @@ def get_group(session: Session, workspace_id: str, group_id: str) -> MemberGroup
     return group
 
 
+@audit_operation(
+    biz_type="member_group",
+    operation_type="CREATE_GROUP",
+    action_desc=lambda hook: f"创建成员组 {hook.arg('name')}",
+    biz_id=lambda hook: getattr(hook.result, "id", None),
+)
 def create_group(
     session: Session,
     workspace: Workspace,
@@ -658,6 +753,17 @@ def set_group_role(
     return group
 
 
+@audit_operation(
+    biz_type="member_group",
+    operation_type="DELETE_GROUP",
+    action_desc=lambda hook: f"删除成员组 {hook.arg('group').name}",
+    biz_id="group",
+    before=lambda hook: {
+        "group_id": hook.arg("group").id,
+        "name": hook.arg("group").name,
+        "role": hook.arg("group").role,
+    },
+)
 def delete_group(session: Session, group: MemberGroup) -> None:
     session.delete(group)
     session.commit()
@@ -680,6 +786,12 @@ def list_group_members(session: Session, group: MemberGroup) -> list[dict[str, A
     ]
 
 
+@audit_operation(
+    biz_type="member_group",
+    operation_type="ADD_GROUP_MEMBER",
+    action_desc=lambda hook: f"将成员 {hook.arg('target_user_id')} 加入成员组 {hook.arg('group').name}",
+    biz_id="group",
+)
 def add_group_member(
     session: Session,
     group: MemberGroup,
@@ -749,9 +861,7 @@ def remove_group_member(
 def ensure_personal_workspaces(session: Session) -> int:
     """Idempotently attach knowledge bases to personal/legacy workspaces."""
     created = 0
-    users = session.scalars(
-        select(User).where(User.id != LEGACY_OWNER_ID)
-    ).all()
+    users = session.scalars(select(User).where(User.id != LEGACY_OWNER_ID)).all()
     personal: dict[str, Workspace] = {}
     for user in users:
         workspace = session.scalar(
@@ -778,9 +888,7 @@ def ensure_personal_workspaces(session: Session) -> int:
             created += 1
         personal[user.id] = workspace
 
-    legacy_workspace = session.scalar(
-        select(Workspace).where(Workspace.name == "__legacy__")
-    )
+    legacy_workspace = session.scalar(select(Workspace).where(Workspace.name == "__legacy__"))
     if legacy_workspace is None:
         admin = session.scalars(
             select(User)

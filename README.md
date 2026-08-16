@@ -18,13 +18,17 @@ DeepSearcher Study 是基于 [zilliztech/deep-searcher](https://github.com/zilli
 - **质量评测**：检索、回答和 Trust Layer 使用版本化金标集与机器可读报告；确定性规则、Citation Span、风险分类和谱系不变量进入快速质量门禁。
 - **可用产品路径**：中文学习工作台提供知识库、文档入库、带引用问答、流式进度和审计视图，并通过独立 Worker、迁移与端到端测试维护可恢复性。
 - **知识质量控制（v0.4 起步）**：知识库健康分不是黑盒数字；每次快照保存公式版本、数据/检索/可信三维得分、原始指标、扣分原因与建议动作，并支持快照历史对比，让“知识库质量为什么变化”可解释、可审计。
+- **企业就绪（P0/P1 起步）**：系统级操作审计（`OperationAuditLog` + admin-only
+  `GET /api/admin/audit-logs` + 前端 `/admin/audit` 页，对齐 ragent BizChangeLog）记录谁在何时改了
+  哪些权限与配置，含变更前后 JSON 快照与字段级 diff；多实例故障切换六场景与 Chat 双 Provider
+  fallback 已在服务器完成真实验证。
 
 ## 维护证据与导航
 
 | 你可以核验什么 | 对应材料 |
 | --- | --- |
 | 当前开发线的功能变更、质量边界和已知限制 | [CHANGELOG.md](CHANGELOG.md) |
-| v0.3 与 v0.4 已实现能力、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
+| v0.3-v0.5 已实现能力、P0/P1 执行状态、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
 | 设计取舍与 fail-closed 边界 | [架构决策记录（ADR）](docs/adr/) |
 | 可运行的业务、引用、风险和谱系评测 | [evaluation/README.md](evaluation/README.md) |
 | 上游来源、许可与贡献原则 | [UPSTREAM.md](UPSTREAM.md) |

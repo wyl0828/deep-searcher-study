@@ -54,6 +54,14 @@
   series 边界 + permutation），逐 case 精确锁定公式 1.1 的三维分数、分维度必需/禁止扣分、动作
   代码与 overall 等级；测试走 production 聚合入口（aggregate_overall_score）并验证顺序不变性。
 
+- P1-4.1 系统级操作审计：新增 `operation_audit_logs` 表（字段对齐 ragent BizChangeLogDO，去
+  className/methodName 并加 request_id）与 Alembic `20260817_0020`；`services/audit.py` 提供
+  `record_operation` / `page_audit_logs` / `@audit_operation` 装饰器（before/after JSON 快照 +
+  JSON-pointer diff，等价 BizChangeLogContext）与请求级审计上下文（操作者/IP/UA/request_id）。
+- 操作审计埋点覆盖 ACL 变更（工作区成员/角色、KB 覆盖、成员组）10 个服务函数，以及用户创建、
+  知识库删除、健康建议执行；admin-only API `GET /api/admin/audit-logs`（分页 + 过滤，等价
+  BizChangeLogController）与前端 `/admin/audit` 审计页。
+
 ### 验证
 
 - 新增 tests/test_knowledge_health.py 12 项：空库、全可用、失败/缺索引、样本不足、拒答扣分、
@@ -72,6 +80,20 @@
 - 知识健康金标回归：tests/evaluation/test_knowledge_health_gold.py 4 项（dataset contract、
   coverage gate、逐 case formula contract、permutation/shuffle 顺序不变性），18 cases 全绿；
   aggregate_overall_score 作为生产/测试共享聚合入口，评分行为不变。
+
+- P0 多实例故障切换六场景在服务器 `47.96.40.156` 脚本化执行 PASS：跨节点（API-A 上传 →
+  Consumer 处理 → API-B 查询 10 引用）、单 API/单 Consumer 停止接管、重复事务消息幂等（文档/
+  作业/向量逻辑 ID 集合不增长）、事务二次确认丢失后消息仍可见、全量重启后真实数据计数一致且
+  core-api runtime 自恢复；脚本 `deploy/server/verify-failover.sh` 已补全六场景机器断言并修复
+  set -e 中断、consumer 短 ID 匹配、pymilvus num_entities、TRANSACTION topic 重投、rebalance
+  等待与 core-api 就绪预检。
+- P0 Chat 双 Provider fallback 实测：core-api 临时启用 `llm.candidates`（DeepSeek 主 + 百炼
+  `qwen-plus` 备），主 Provider 强制不可达后 `final_model=qwen-plus`、
+  `fallback_reason=deepseek-v4-flash:APIConnectionError`，真实流式问答端到端成功；验证后恢复
+  单 Provider 配置。
+- P1-4.1 操作审计回归：`frontend/tests/test_product_api.py` 新增 4 项审计 e2e（before/after 快照、
+  操作者上下文、非 admin 403、分页过滤），全量 pytest 1064 passed、11 skipped；前端 typecheck/
+  build/35 项测试通过；Alembic 空库升级至 `20260817_0020` 成功。
 
 ## [v0.3.0] - 2026-08-16
 

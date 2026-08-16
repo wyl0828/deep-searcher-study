@@ -419,6 +419,144 @@ body {
   font-size: 17px;
 }
 
+.audit-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.audit-filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.audit-filters input,
+.audit-filters select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d6dee9;
+  border-radius: 8px;
+  font: inherit;
+  color: #172033;
+  background: #fff;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.audit-table th,
+.audit-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf0f5;
+  text-align: left;
+  vertical-align: top;
+}
+
+.audit-table th {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.audit-table tbody tr {
+  cursor: pointer;
+}
+
+.audit-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.audit-row-failed td:first-child {
+  box-shadow: inset 3px 0 0 #e11d48;
+}
+
+.audit-action {
+  display: block;
+  color: #172033;
+}
+
+.audit-operation {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.audit-biz-id {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+  word-break: break-all;
+}
+
+.audit-ip {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.audit-detail-row td {
+  background: #f8fafc;
+}
+
+.audit-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.audit-snapshot-grid h4 {
+  margin: 0 0 6px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.audit-snapshot-grid pre {
+  margin: 0;
+  padding: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  font-size: 11px;
+  overflow: auto;
+  max-height: 240px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.pagination button {
+  padding: 7px 14px;
+  border: 1px solid #d6dee9;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .admin-user-list {
   display: grid;
   gap: 2px;

@@ -232,6 +232,28 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
+def _bind_audit_request(request: Request, user: User) -> None:
+    """Carry operator/request identity for the operation audit decorator."""
+    from frontend.product.services.audit import AuditContext, bind_audit_context
+
+    forwarded = request.headers.get("X-Forwarded-For")
+    ip = (
+        (forwarded.split(",")[0].strip() if forwarded else None)
+        or (request.headers.get("X-Real-IP"))
+        or (request.client.host if request.client is not None else None)
+    )
+    bind_audit_context(
+        AuditContext(
+            operator_id=user.id,
+            operator_name=user.display_name or user.username,
+            operator_role=user.role,
+            ip=ip,
+            user_agent=request.headers.get("User-Agent"),
+            request_id=request.headers.get("X-Request-ID"),
+        )
+    )
+
+
 def optional_user(request: Request, session: Session = Depends(get_session)) -> User | None:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
@@ -254,6 +276,7 @@ def optional_user(request: Request, session: Session = Depends(get_session)) -> 
         auth_session.last_seen_at = now
         session.commit()
     request.state.product_user = user
+    _bind_audit_request(request, user)
     return user
 
 
@@ -281,17 +304,13 @@ def claim_legacy_data(session: Session, owner_id: str) -> None:
         )
     )
     if personal_workspace is None:
-        personal_workspace = session.scalar(
-            select(Workspace).where(Workspace.name == "__legacy__")
-        )
+        personal_workspace = session.scalar(select(Workspace).where(Workspace.name == "__legacy__"))
     session.execute(
         update(KnowledgeBase)
         .where(KnowledgeBase.owner_id == LEGACY_OWNER_ID)
         .values(
             owner_id=owner_id,
-            workspace_id=(
-                personal_workspace.id if personal_workspace is not None else None
-            ),
+            workspace_id=(personal_workspace.id if personal_workspace is not None else None),
         )
     )
     session.execute(

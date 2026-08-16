@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
@@ -34,7 +34,6 @@ from frontend.product.models import (
     Message,
     User,
     Workspace,
-    WorkspaceMember,
 )
 from frontend.product.repositories import (
     create_knowledge_base,
@@ -50,9 +49,9 @@ from frontend.product.schemas import (
     DocumentTemporalUpdate,
     GroupMemberAdd,
     HealthActionsRun,
+    KnowledgeBaseCreate,
     KnowledgeBaseMemberAdd,
     KnowledgeBaseMemberRoleUpdate,
-    KnowledgeBaseCreate,
     MemberGroupCreate,
     MemberGroupRoleUpdate,
     MessageCreate,
@@ -87,6 +86,7 @@ from frontend.product.services.access import (
     set_member_role,
     workspace_response,
 )
+from frontend.product.services.audit import page_audit_logs, record_operation
 from frontend.product.services.conversations import stream_message_events, submit_message
 from frontend.product.services.documents import (
     create_document_from_upload,
@@ -102,8 +102,8 @@ from frontend.product.services.knowledge_bases import (
 from frontend.product.services.knowledge_health import (
     assemble_health_payload,
     create_health_snapshot,
-    health_trend_payload,
     health_snapshot_response,
+    health_trend_payload,
     latest_health_snapshot,
     list_health_snapshots,
     run_health_actions,
@@ -141,11 +141,7 @@ def _accessible_ingest_job(
     user: User,
     job_id: str,
 ) -> IngestJob:
-    job = session.scalar(
-        select(IngestJob)
-        .join(IngestJob.document)
-        .where(IngestJob.id == job_id)
-    )
+    job = session.scalar(select(IngestJob).join(IngestJob.document).where(IngestJob.id == job_id))
     if job is None:
         raise ProductError(
             "INGEST_JOB_NOT_FOUND",
@@ -273,7 +269,47 @@ def add_user(
             status_code=409,
         ) from exc
     session.refresh(user)
+    record_operation(
+        session,
+        biz_type="user",
+        biz_id=user.id,
+        operation_type="CREATE_USER",
+        action_desc=f"创建用户 {user.username}（{user.display_name}）",
+        before=None,
+        after=user_response(user),
+    )
     return {"user": user_response(user)}
+
+
+@router.get("/admin/audit-logs")
+def audit_logs(
+    _admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    biz_type: str | None = Query(None),
+    biz_id: str | None = Query(None),
+    operation_type: str | None = Query(None),
+    operator_id: str | None = Query(None),
+    operator_name: str | None = Query(None),
+    success: bool | None = Query(None),
+    begin_time: datetime | None = Query(None),
+    end_time: datetime | None = Query(None),
+) -> dict:
+    """Admin-only operation audit page (analog of ragent BizChangeLogController)."""
+    return page_audit_logs(
+        session,
+        page=page,
+        page_size=page_size,
+        biz_type=biz_type,
+        biz_id=biz_id,
+        operation_type=operation_type,
+        operator_id=operator_id,
+        operator_name=operator_name,
+        success=success,
+        begin_time=begin_time,
+        end_time=end_time,
+    )
 
 
 def knowledge_base_detail(session: Session, knowledge_base: KnowledgeBase) -> dict:
@@ -701,7 +737,18 @@ async def remove_knowledge_base(
     session: Session = Depends(get_session),
 ) -> dict:
     knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
+    deleted_name = knowledge_base.name
+    deleted_collection = knowledge_base.collection_name
     next_current = await delete_knowledge_base(session, knowledge_base)
+    record_operation(
+        session,
+        biz_type="knowledge_base",
+        biz_id=knowledge_base_id,
+        operation_type="DELETE_KNOWLEDGE_BASE",
+        action_desc=f"删除知识库 {deleted_name}",
+        before={"name": deleted_name, "collection_name": deleted_collection},
+        after=None,
+    )
     return {
         "deleted_id": knowledge_base_id,
         "current_knowledge_base_id": next_current.id if next_current else None,
@@ -749,9 +796,7 @@ def create_knowledge_health_snapshot_route(
     )
     return {
         "snapshot": health_snapshot_response(snapshot),
-        "previous": (
-            health_snapshot_response(previous) if previous is not None else None
-        ),
+        "previous": (health_snapshot_response(previous) if previous is not None else None),
         "change": change,
     }
 
@@ -787,7 +832,17 @@ async def run_knowledge_health_actions_route(
     session: Session = Depends(get_session),
 ) -> dict:
     knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
-    return await run_health_actions(session, knowledge_base, user.id, payload.actions)
+    result = await run_health_actions(session, knowledge_base, user.id, payload.actions)
+    record_operation(
+        session,
+        biz_type="knowledge_health",
+        biz_id=knowledge_base.id,
+        operation_type="RUN_HEALTH_ACTIONS",
+        action_desc=f"执行知识健康建议操作：{','.join(payload.actions)}",
+        before=None,
+        after=result,
+    )
+    return result
 
 
 @router.get("/knowledge-bases/{knowledge_base_id}/members")
@@ -1097,7 +1152,9 @@ def add_conversation(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = require_accessible_knowledge_base(session, user, request.knowledge_base_id, "read")
+    knowledge_base = require_accessible_knowledge_base(
+        session, user, request.knowledge_base_id, "read"
+    )
     conversation = Conversation(
         owner_id=user.id,
         knowledge_base_id=knowledge_base.id,

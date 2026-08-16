@@ -2065,9 +2065,7 @@ def test_knowledge_health_trend_and_actions_api(tmp_path):
         assert "level" in current
         assert "attribution" in current["metrics"]["retrieval"]
 
-        snapshot_response = client.post(
-            f"/api/knowledge-bases/{knowledge_base_id}/health/snapshot"
-        )
+        snapshot_response = client.post(f"/api/knowledge-bases/{knowledge_base_id}/health/snapshot")
         assert snapshot_response.status_code == 201
         snapshot = snapshot_response.json()["snapshot"]
         assert snapshot["id"].startswith("khs_")
@@ -2111,9 +2109,7 @@ def test_team_trust_revocation_blocks_old_conversation(tmp_path):
         assert created.status_code == 201
         member_id = created.json()["user"]["id"]
         with client.product_session_factory() as session:
-            member_user = session.scalar(
-                select(User).where(User.username == "member")
-            )
+            member_user = session.scalar(select(User).where(User.username == "member"))
 
         workspace = client.post(
             "/api/workspaces",
@@ -2146,9 +2142,7 @@ def test_team_trust_revocation_blocks_old_conversation(tmp_path):
 
         # owner removes the member; the old conversation must not be usable
         app.dependency_overrides[require_user] = lambda: client.admin_user
-        removed = client.delete(
-            f"/api/workspaces/{workspace_id}/members/{member_id}"
-        )
+        removed = client.delete(f"/api/workspaces/{workspace_id}/members/{member_id}")
         assert removed.status_code == 204
 
         app.dependency_overrides[require_user] = lambda: member_user
@@ -2184,9 +2178,7 @@ def test_team_trust_non_member_cannot_create_conversation(tmp_path):
         ).json()
 
         with client.product_session_factory() as session:
-            stranger = session.scalar(
-                select(User).where(User.username == "stranger")
-            )
+            stranger = session.scalar(select(User).where(User.username == "stranger"))
         app.dependency_overrides[require_user] = lambda: stranger
         denied = client.post(
             "/api/conversations",
@@ -2291,9 +2283,7 @@ def test_kb_members_api_admin_only_and_flow(tmp_path):
             json={"role": "viewer"},
         )
         assert patched.status_code == 200
-        removed = client.delete(
-            f"/api/knowledge-bases/{kb_id}/members/{member_user_id}"
-        )
+        removed = client.delete(f"/api/knowledge-bases/{kb_id}/members/{member_user_id}")
         assert removed.status_code == 204
 
 
@@ -2330,18 +2320,16 @@ def test_groups_api_admin_only_and_flow(tmp_path):
         )
         assert added.status_code == 201
         assert (
-            client.get(f"/api/workspaces/{workspace_id}/groups/{group_id}").json()[
-                "members"
-            ][0]["username"]
+            client.get(f"/api/workspaces/{workspace_id}/groups/{group_id}").json()["members"][0][
+                "username"
+            ]
             == "member"
         )
 
         with client.product_session_factory() as session:
             member = session.scalar(select(User).where(User.username == "member"))
         app.dependency_overrides[require_user] = lambda: member
-        assert (
-            client.get(f"/api/workspaces/{workspace_id}/groups").status_code == 403
-        )
+        assert client.get(f"/api/workspaces/{workspace_id}/groups").status_code == 403
         assert (
             client.post(
                 f"/api/workspaces/{workspace_id}/groups",
@@ -2349,3 +2337,145 @@ def test_groups_api_admin_only_and_flow(tmp_path):
             ).status_code
             == 403
         )
+
+
+# ---- P1-4.1 operation audit (ragent BizChangeLog equivalent) ----
+
+
+def test_audit_logs_record_member_role_change_with_snapshots(tmp_path):
+    with product_client(tmp_path) as client:
+        created = client.post(
+            "/api/admin/users",
+            json={
+                "username": "member",
+                "password": "password1234",
+                "display_name": "成员",
+                "role": "member",
+            },
+        )
+        assert created.status_code == 201
+        workspace = client.post(
+            "/api/workspaces",
+            json={"name": "审计工作区", "description": ""},
+        ).json()
+        workspace_id = workspace["id"]
+        added = client.post(
+            f"/api/workspaces/{workspace_id}/members",
+            json={"username": "member", "role": "viewer"},
+        )
+        assert added.status_code == 201
+        member_user_id = added.json()["member"]["user_id"]
+
+        changed = client.patch(
+            f"/api/workspaces/{workspace_id}/members/{member_user_id}",
+            json={"role": "editor"},
+        )
+        assert changed.status_code == 200
+
+        page = client.get("/api/admin/audit-logs").json()
+        assert page["total"] >= 2
+        by_type = {item["operation_type"]: item for item in page["items"]}
+        assert "ADD_WORKSPACE_MEMBER" in by_type
+        assert "SET_MEMBER_ROLE" in by_type
+
+        add = by_type["ADD_WORKSPACE_MEMBER"]
+        assert add["biz_id"] == workspace_id
+        assert add["before_snapshot"] is None
+        assert add["after_snapshot"]["user_id"] == member_user_id
+        assert add["after_snapshot"]["role"] == "viewer"
+
+        set_role = by_type["SET_MEMBER_ROLE"]
+        assert set_role["biz_id"] == workspace_id
+        assert set_role["before_snapshot"]["role"] == "viewer"
+        assert set_role["after_snapshot"]["role"] == "editor"
+        assert set_role["success"] is True
+        assert set_role["change_diff"]
+
+
+def test_audit_logs_capture_operator_from_request_context(tmp_path):
+    from frontend.product.services.audit import AuditContext, bind_audit_context
+
+    with product_client(tmp_path) as client:
+        bind_audit_context(
+            AuditContext(
+                operator_id=client.admin_user.id,
+                operator_name="测试用户",
+                operator_role="admin",
+                ip="203.0.113.9",
+            )
+        )
+        created = client.post(
+            "/api/admin/users",
+            json={
+                "username": "context-user",
+                "password": "password1234",
+                "display_name": "上下文用户",
+                "role": "member",
+            },
+        )
+        assert created.status_code == 201
+        page = client.get("/api/admin/audit-logs").json()
+        create_user = next(
+            item for item in page["items"] if item["operation_type"] == "CREATE_USER"
+        )
+        assert create_user["operator_id"] == client.admin_user.id
+        assert create_user["operator_name"] == "测试用户"
+        assert create_user["ip"] == "203.0.113.9"
+
+
+def test_audit_logs_require_admin(tmp_path):
+    with product_client(tmp_path) as client:
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "plain",
+                "password": "password1234",
+                "display_name": "普通用户",
+                "role": "member",
+            },
+        )
+        with client.product_session_factory() as session:
+            plain = session.scalar(select(User).where(User.username == "plain"))
+        app.dependency_overrides[require_user] = lambda: plain
+        assert client.get("/api/admin/audit-logs").status_code == 403
+        assert (
+            client.get("/api/admin/audit-logs", params={"page": 1, "page_size": 1}).status_code
+            == 403
+        )
+
+
+def test_audit_logs_pagination_and_filter(tmp_path):
+    from frontend.product.services.audit import record_operation
+
+    with product_client(tmp_path) as client:
+        with client.product_session_factory() as session:
+            for index in range(5):
+                record_operation(
+                    session,
+                    biz_type="test_biz",
+                    biz_id=f"biz-{index}",
+                    operation_type="TEST_OP",
+                    action_desc=f"测试操作 {index}",
+                    before=None,
+                    after={"index": index},
+                    operator_id=client.admin_user.id,
+                )
+
+        page = client.get("/api/admin/audit-logs", params={"page": 1, "page_size": 2}).json()
+        assert len(page["items"]) == 2
+        assert page["total"] >= 5
+        assert page["page"] == 1
+        assert page["page_size"] == 2
+
+        filtered = client.get(
+            "/api/admin/audit-logs",
+            params={
+                "biz_type": "test_biz",
+                "operation_type": "TEST_OP",
+                "success": "true",
+            },
+        ).json()
+        assert filtered["total"] == 5
+
+        none = client.get("/api/admin/audit-logs", params={"operation_type": "NOPE"}).json()
+        assert none["total"] == 0

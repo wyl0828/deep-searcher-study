@@ -70,9 +70,7 @@ class Workspace(TimestampMixin, Base):
     __tablename__ = "workspaces"
     __table_args__ = (UniqueConstraint("name", name="uq_workspaces_name"),)
 
-    id: Mapped[str] = mapped_column(
-        String(40), primary_key=True, default=lambda: make_id("wsp")
-    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("wsp"))
     name: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str] = mapped_column(String(200), default="", nullable=False)
     owner_id: Mapped[str] = mapped_column(
@@ -86,9 +84,7 @@ class Workspace(TimestampMixin, Base):
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
-    knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship(
-        back_populates="workspace"
-    )
+    knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship(back_populates="workspace")
 
 
 class WorkspaceMember(TimestampMixin, Base):
@@ -105,9 +101,7 @@ class WorkspaceMember(TimestampMixin, Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(40), primary_key=True, default=lambda: make_id("wsm")
-    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("wsm"))
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"),
         index=True,
@@ -150,13 +144,12 @@ class KnowledgeBaseMember(TimestampMixin, Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(40), primary_key=True, default=lambda: make_id("kbm")
-    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("kbm"))
     knowledge_base_id: Mapped[str] = mapped_column(String(40), nullable=False)
     workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
     user_id: Mapped[str] = mapped_column(String(40), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
+
 
 class MemberGroup(TimestampMixin, Base):
     __tablename__ = "member_groups"
@@ -177,9 +170,7 @@ class MemberGroup(TimestampMixin, Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(40), primary_key=True, default=lambda: make_id("grp")
-    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("grp"))
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"),
         index=True,
@@ -216,9 +207,7 @@ class GroupMember(TimestampMixin, Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(40), primary_key=True, default=lambda: make_id("grm")
-    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("grm"))
     group_id: Mapped[str] = mapped_column(String(40), nullable=False)
     workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
     user_id: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -559,9 +548,7 @@ class KnowledgeHealthSnapshot(TimestampMixin, Base):
         nullable=False,
     )
     formula_version: Mapped[str] = mapped_column(String(16), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(24), default="complete", nullable=False
-    )
+    status: Mapped[str] = mapped_column(String(24), default="complete", nullable=False)
     overall_score: Mapped[float | None] = mapped_column(Float)
     data_score: Mapped[float | None] = mapped_column(Float)
     retrieval_score: Mapped[float | None] = mapped_column(Float)
@@ -570,6 +557,35 @@ class KnowledgeHealthSnapshot(TimestampMixin, Base):
     deductions: Mapped[list[dict] | None] = mapped_column(JSON)
     actions: Mapped[list[dict] | None] = mapped_column(JSON)
 
-    knowledge_base: Mapped[KnowledgeBase] = relationship(
-        back_populates="health_snapshots"
+    knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="health_snapshots")
+
+
+class OperationAuditLog(Base):
+    """System-level operation audit (P1-4.1, aligned with ragent BizChangeLogDO).
+
+    Immutable append-only log: who changed what permission/config, with the
+    before/after JSON snapshots and a path-based diff so a change can be
+    reconstructed without the original request payloads.
+    """
+
+    __tablename__ = "operation_audit_logs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("aud"))
+    biz_type: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    biz_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    operation_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    action_desc: Mapped[str] = mapped_column(String(512), nullable=False)
+    before_snapshot: Mapped[dict | None] = mapped_column(JSON)
+    after_snapshot: Mapped[dict | None] = mapped_column(JSON)
+    change_diff: Mapped[list[dict] | None] = mapped_column(JSON)
+    operator_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    operator_name: Mapped[str | None] = mapped_column(String(128))
+    operator_role: Mapped[str | None] = mapped_column(String(64))
+    success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(300))
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False, index=True
     )

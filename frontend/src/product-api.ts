@@ -199,6 +199,35 @@ export type AuthStatus = {
   user: ProductUser | null;
 };
 
+export type OperationAuditLog = {
+  id: string;
+  biz_type: string;
+  biz_id: string;
+  operation_type: string;
+  action_desc: string;
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  change_diff:
+    | Array<{ field: string; before: unknown; after: unknown }>
+    | null;
+  operator_id: string;
+  operator_name: string | null;
+  operator_role: string | null;
+  success: boolean;
+  error_message: string | null;
+  request_id: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+};
+
+export type AuditLogPage = {
+  items: OperationAuditLog[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
 export type ProductDocument = {
   id: string;
   knowledge_base_id: string;
@@ -1186,4 +1215,26 @@ export function runKnowledgeHealthActions(
     method: "POST",
     body: JSON.stringify({ actions }),
   });
+}
+
+export async function listAuditLogs(input: {
+  page?: number;
+  page_size?: number;
+  biz_type?: string;
+  biz_id?: string;
+  operation_type?: string;
+  operator_id?: string;
+  operator_name?: string;
+  success?: boolean;
+  begin_time?: string;
+  end_time?: string;
+} = {}): Promise<AuditLogPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  const query = params.toString();
+  return requestJson(`/api/admin/audit-logs${query ? `?${query}` : ""}`);
 }

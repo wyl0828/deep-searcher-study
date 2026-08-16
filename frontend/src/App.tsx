@@ -32,6 +32,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  Fragment,
   type FormEvent,
   type ReactNode,
   useEffect,
@@ -68,6 +69,7 @@ import {
   type KnowledgeBaseMember,
   type MemberGroup,
   type Message,
+  type OperationAuditLog,
   type ProductDocument,
   type ProductUser,
   type QueryStageEvent,
@@ -93,6 +95,7 @@ import {
   getKnowledgeHealth,
   getKnowledgeHealthTrend,
   getWorkspaceGroup,
+  listAuditLogs,
   listConversations,
   listDocuments,
   listKnowledgeBases,
@@ -1238,6 +1241,12 @@ function WorkspaceLayout({
             <NavLink className="admin-users-link" to="/users">
               <ShieldCheckIcon aria-hidden="true" />
               用户管理
+            </NavLink>
+          ) : null}
+          {user.role === "admin" ? (
+            <NavLink className="admin-users-link" to="/admin/audit">
+              <ClipboardDocumentIcon aria-hidden="true" />
+              操作审计
             </NavLink>
           ) : null}
           <button
@@ -3934,6 +3943,192 @@ function AdminUsersPage() {
   );
 }
 
+function AdminAuditPage() {
+  const pageSize = 20;
+  const [page, setPage] = useState(1);
+  const [bizType, setBizType] = useState("");
+  const [operationType, setOperationType] = useState("");
+  const [operatorName, setOperatorName] = useState("");
+  const [success, setSuccess] = useState<"" | "true" | "false">("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const query = useQuery({
+    queryKey: ["admin-audit-logs", page, bizType, operationType, operatorName, success],
+    queryFn: () =>
+      listAuditLogs({
+        page,
+        page_size: pageSize,
+        biz_type: bizType || undefined,
+        operation_type: operationType || undefined,
+        operator_name: operatorName || undefined,
+        success:
+          success === "true" ? true : success === "false" ? false : undefined,
+      }),
+  });
+
+  const totalPages = query.data
+    ? Math.max(1, Math.ceil(query.data.total / pageSize))
+    : 1;
+
+  return (
+    <div className="workspace-page admin-users-page">
+      <header className="page-heading">
+        <div>
+          <span className="eyebrow">管理员</span>
+          <h1>操作审计</h1>
+          <p>记录谁在什么时间改了哪些权限与配置，含变更前后快照与差异。</p>
+        </div>
+      </header>
+      <section className="workspace-card">
+        <div className="audit-filters">
+          <label>
+            <span>业务类型</span>
+            <input
+              value={bizType}
+              placeholder="如 workspace_member"
+              onChange={(event) => {
+                setBizType(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <label>
+            <span>操作类型</span>
+            <input
+              value={operationType}
+              placeholder="如 SET_MEMBER_ROLE"
+              onChange={(event) => {
+                setOperationType(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <label>
+            <span>操作人</span>
+            <input
+              value={operatorName}
+              placeholder="显示名称"
+              onChange={(event) => {
+                setOperatorName(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <label>
+            <span>结果</span>
+            <select
+              value={success}
+              onChange={(event) => {
+                setSuccess(event.target.value as "" | "true" | "false");
+                setPage(1);
+              }}
+            >
+              <option value="">全部</option>
+              <option value="true">成功</option>
+              <option value="false">失败</option>
+            </select>
+          </label>
+        </div>
+
+        {query.isLoading ? (
+          <p className="empty-state">加载中…</p>
+        ) : query.isError ? (
+          <div className="empty-state">
+            <p>加载失败：{query.error?.message || "未知错误"}</p>
+            <button type="button" onClick={() => void query.refetch()}>
+              重试
+            </button>
+          </div>
+        ) : (
+          <table className="audit-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>操作</th>
+                <th>业务</th>
+                <th>操作人</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(query.data?.items ?? []).map((log: OperationAuditLog) => (
+                <Fragment key={log.id}>
+                  <tr
+                    className={log.success ? "" : "audit-row-failed"}
+                    onClick={() =>
+                      setExpanded(expanded === log.id ? null : log.id)
+                    }
+                  >
+                    <td>{new Date(log.created_at).toLocaleString()}</td>
+                    <td>
+                      <span className="audit-action">{log.action_desc}</span>
+                      <span className="audit-operation">{log.operation_type}</span>
+                    </td>
+                    <td>
+                      {log.biz_type}
+                      <span className="audit-biz-id">{log.biz_id}</span>
+                    </td>
+                    <td>
+                      {log.operator_name || log.operator_id}
+                      {log.ip ? <span className="audit-ip">{log.ip}</span> : null}
+                    </td>
+                    <td>
+                      {log.success
+                        ? "成功"
+                        : `失败：${log.error_message || "未知错误"}`}
+                    </td>
+                  </tr>
+                  {expanded === log.id ? (
+                    <tr className="audit-detail-row">
+                      <td colSpan={5}>
+                        <div className="audit-snapshot-grid">
+                          <div>
+                            <h4>变更前</h4>
+                            <pre>{JSON.stringify(log.before_snapshot, null, 2)}</pre>
+                          </div>
+                          <div>
+                            <h4>变更后</h4>
+                            <pre>{JSON.stringify(log.after_snapshot, null, 2)}</pre>
+                          </div>
+                          <div>
+                            <h4>差异</h4>
+                            <pre>{JSON.stringify(log.change_diff, null, 2)}</pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="pagination">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            上一页
+          </button>
+          <span>
+            第 {page} / {totalPages} 页（共 {query.data?.total ?? 0} 条）
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((current) => current + 1)}
+          >
+            下一页
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+
 function ConsoleRoute() {
   return <ConsoleApp />;
 }
@@ -3955,6 +4150,9 @@ function ProductRouter({
         <Route path="knowledge/:knowledgeBaseId" element={<KnowledgeDetailRoute />} />
         {user.role === "admin" ? (
           <Route path="users" element={<AdminUsersPage />} />
+        ) : null}
+        {user.role === "admin" ? (
+          <Route path="admin/audit" element={<AdminAuditPage />} />
         ) : null}
       </Route>
       {user.role === "admin" ? (

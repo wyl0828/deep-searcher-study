@@ -1,70 +1,45 @@
 # 🌐 部署
 
-本指南介绍如何将 DeepSearcher 部署为 Web 服务。
+本指南介绍 DeepSearcher Study 的部署方式。本项目是独立维护的可信 RAG 工作台，不是上游的
+单容器 FastAPI 服务；请按下面三种方式之一部署。
 
-## ⚙️ 配置模块
+## 一、本地一键启动（推荐）
 
-可以通过修改配置文件设置各项参数：
+Windows 下运行 `\start.ps1`（或 `start.bat`），脚本会检查依赖、启动 Milvus、构建前端，并依次
+运行核心 API、文档入库 Worker 与用户工作台。默认地址 `http://127.0.0.1:8600`；若端口冲突，
+脚本会自动回退到可用端口，实际地址以 `status.ps1` 输出为准。
 
-```yaml
-# config.yaml - https://github.com/zilliztech/deep-searcher/blob/main/config.yaml
-llm:
-  provider: "OpenAI"
-  api_key: "your_openai_api_key_here"
-  # 其他配置项……
+```powershell
+.\start.ps1
+.\status.ps1   # 查看服务状态与实际地址
+.\stop.ps1     # 停止工作台、API 与 Milvus
 ```
 
-> **重要：** 请在 YAML 文件的 `llm` 部分设置 `OPENAI_API_KEY`。
+详细说明见根目录 [README.md](../../README.md) 的“快速入门”。
 
-## 🚀 启动服务
+## 二、Compose 工程模式（本地/服务器同构）
 
-主程序会启动 FastAPI 服务，默认地址为 `localhost:8000`：
+完整拓扑（PostgreSQL / Redis / MinIO / RocketMQ / Milvus / 双 API / 双 Consumer）通过
+`docker compose --env-file <env> -f compose.yaml -f compose.server.yaml` 管理；本地覆盖用
+`compose.local.yaml`。
 
-```shell
-python main.py
+```powershell
+# 配置校验
+docker compose --env-file env.compose.example -f compose.yaml -f compose.local.yaml config --quiet
+# 契约检查（服务清单/端口/等待 Alembic/双 API 摘要锁）
+uv run --frozen pytest tests/test_compose_contract.py -q
+# 分组启动
+docker compose --env-file env.compose.example -f compose.yaml -f compose.local.yaml up -d infra
+docker compose --env-file env.compose.example -f compose.yaml -f compose.local.yaml up -d vector
+docker compose --env-file env.compose.example -f compose.yaml -f compose.local.yaml up -d messaging
+docker compose --env-file env.compose.example -f compose.yaml -f compose.local.yaml up -d app
 ```
 
-启动成功后，终端会显示服务正在运行。
+## 三、服务器部署
 
-## 🔍 通过浏览器访问
+完整步骤、分组验收、故障恢复与 Nginx 接入见 [服务器部署与验收](../部署/服务器部署与验收.md)。
+当前服务器目标 `root@47.96.40.156`（公网 IP 可能因 ECS 重启变化，详见该文档“运维要点”第 1 条）；
+服务器提供 `deploy/server/` 下的打包、上传、构建、分组启停、备份、恢复、观察与部署验证脚本。
 
-1. 在浏览器中打开 [http://localhost:8000/docs](http://localhost:8000/docs)
-2. Swagger UI 会列出所有可用接口
-3. 点击接口中的“Try it out”按钮
-4. 填写必要参数并执行请求
-
-通过这份交互式接口文档，可以直接测试 DeepSearcher 的 API 功能。
-
-## 🐳 使用 Docker 部署
-
-也可以使用 Docker 简化环境配置和管理。
-
-### 构建 Docker 镜像
-
-在项目根目录执行：
-
-```shell
-docker build -t deepsearcher:latest .
-```
-
-该命令使用当前目录的 Dockerfile 构建镜像，并将其标记为 `deepsearcher:latest`。
-
-### 运行容器
-
-```shell
-docker run -p 8000:8000 \
-  -e OPENAI_API_KEY=your_openai_api_key \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  -v $(pwd)/deepsearcher/config.yaml:/app/deepsearcher/config.yaml \
-  deepsearcher:latest
-```
-
-该命令会：
-
-- 将容器的 8000 端口映射到主机的 8000 端口
-- 设置 `OPENAI_API_KEY` 环境变量
-- 挂载本地 `data`、`logs` 和配置文件
-- 运行 `deepsearcher:latest` 镜像
-
-> **注意：** 请把 `your_openai_api_key` 替换为实际的 OpenAI API Key；如果使用其他模型，也要设置相应的环境变量。
+> 注意：上游模板中的 `python main.py` / `docker run` 单容器方式仅适合快速体验上游功能，
+> 不包含本项目的 Trust Layer、用户工作台、双 API/双 Consumer、RocketMQ 事务入库与操作审计等能力。

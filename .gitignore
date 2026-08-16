@@ -221,6 +221,7 @@ pyrightconfig.json
 /docs/学习计划/
 /docs/验证记录/*
 !/docs/验证记录/2026-08-13-compose-engineering-baseline.md
+!/docs/验证记录/project-capability-matrix.md
 /docs/开发记录/设计规范/2026-07-09-学习记录面试题优化设计.md
 /docs/开发记录/实施计划/2026-07-09-学习记录面试题优化.md
 /scripts/generate_mobile_learning_pdf.py
