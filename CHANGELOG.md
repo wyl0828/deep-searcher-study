@@ -42,6 +42,14 @@
   active admin（无 admin 用 __legacy__ 真实用户）；claim_legacy_data 同步迁移 owner 与 workspace。
 - 前端新增“工作区”页面（创建/列表/成员管理，owner 可管理）与知识库创建工作区选择；viewer 角色
   隐藏上传/删除/重建/生成快照等写入口。
+- v0.5.1 per-KB 差异化角色：KnowledgeBaseMember（editor/viewer）真正覆盖工作区角色（可升可降），
+  owner 永不参与；KB 成员管理接口 admin-only（含 GET）。
+- v0.5.1 成员组：MemberGroup + GroupMember 批量授权（editor/viewer，组不授予 admin，成员必须是
+  工作区成员）；有效工作区角色 = max(个人, 组)；组管理接口 admin-only。
+- ACL 数据规则：KnowledgeBaseMember 的 user 与 KB 必须同 workspace（复合 FK）；owner/非成员永无
+  ACL 记录；ACL mutation 先锁 WorkspaceMember 行；父记录删除级联清理孤儿 ACL。
+- 新增 E.1 多实例故障切换验证脚本 deploy/server/verify-failover.ps1|.sh（六场景，幂等用逻辑身份
+  集合断言，事务回查拆分自动集成测试 + compose 确定性注入）。
 
 ### 验证
 
@@ -55,6 +63,9 @@
   幂等迁移）与 frontend/tests 团队 API 端到端 3 项（撤权后旧会话拒绝、非成员创建会话拒绝、viewer
   写拒绝）；Alembic 空库与 0017→0018 backfill 真实验证（NULL=0）；前端 typecheck、35 项测试与
   生产构建通过。
+- v0.5.1 回归：tests/test_team_trust.py 扩展至 21 项（KB 覆盖升降级、owner/非成员不可入 ACL、
+  跨 workspace DB 拒绝、组角色提升、组不授予 admin、移除/晋升清理 ACL、脏数据无访问）；frontend/tests
+  新增 KB members 与 Groups admin-only 端到端；迁移 0019 空库升级验证；前端 typecheck、35 项与构建通过。
 
 ## [v0.3.0] - 2026-08-16
 

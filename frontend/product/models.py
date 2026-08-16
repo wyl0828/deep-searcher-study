@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -123,6 +124,108 @@ class WorkspaceMember(TimestampMixin, Base):
     user: Mapped[User] = relationship(back_populates="workspace_memberships")
 
 
+class KnowledgeBaseMember(TimestampMixin, Base):
+    __tablename__ = "knowledge_base_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "knowledge_base_id",
+            "user_id",
+            name="uq_kb_members_kb_user",
+        ),
+        CheckConstraint(
+            "role IN ('editor', 'viewer')",
+            name="ck_kb_members_role",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "user_id"],
+            ["workspace_members.workspace_id", "workspace_members.user_id"],
+            ondelete="CASCADE",
+            name="fk_kb_members_workspace_user",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "knowledge_base_id"],
+            ["knowledge_bases.workspace_id", "knowledge_bases.id"],
+            ondelete="CASCADE",
+            name="fk_kb_members_workspace_kb",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(40), primary_key=True, default=lambda: make_id("kbm")
+    )
+    knowledge_base_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+
+class MemberGroup(TimestampMixin, Base):
+    __tablename__ = "member_groups"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "name",
+            name="uq_member_groups_workspace_name",
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "id",
+            name="uq_member_groups_workspace_id",
+        ),
+        CheckConstraint(
+            "role IN ('editor', 'viewer')",
+            name="ck_member_groups_role",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(40), primary_key=True, default=lambda: make_id("grp")
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    members: Mapped[list["GroupMember"]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+
+
+class GroupMember(TimestampMixin, Base):
+    __tablename__ = "group_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id",
+            "user_id",
+            name="uq_group_members_group_user",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "user_id"],
+            ["workspace_members.workspace_id", "workspace_members.user_id"],
+            ondelete="CASCADE",
+            name="fk_group_members_workspace_user",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "group_id"],
+            ["member_groups.workspace_id", "member_groups.id"],
+            ondelete="CASCADE",
+            name="fk_group_members_workspace_group",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(40), primary_key=True, default=lambda: make_id("grm")
+    )
+    group_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    group: Mapped[MemberGroup] = relationship(back_populates="members")
+
+
 class UserSession(TimestampMixin, Base):
     __tablename__ = "user_sessions"
 
@@ -143,6 +246,7 @@ class KnowledgeBase(TimestampMixin, Base):
     __tablename__ = "knowledge_bases"
     __table_args__ = (
         UniqueConstraint("workspace_id", "name", name="uq_knowledge_bases_workspace_name"),
+        UniqueConstraint("workspace_id", "id", name="uq_knowledge_bases_workspace_id"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("kb"))

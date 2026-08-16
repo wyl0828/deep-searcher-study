@@ -54,6 +54,25 @@ export type WorkspaceMember = {
   role: "owner" | "editor" | "viewer";
 };
 
+export type KnowledgeBaseMember = {
+  user_id: string;
+  username: string;
+  display_name: string;
+  role: "editor" | "viewer";
+};
+
+export type MemberGroup = {
+  id: string;
+  name: string;
+  role: "editor" | "viewer";
+  member_count: number;
+};
+
+export type GroupMemberItem = {
+  user_id: string;
+  username: string;
+};
+
 export type KnowledgeHealthComputed = {
   formula_version: string;
   status: "complete" | "partial";
@@ -776,6 +795,112 @@ export function removeWorkspaceMember(
   return requestJson(`/api/workspaces/${id}/members/${userId}`, {
     method: "DELETE",
   });
+}
+
+export function listKnowledgeBaseMembers(
+  id: string,
+): Promise<{ items: KnowledgeBaseMember[] }> {
+  return requestJson(`/api/knowledge-bases/${id}/members`);
+}
+
+export function addKnowledgeBaseMember(
+  id: string,
+  input: { username: string; role: "editor" | "viewer" },
+): Promise<{ member: KnowledgeBaseMember }> {
+  return requestJson(`/api/knowledge-bases/${id}/members`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateKnowledgeBaseMemberRole(
+  id: string,
+  userId: string,
+  role: "editor" | "viewer",
+): Promise<{ member: KnowledgeBaseMember }> {
+  return requestJson(`/api/knowledge-bases/${id}/members/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeKnowledgeBaseMember(
+  id: string,
+  userId: string,
+): Promise<void> {
+  return requestJson(`/api/knowledge-bases/${id}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listWorkspaceGroups(
+  workspaceId: string,
+): Promise<{ items: MemberGroup[] }> {
+  return requestJson(`/api/workspaces/${workspaceId}/groups`);
+}
+
+export function createWorkspaceGroup(
+  workspaceId: string,
+  input: { name: string; role: "editor" | "viewer" },
+): Promise<{ group: MemberGroup }> {
+  return requestJson(`/api/workspaces/${workspaceId}/groups`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getWorkspaceGroup(
+  workspaceId: string,
+  groupId: string,
+): Promise<{ group: MemberGroup; members: GroupMemberItem[] }> {
+  return requestJson(`/api/workspaces/${workspaceId}/groups/${groupId}`);
+}
+
+export function updateWorkspaceGroupRole(
+  workspaceId: string,
+  groupId: string,
+  role: "editor" | "viewer",
+): Promise<{ group: MemberGroup }> {
+  return requestJson(`/api/workspaces/${workspaceId}/groups/${groupId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function deleteWorkspaceGroup(
+  workspaceId: string,
+  groupId: string,
+): Promise<void> {
+  return requestJson(`/api/workspaces/${workspaceId}/groups/${groupId}`, {
+    method: "DELETE",
+  });
+}
+
+export function addWorkspaceGroupMember(
+  workspaceId: string,
+  groupId: string,
+  input: { username: string },
+): Promise<{ member: GroupMemberItem }> {
+  return requestJson(
+    `/api/workspaces/${workspaceId}/groups/${groupId}/members`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function removeWorkspaceGroupMember(
+  workspaceId: string,
+  groupId: string,
+  userId: string,
+): Promise<void> {
+  return requestJson(
+    `/api/workspaces/${workspaceId}/groups/${groupId}/members/${userId}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export function getKnowledgeBase(id: string): Promise<KnowledgeBase> {

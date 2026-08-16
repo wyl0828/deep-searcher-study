@@ -3,6 +3,7 @@
 ## 状态
 
 Accepted，首版实现于 2026-08-16（v0.5.0，迁移 `20260816_0018`）。
+v0.5.1 扩展（2026-08-16，迁移 `20260816_0019`）：per-KB 覆盖与成员组。
 
 ## 问题
 
@@ -49,3 +50,22 @@ ragent 参考提交（`020e5c3`）没有 Workspace/Member/RBAC 实体，只有 `
 - 角色粒度为工作区级；per-KB 角色、Group、Organization、所有权转移、工作区删除/重命名留待 v0.5.1。
 - 会话始终按创建者私有，不共享会话；共享对象仅限知识库。
 - 权限校验集中在 API 层入口，不修改 Milvus/检索核心；检索前隔离依赖“集合随机名 + 授权白名单”。
+
+## v0.5.1 补充：per-KB 覆盖与成员组
+
+- 新表 `knowledge_base_members`、`member_groups`、`group_members`（迁移 `20260816_0019`）。
+- 权限优先级冻结：
+  1. 非 WorkspaceMember → 无权限（404）；
+  2. Workspace owner → read/write/admin（short-circuit，永不参与 override/group）；
+  3. 普通成员：`effective_workspace_role = max(个人, 所属组 roles)`；存在 KB override 时 KB
+     read/write 用 override（editor/viewer），否则用 effective_workspace_role；
+  4. admin 只来自 personal WorkspaceMember.role == owner。
+- 实时性：每次用户发起的 KB read/write 实时重算；已入队/持久化的异步 mutation 由系统身份继续完成，
+  Consumer 阶段不重解释用户权限（与 ragent 消费端系统身份一致）。
+- 四条数据规则（DB 复合 FK + cascade + service 校验 + 行锁双保险）：
+  1. owner 永无 KnowledgeBaseMember/GroupMember（API 拒绝，提升为 owner 时清理）；
+  2. 非 WorkspaceMember 永无 ACL 记录（复合 FK `(workspace_id, user_id) → workspace_members`）；
+  3. KnowledgeBaseMember 的 user 与 KB 必须同 workspace（`knowledge_bases` 增
+     `UNIQUE(workspace_id, id)`，复合 FK `(workspace_id, knowledge_base_id)`）；
+  4. ACL mutation 先 `SELECT ... FOR UPDATE` 锁目标 WorkspaceMember 行。
+- 热路径索引 `group_members(workspace_id, user_id)`；组/KB 成员管理接口全部 admin-only。

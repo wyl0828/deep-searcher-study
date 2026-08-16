@@ -46,6 +46,28 @@ class WorkspaceMemberRoleUpdate(BaseModel):
     role: Literal["editor", "viewer"]
 
 
+class KnowledgeBaseMemberAdd(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+    role: Literal["editor", "viewer"] = "viewer"
+
+
+class KnowledgeBaseMemberRoleUpdate(BaseModel):
+    role: Literal["editor", "viewer"]
+
+
+class MemberGroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    role: Literal["editor", "viewer"] = "viewer"
+
+
+class MemberGroupRoleUpdate(BaseModel):
+    role: Literal["editor", "viewer"]
+
+
+class GroupMemberAdd(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+
+
 class HealthActionsRun(BaseModel):
     actions: list[str] = Field(min_length=1)
 

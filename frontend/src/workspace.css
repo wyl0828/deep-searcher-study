@@ -3026,6 +3026,19 @@ body {
 }
 .workspace-remove-member { padding: 3px 8px; font-size: 11px; }
 
+.workspace-groups { margin-top: 14px; }
+.workspace-groups h4 { margin: 0 0 8px; font-size: 12px; color: #718096; }
+.workspace-group-row { display: flex; flex-direction: column; gap: 8px; }
+.workspace-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.workspace-group-head strong { flex: 1 1 auto; }
+.workspace-group-members { padding-left: 12px; border-left: 2px solid var(--workspace-line); }
+.kb-members-panel { margin-top: 20px; }
+.kb-member-hint { margin: 0 0 8px; color: #718096; font-size: 11px; }
+
 .health-notice {
   margin: 12px 0 0;
   color: var(--workspace-success);

@@ -2230,3 +2230,122 @@ def test_team_trust_viewer_cannot_write(tmp_path):
             f"/api/knowledge-bases/{knowledge_base['id']}/reindex",
         )
         assert denied.status_code == 403
+
+
+def test_kb_members_api_admin_only_and_flow(tmp_path):
+    with product_client(tmp_path) as client:
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "viewer",
+                "password": "password1234",
+                "display_name": "Viewer",
+                "role": "member",
+            },
+        )
+        workspace = client.post(
+            "/api/workspaces",
+            json={"name": "team", "description": ""},
+        ).json()
+        client.post(
+            f"/api/workspaces/{workspace['id']}/members",
+            json={"username": "viewer", "role": "viewer"},
+        )
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={
+                "name": "kb",
+                "description": "",
+                "workspace_id": workspace["id"],
+            },
+        ).json()
+        kb_id = knowledge_base["id"]
+
+        with client.product_session_factory() as session:
+            viewer = session.scalar(select(User).where(User.username == "viewer"))
+        app.dependency_overrides[require_user] = lambda: viewer
+        # viewer cannot read the member configuration (admin-only)
+        assert client.get(f"/api/knowledge-bases/{kb_id}/members").status_code == 403
+        assert (
+            client.post(
+                f"/api/knowledge-bases/{kb_id}/members",
+                json={"username": "viewer", "role": "editor"},
+            ).status_code
+            == 403
+        )
+
+        # owner can manage KB overrides
+        app.dependency_overrides[require_user] = lambda: client.admin_user
+        added = client.post(
+            f"/api/knowledge-bases/{kb_id}/members",
+            json={"username": "viewer", "role": "editor"},
+        )
+        assert added.status_code == 201
+        member_user_id = added.json()["member"]["user_id"]
+        assert (
+            client.get(f"/api/knowledge-bases/{kb_id}/members").json()["items"][0]["role"]
+            == "editor"
+        )
+        patched = client.patch(
+            f"/api/knowledge-bases/{kb_id}/members/{member_user_id}",
+            json={"role": "viewer"},
+        )
+        assert patched.status_code == 200
+        removed = client.delete(
+            f"/api/knowledge-bases/{kb_id}/members/{member_user_id}"
+        )
+        assert removed.status_code == 204
+
+
+def test_groups_api_admin_only_and_flow(tmp_path):
+    with product_client(tmp_path) as client:
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "member",
+                "password": "password1234",
+                "display_name": "Member",
+                "role": "member",
+            },
+        )
+        workspace = client.post(
+            "/api/workspaces",
+            json={"name": "team", "description": ""},
+        ).json()
+        workspace_id = workspace["id"]
+        client.post(
+            f"/api/workspaces/{workspace_id}/members",
+            json={"username": "member", "role": "viewer"},
+        )
+
+        group = client.post(
+            f"/api/workspaces/{workspace_id}/groups",
+            json={"name": "editors", "role": "editor"},
+        )
+        assert group.status_code == 201
+        group_id = group.json()["group"]["id"]
+        added = client.post(
+            f"/api/workspaces/{workspace_id}/groups/{group_id}/members",
+            json={"username": "member"},
+        )
+        assert added.status_code == 201
+        assert (
+            client.get(f"/api/workspaces/{workspace_id}/groups/{group_id}").json()[
+                "members"
+            ][0]["username"]
+            == "member"
+        )
+
+        with client.product_session_factory() as session:
+            member = session.scalar(select(User).where(User.username == "member"))
+        app.dependency_overrides[require_user] = lambda: member
+        assert (
+            client.get(f"/api/workspaces/{workspace_id}/groups").status_code == 403
+        )
+        assert (
+            client.post(
+                f"/api/workspaces/{workspace_id}/groups",
+                json={"name": "x", "role": "viewer"},
+            ).status_code
+            == 403
+        )

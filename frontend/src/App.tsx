@@ -63,7 +63,10 @@ import {
   type Citation,
   type CitationSpan,
   type DocumentGovernanceInput,
+  type GroupMemberItem,
   type KnowledgeBase,
+  type KnowledgeBaseMember,
+  type MemberGroup,
   type Message,
   type ProductDocument,
   type ProductUser,
@@ -71,24 +74,31 @@ import {
   type Workspace,
   type WorkspaceMember,
   ProductApiError,
+  addKnowledgeBaseMember,
+  addWorkspaceGroupMember,
   addWorkspaceMember,
   createConversation,
   createKnowledgeBase,
   createKnowledgeHealthSnapshot,
   createUser,
+  createWorkspaceGroup,
   createWorkspace,
   deleteConversation,
   deleteDocument,
   deleteKnowledgeBase,
+  deleteWorkspaceGroup,
   getConversation,
   getAuthStatus,
   getKnowledgeBase,
   getKnowledgeHealth,
   getKnowledgeHealthTrend,
+  getWorkspaceGroup,
   listConversations,
   listDocuments,
   listKnowledgeBases,
+  listKnowledgeBaseMembers,
   listKnowledgeHealthHistory,
+  listWorkspaceGroups,
   listWorkspaceMembers,
   listWorkspaces,
   listUsers,
@@ -97,12 +107,16 @@ import {
   reindexKnowledgeBase,
   retryDocument,
   removeWorkspaceMember,
+  removeKnowledgeBaseMember,
+  removeWorkspaceGroupMember,
   runKnowledgeHealthActions,
   setCurrentKnowledgeBase,
   setupWorkspace,
   streamMessage,
   uploadDocument,
   updateDocumentGovernanceMetadata,
+  updateKnowledgeBaseMemberRole,
+  updateWorkspaceGroupRole,
   updateWorkspaceMemberRole,
 } from "./product-api";
 import "./workspace.css";
@@ -659,6 +673,7 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
               />
             ))}
           </ul>
+          {canManage ? <WorkspaceGroupsPanel workspace={workspace} /> : null}
         </div>
       ) : null}
     </section>
@@ -703,6 +718,324 @@ function WorkspacesPage() {
           void queryCache.invalidateQueries({ queryKey: ["workspaces"] });
         }}
       />
+    </div>
+  );
+}
+
+
+function KnowledgeBaseMembersPanel({
+  knowledgeBaseId,
+}: {
+  knowledgeBaseId: string;
+}) {
+  const queryCache = useQueryClient();
+  const [username, setUsername] = useState("");
+  const [role, setRole] = useState<"editor" | "viewer">("viewer");
+  const members = useQuery({
+    queryKey: ["kb-members", knowledgeBaseId],
+    queryFn: () => listKnowledgeBaseMembers(knowledgeBaseId),
+  });
+  const invalidate = async () => {
+    await queryCache.invalidateQueries({
+      queryKey: ["kb-members", knowledgeBaseId],
+    });
+  };
+  const add = useMutation({
+    mutationFn: (input: { username: string; role: "editor" | "viewer" }) =>
+      addKnowledgeBaseMember(knowledgeBaseId, input),
+    onSuccess: async () => {
+      setUsername("");
+      await invalidate();
+    },
+  });
+  const changeRole = useMutation({
+    mutationFn: ({
+      userId,
+      nextRole,
+    }: {
+      userId: string;
+      nextRole: "editor" | "viewer";
+    }) => updateKnowledgeBaseMemberRole(knowledgeBaseId, userId, nextRole),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (userId: string) =>
+      removeKnowledgeBaseMember(knowledgeBaseId, userId),
+    onSuccess: invalidate,
+  });
+  return (
+    <section className="health-list-block kb-members-panel">
+      <h3>成员覆盖</h3>
+      <p className="kb-member-hint">
+        仅影响该知识库的读写权限；工作区 owner 始终拥有全部权限。
+      </p>
+      <form
+        className="workspace-add-member"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (username.trim()) {
+            add.mutate({ username: username.trim(), role });
+          }
+        }}
+      >
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder="输入用户名"
+          maxLength={32}
+        />
+        <select
+          value={role}
+          onChange={(event) =>
+            setRole(event.target.value as "editor" | "viewer")
+          }
+        >
+          <option value="editor">可编辑</option>
+          <option value="viewer">只读</option>
+        </select>
+        <button
+          className="product-primary-button"
+          type="submit"
+          disabled={!username.trim() || add.isPending}
+        >
+          添加覆盖
+        </button>
+      </form>
+      {add.error ? <ErrorState message={add.error.message} /> : null}
+      {members.isLoading ? <LoadingState label="正在加载成员…" /> : null}
+      {members.error ? <ErrorState message={members.error.message} /> : null}
+      <ul className="workspace-member-list">
+        {(members.data?.items || []).map((member) => (
+          <li key={member.user_id} className="workspace-member-row">
+            <div className="workspace-member-id">
+              <strong>{member.display_name}</strong>
+              <span>@{member.username}</span>
+            </div>
+            <span className="workspace-role-badge">
+              {member.role === "editor" ? "可编辑" : "只读"}
+            </span>
+            <div className="workspace-member-actions">
+              <select
+                value={member.role}
+                disabled={changeRole.isPending}
+                onChange={(event) =>
+                  changeRole.mutate({
+                    userId: member.user_id,
+                    nextRole: event.target.value as "editor" | "viewer",
+                  })
+                }
+              >
+                <option value="editor">可编辑</option>
+                <option value="viewer">只读</option>
+              </select>
+              <button
+                className="secondary-button workspace-remove-member"
+                type="button"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(member.user_id)}
+              >
+                移除
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+
+function WorkspaceGroupsPanel({ workspace }: { workspace: Workspace }) {
+  const queryCache = useQueryClient();
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<"editor" | "viewer">("viewer");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const groups = useQuery({
+    queryKey: ["workspace-groups", workspace.id],
+    queryFn: () => listWorkspaceGroups(workspace.id),
+  });
+  const invalidate = async () => {
+    await Promise.all([
+      queryCache.invalidateQueries({
+        queryKey: ["workspace-groups", workspace.id],
+      }),
+      queryCache.invalidateQueries({ queryKey: ["workspaces"] }),
+    ]);
+  };
+  const create = useMutation({
+    mutationFn: (input: { name: string; role: "editor" | "viewer" }) =>
+      createWorkspaceGroup(workspace.id, input),
+    onSuccess: async () => {
+      setName("");
+      await invalidate();
+    },
+  });
+  const changeRole = useMutation({
+    mutationFn: ({
+      groupId,
+      nextRole,
+    }: {
+      groupId: string;
+      nextRole: "editor" | "viewer";
+    }) => updateWorkspaceGroupRole(workspace.id, groupId, nextRole),
+    onSuccess: invalidate,
+  });
+  const removeGroup = useMutation({
+    mutationFn: (groupId: string) => deleteWorkspaceGroup(workspace.id, groupId),
+    onSuccess: invalidate,
+  });
+  const detail = useQuery({
+    queryKey: ["workspace-group", workspace.id, expanded],
+    queryFn: () => getWorkspaceGroup(workspace.id, expanded as string),
+    enabled: Boolean(expanded),
+  });
+  const addMember = useMutation({
+    mutationFn: (input: { groupId: string; username: string }) =>
+      addWorkspaceGroupMember(workspace.id, input.groupId, {
+        username: input.username,
+      }),
+    onSuccess: async () => {
+      await queryCache.invalidateQueries({
+        queryKey: ["workspace-group", workspace.id, expanded],
+      });
+    },
+  });
+  const removeMember = useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
+      removeWorkspaceGroupMember(workspace.id, groupId, userId),
+    onSuccess: async () => {
+      await queryCache.invalidateQueries({
+        queryKey: ["workspace-group", workspace.id, expanded],
+      });
+    },
+  });
+  return (
+    <div className="workspace-groups">
+      <h4>成员组</h4>
+      <form
+        className="workspace-add-member"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim()) create.mutate({ name: name.trim(), role });
+        }}
+      >
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="组名称"
+          maxLength={40}
+        />
+        <select
+          value={role}
+          onChange={(event) =>
+            setRole(event.target.value as "editor" | "viewer")
+          }
+        >
+          <option value="editor">可编辑</option>
+          <option value="viewer">只读</option>
+        </select>
+        <button
+          className="product-primary-button"
+          type="submit"
+          disabled={!name.trim() || create.isPending}
+        >
+          创建组
+        </button>
+      </form>
+      {create.error ? <ErrorState message={create.error.message} /> : null}
+      <ul className="workspace-member-list">
+        {(groups.data?.items || []).map((group) => (
+          <li key={group.id} className="workspace-group-row">
+            <div className="workspace-group-head">
+              <strong>{group.name}</strong>
+              <span className="workspace-role-badge">
+                {group.role === "editor" ? "可编辑" : "只读"} · {group.member_count} 人
+              </span>
+              <div className="workspace-member-actions">
+                <select
+                  value={group.role}
+                  disabled={changeRole.isPending}
+                  onChange={(event) =>
+                    changeRole.mutate({
+                      groupId: group.id,
+                      nextRole: event.target.value as "editor" | "viewer",
+                    })
+                  }
+                >
+                  <option value="editor">可编辑</option>
+                  <option value="viewer">只读</option>
+                </select>
+                <button
+                  className="secondary-button workspace-remove-member"
+                  type="button"
+                  disabled={removeGroup.isPending}
+                  onClick={() => removeGroup.mutate(group.id)}
+                >
+                  删除
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setExpanded(expanded === group.id ? null : group.id)}
+                >
+                  {expanded === group.id ? "收起" : "成员"}
+                </button>
+              </div>
+            </div>
+            {expanded === group.id ? (
+              <div className="workspace-group-members">
+                <form
+                  className="workspace-add-member"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = event.currentTarget;
+                    const input = form.querySelector("input") as HTMLInputElement;
+                    if (input.value.trim()) {
+                      addMember.mutate({ groupId: group.id, username: input.value.trim() });
+                      input.value = "";
+                    }
+                  }}
+                >
+                  <input placeholder="输入用户名" maxLength={32} />
+                  <button
+                    className="product-primary-button"
+                    type="submit"
+                    disabled={addMember.isPending}
+                  >
+                    添加成员
+                  </button>
+                </form>
+                {addMember.error ? (
+                  <ErrorState message={addMember.error.message} />
+                ) : null}
+                <ul className="workspace-member-list">
+                  {(detail.data?.members || []).map((member) => (
+                    <li key={member.user_id} className="workspace-member-row">
+                      <div className="workspace-member-id">
+                        <strong>{member.username}</strong>
+                        <span>@{member.username}</span>
+                      </div>
+                      <button
+                        className="secondary-button workspace-remove-member"
+                        type="button"
+                        disabled={removeMember.isPending}
+                        onClick={() =>
+                          removeMember.mutate({
+                            groupId: group.id,
+                            userId: member.user_id,
+                          })
+                        }
+                      >
+                        移除
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -3179,6 +3512,10 @@ function KnowledgeDetailPage() {
           </button>
         </div>
       </div>
+
+      {myRole === "owner" ? (
+        <KnowledgeBaseMembersPanel knowledgeBaseId={knowledgeBaseId} />
+      ) : null}
 
       <div className="knowledge-summary">
         <div>

@@ -223,8 +223,11 @@ Retriever、Rerank、Cache、Trace 和 Agent Tool 均不得接触未授权证据
 
 ### 待办（v0.5.1+）
 
-- per-KB 差异化角色、Group 成员组、Organization 顶层、工作区所有权转移与删除/重命名。
-- Milvus 侧 ACL（当前依赖集合随机名 + API 白名单，检索核心零侵入）。
+- per-KB 差异化角色（2026-08-16 已实现）：KB 覆盖 editor/viewer，owner 永不参与；成员管理 admin-only。
+- Group 成员组（2026-08-16 已实现）：工作区批量授权（editor/viewer），组不授予 admin，成员必须是
+  工作区成员；四条 ACL 数据规则由复合 FK + cascade + 行锁双保险。
+- 待办：Organization 顶层、工作区所有权转移与删除/重命名、Milvus 侧 ACL（当前依赖集合随机名 +
+  API 白名单，检索核心零侵入）。
 
 ## v0.6 Enterprise Connect
 

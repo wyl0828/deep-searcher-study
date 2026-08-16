@@ -48,8 +48,13 @@ from frontend.product.schemas import (
     ConversationCreate,
     DocumentGovernanceUpdate,
     DocumentTemporalUpdate,
+    GroupMemberAdd,
     HealthActionsRun,
+    KnowledgeBaseMemberAdd,
+    KnowledgeBaseMemberRoleUpdate,
     KnowledgeBaseCreate,
+    MemberGroupCreate,
+    MemberGroupRoleUpdate,
     MessageCreate,
     MessageResponse,
     UserCreate,
@@ -59,14 +64,26 @@ from frontend.product.schemas import (
 )
 from frontend.product.services import documents as document_service
 from frontend.product.services.access import (
+    add_group_member,
+    add_kb_member,
     add_workspace_member,
+    create_group,
     create_workspace,
+    delete_group,
+    get_group,
     get_workspace,
+    list_group_members,
+    list_groups,
+    list_kb_members,
     list_workspace_members,
     list_workspaces,
+    remove_group_member,
+    remove_kb_member,
     remove_workspace_member,
     require_accessible_knowledge_base,
     require_workspace_access,
+    set_group_role,
+    set_kb_member_role,
     set_member_role,
     workspace_response,
 )
@@ -483,6 +500,122 @@ def delete_workspace_member_route(
     return Response(status_code=204)
 
 
+@router.get("/workspaces/{workspace_id}/groups")
+def workspace_groups(
+    workspace_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    return {"items": list_groups(session, workspace_id)}
+
+
+@router.post("/workspaces/{workspace_id}/groups", status_code=201)
+def add_workspace_group(
+    workspace_id: str,
+    payload: MemberGroupCreate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    workspace = get_workspace(session, workspace_id)
+    if workspace is None:
+        raise ProductError(
+            "WORKSPACE_NOT_FOUND",
+            "没有找到这个工作区。",
+            status_code=404,
+        )
+    group = create_group(
+        session,
+        workspace,
+        name=payload.name,
+        role=payload.role,
+    )
+    return {"group": {"id": group.id, "name": group.name, "role": group.role}}
+
+
+@router.get("/workspaces/{workspace_id}/groups/{group_id}")
+def workspace_group_detail(
+    workspace_id: str,
+    group_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    group = get_group(session, workspace_id, group_id)
+    return {
+        "group": {"id": group.id, "name": group.name, "role": group.role},
+        "members": list_group_members(session, group),
+    }
+
+
+@router.patch("/workspaces/{workspace_id}/groups/{group_id}")
+def update_workspace_group_role(
+    workspace_id: str,
+    group_id: str,
+    payload: MemberGroupRoleUpdate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    group = get_group(session, workspace_id, group_id)
+    group = set_group_role(session, group, payload.role)
+    return {"group": {"id": group.id, "name": group.name, "role": group.role}}
+
+
+@router.delete("/workspaces/{workspace_id}/groups/{group_id}", status_code=204)
+def delete_workspace_group_route(
+    workspace_id: str,
+    group_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    require_workspace_access(session, user, workspace_id, "admin")
+    group = get_group(session, workspace_id, group_id)
+    delete_group(session, group)
+    return Response(status_code=204)
+
+
+@router.post("/workspaces/{workspace_id}/groups/{group_id}/members", status_code=201)
+def add_workspace_group_member_route(
+    workspace_id: str,
+    group_id: str,
+    payload: GroupMemberAdd,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    group = get_group(session, workspace_id, group_id)
+    target = session.scalar(
+        select(User).where(User.username == payload.username.strip().casefold())
+    )
+    if target is None:
+        raise ProductError(
+            "USER_NOT_FOUND",
+            "没有找到这个用户。",
+            status_code=404,
+        )
+    add_group_member(session, group, target.id)
+    return {"member": {"user_id": target.id, "username": target.username}}
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/groups/{group_id}/members/{user_id}",
+    status_code=204,
+)
+def delete_workspace_group_member_route(
+    workspace_id: str,
+    group_id: str,
+    user_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    require_workspace_access(session, user, workspace_id, "admin")
+    group = get_group(session, workspace_id, group_id)
+    remove_group_member(session, group, user_id)
+    return Response(status_code=204)
+
+
 @router.get("/knowledge-bases")
 def knowledge_bases(
     user: User = Depends(require_user),
@@ -655,6 +788,100 @@ async def run_knowledge_health_actions_route(
 ) -> dict:
     knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
     return await run_health_actions(session, knowledge_base, user.id, payload.actions)
+
+
+@router.get("/knowledge-bases/{knowledge_base_id}/members")
+def knowledge_base_members(
+    knowledge_base_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    knowledge_base = require_accessible_knowledge_base(
+        session,
+        user,
+        knowledge_base_id,
+        "admin",
+    )
+    return {"items": list_kb_members(session, knowledge_base)}
+
+
+@router.post("/knowledge-bases/{knowledge_base_id}/members", status_code=201)
+def add_knowledge_base_member_route(
+    knowledge_base_id: str,
+    payload: KnowledgeBaseMemberAdd,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    knowledge_base = require_accessible_knowledge_base(
+        session,
+        user,
+        knowledge_base_id,
+        "admin",
+    )
+    target = session.scalar(
+        select(User).where(User.username == payload.username.strip().casefold())
+    )
+    if target is None:
+        raise ProductError(
+            "USER_NOT_FOUND",
+            "没有找到这个用户。",
+            status_code=404,
+        )
+    member = add_kb_member(session, knowledge_base, target.id, payload.role)
+    return {
+        "member": {
+            "user_id": member.user_id,
+            "username": target.username,
+            "display_name": target.display_name,
+            "role": member.role,
+        }
+    }
+
+
+@router.patch("/knowledge-bases/{knowledge_base_id}/members/{user_id}")
+def update_knowledge_base_member_role(
+    knowledge_base_id: str,
+    user_id: str,
+    payload: KnowledgeBaseMemberRoleUpdate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    knowledge_base = require_accessible_knowledge_base(
+        session,
+        user,
+        knowledge_base_id,
+        "admin",
+    )
+    member = set_kb_member_role(session, knowledge_base, user_id, payload.role)
+    target = session.get(User, user_id)
+    return {
+        "member": {
+            "user_id": member.user_id,
+            "username": target.username if target is not None else user_id,
+            "display_name": target.display_name if target is not None else user_id,
+            "role": member.role,
+        }
+    }
+
+
+@router.delete(
+    "/knowledge-bases/{knowledge_base_id}/members/{user_id}",
+    status_code=204,
+)
+def remove_knowledge_base_member_route(
+    knowledge_base_id: str,
+    user_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    knowledge_base = require_accessible_knowledge_base(
+        session,
+        user,
+        knowledge_base_id,
+        "admin",
+    )
+    remove_kb_member(session, knowledge_base, user_id)
+    return Response(status_code=204)
 
 
 @router.get("/knowledge-bases/{knowledge_base_id}/documents")
