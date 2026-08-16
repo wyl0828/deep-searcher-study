@@ -50,6 +50,9 @@
   ACL 记录；ACL mutation 先锁 WorkspaceMember 行；父记录删除级联清理孤儿 ACL。
 - 新增 E.1 多实例故障切换验证脚本 deploy/server/verify-failover.ps1|.sh（六场景，幂等用逻辑身份
   集合断言，事务回查拆分自动集成测试 + compose 确定性注入）。
+- 知识健康金标评测：新增 evaluation/datasets/knowledge_health_v1.json（18 cases，五类场景 +
+  series 边界 + permutation），逐 case 精确锁定公式 1.1 的三维分数、分维度必需/禁止扣分、动作
+  代码与 overall 等级；测试走 production 聚合入口（aggregate_overall_score）并验证顺序不变性。
 
 ### 验证
 
@@ -66,6 +69,9 @@
 - v0.5.1 回归：tests/test_team_trust.py 扩展至 21 项（KB 覆盖升降级、owner/非成员不可入 ACL、
   跨 workspace DB 拒绝、组角色提升、组不授予 admin、移除/晋升清理 ACL、脏数据无访问）；frontend/tests
   新增 KB members 与 Groups admin-only 端到端；迁移 0019 空库升级验证；前端 typecheck、35 项与构建通过。
+- 知识健康金标回归：tests/evaluation/test_knowledge_health_gold.py 4 项（dataset contract、
+  coverage gate、逐 case formula contract、permutation/shuffle 顺序不变性），18 cases 全绿；
+  aggregate_overall_score 作为生产/测试共享聚合入口，评分行为不变。
 
 ## [v0.3.0] - 2026-08-16
 

@@ -844,17 +844,12 @@ def assemble_health_payload(
     ]
     trust = compute_trust_health(claim_rows)
 
-    scores = [data["score"], retrieval["score"], trust["score"]]
-    if all(score is not None for score in scores):
-        overall = (
-            DATA_WEIGHT * float(data["score"])
-            + RETRIEVAL_WEIGHT * float(retrieval["score"])
-            + TRUST_WEIGHT * float(trust["score"])
-        )
-        status = "complete"
-    else:
-        overall = None
-        status = "partial"
+    overall = aggregate_overall_score(
+        data["score"],
+        retrieval["score"],
+        trust["score"],
+    )
+    status = "complete" if overall is not None else "partial"
 
     return {
         "formula_version": HEALTH_FORMULA_VERSION,
@@ -985,6 +980,25 @@ def get_health_level(overall: float | None) -> str | None:
     if overall < 60:
         return "warning"
     return "healthy"
+
+
+def aggregate_overall_score(
+    data_score: float | None,
+    retrieval_score: float | None,
+    trust_score: float | None,
+) -> float | None:
+    """Formula 1.1 aggregation shared by production and gold tests.
+
+    Returns None when any dimension is not computable (partial); otherwise
+    data 40% + retrieval 30% + trust 30%.
+    """
+    if data_score is None or retrieval_score is None or trust_score is None:
+        return None
+    return (
+        DATA_WEIGHT * float(data_score)
+        + RETRIEVAL_WEIGHT * float(retrieval_score)
+        + TRUST_WEIGHT * float(trust_score)
+    )
 
 
 def health_trend_payload(

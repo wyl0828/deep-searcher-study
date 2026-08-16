@@ -1,0 +1,1474 @@
+{
+  "schema_version": 1,
+  "id": "deepsearcher-knowledge-health",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "healthy-all-100",
+      "category": "single_document",
+      "dimension": "combined",
+      "boundary": false,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-02",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-03",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "index_verified": true,
+      "messages": [
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        }
+      ],
+      "claims": [
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        }
+      ],
+      "expected": {
+        "data_score": 100.0,
+        "retrieval_score": 100.0,
+        "trust_score": 100.0,
+        "overall_level": "healthy",
+        "deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "failed-document",
+      "category": "single_document",
+      "dimension": "data",
+      "boundary": false,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "failed",
+          "page_count": 0,
+          "version_family": null,
+          "published_at": null,
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 57.5,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "FAILED_DOCUMENTS"
+          ],
+          "retrieval": [
+            "NO_ANSWER_SAMPLES"
+          ],
+          "trust": [
+            "NO_CLAIMS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "RETRY_FAILED_DOCUMENTS",
+          "ADD_ANSWER_SAMPLES"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "index-unverified",
+      "category": "single_document",
+      "dimension": "data",
+      "boundary": false,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-02",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-03",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "index_verified": false,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 85.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "INDEX_MISSING"
+          ],
+          "retrieval": [
+            "NO_ANSWER_SAMPLES"
+          ],
+          "trust": [
+            "NO_CLAIMS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "REBUILD_INDEX",
+          "ADD_ANSWER_SAMPLES"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "duplicate-series",
+      "category": "cross_document",
+      "dimension": "data",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-01-01",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-01-02",
+          "effective_at": "2026-01-02",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-01-03",
+          "effective_at": "2026-01-03",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 90.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "DUPLICATE_DOCUMENTS"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [
+            "TEMPORAL_OVERLAP",
+            "SERIES_GAP",
+            "SERIES_ORPHANED",
+            "SERIES_SUPERSEDE_ANOMALY"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "REVIEW_DUPLICATES"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "series-overlap",
+      "category": "cross_document",
+      "dimension": "data",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-01-01",
+          "superseded_at": "2026-03-15",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-03-01",
+          "effective_at": "2026-03-01",
+          "superseded_at": "2026-03-20",
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-03-20",
+          "effective_at": "2026-03-20",
+          "superseded_at": "2026-04-01",
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-04-01",
+          "effective_at": "2026-04-01",
+          "superseded_at": null,
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 90.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "TEMPORAL_OVERLAP"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [
+            "SERIES_ORPHANED",
+            "SERIES_GAP",
+            "DUPLICATE_DOCUMENTS"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "REVIEW_VERSION_INTERVALS"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "touching-interval-not-overlap",
+      "category": "cross_document",
+      "dimension": "data",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-01-01",
+          "superseded_at": "2026-06-01",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "handbook",
+          "published_at": "2026-06-01",
+          "effective_at": "2026-06-01",
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 100.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [
+            "TEMPORAL_OVERLAP",
+            "SERIES_GAP",
+            "SERIES_ORPHANED"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "current-version-selection",
+      "category": "cross_document",
+      "dimension": "data",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "policy",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-01-01",
+          "superseded_at": "2026-06-01",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "policy",
+          "published_at": "2026-06-01",
+          "effective_at": "2026-06-01",
+          "superseded_at": "2026-12-01",
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "policy",
+          "published_at": "2026-12-01",
+          "effective_at": "2026-12-01",
+          "superseded_at": null,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 100.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [
+            "SERIES_SUPERSEDE_ANOMALY",
+            "TEMPORAL_OVERLAP",
+            "SERIES_ORPHANED"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "series-penalty-cap",
+      "category": "cross_document",
+      "dimension": "data",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam0",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-01-01",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam0",
+          "published_at": "2026-01-02",
+          "effective_at": "2026-01-02",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam1",
+          "published_at": "2026-01-03",
+          "effective_at": "2026-01-03",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam1",
+          "published_at": "2026-01-04",
+          "effective_at": "2026-01-04",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam2",
+          "published_at": "2026-01-05",
+          "effective_at": "2026-01-05",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam2",
+          "published_at": "2026-01-06",
+          "effective_at": "2026-01-06",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam3",
+          "published_at": "2026-01-07",
+          "effective_at": "2026-01-07",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam3",
+          "published_at": "2026-01-08",
+          "effective_at": "2026-01-08",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam4",
+          "published_at": "2026-01-09",
+          "effective_at": "2026-01-09",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "fam4",
+          "published_at": "2026-01-10",
+          "effective_at": "2026-01-10",
+          "superseded_at": null,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 60.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "DUPLICATE_DOCUMENTS"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [
+            "TEMPORAL_OVERLAP",
+            "SERIES_ORPHANED"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "REVIEW_DUPLICATES"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "contradicted-claim",
+      "category": "conflict",
+      "dimension": "trust",
+      "boundary": false,
+      "documents": [],
+      "index_verified": false,
+      "messages": [],
+      "claims": [
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "inconsistent",
+          "entailment_status": "contradicted"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        }
+      ],
+      "expected": {
+        "data_score": 0.0,
+        "retrieval_score": null,
+        "trust_score": 75.0,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "KB_EMPTY"
+          ],
+          "retrieval": [
+            "NO_ANSWER_SAMPLES"
+          ],
+          "trust": [
+            "LOW_CLAIM_SUPPORT",
+            "INVALID_CITATIONS",
+            "CONSISTENCY_ISSUES",
+            "ENTAILMENT_CONTRADICTIONS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "UPLOAD_DOCUMENTS",
+          "ADD_ANSWER_SAMPLES",
+          "REVIEW_RETRIEVAL",
+          "REVIEW_CITATIONS",
+          "REVIEW_SOURCE_CONFLICTS",
+          "REVIEW_GROUNDING"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "invalid-citation",
+      "category": "conflict",
+      "dimension": "trust",
+      "boundary": false,
+      "documents": [],
+      "index_verified": false,
+      "messages": [],
+      "claims": [
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "consistent",
+          "entailment_status": "not_checked"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        }
+      ],
+      "expected": {
+        "data_score": 0.0,
+        "retrieval_score": null,
+        "trust_score": 81.2,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "KB_EMPTY"
+          ],
+          "retrieval": [
+            "NO_ANSWER_SAMPLES"
+          ],
+          "trust": [
+            "LOW_CLAIM_SUPPORT",
+            "INVALID_CITATIONS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": [
+            "CONSISTENCY_ISSUES",
+            "ENTAILMENT_CONTRADICTIONS"
+          ]
+        },
+        "action_codes": [
+          "UPLOAD_DOCUMENTS",
+          "ADD_ANSWER_SAMPLES",
+          "REVIEW_RETRIEVAL",
+          "REVIEW_CITATIONS"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "insufficient-evidence",
+      "category": "no_answer",
+      "dimension": "retrieval",
+      "boundary": false,
+      "documents": [],
+      "index_verified": false,
+      "messages": [
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        }
+      ],
+      "claims": [],
+      "expected": {
+        "data_score": 0.0,
+        "retrieval_score": 40.0,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "KB_EMPTY"
+          ],
+          "retrieval": [
+            "LOW_CITATION_COVERAGE",
+            "HIGH_INSUFFICIENT_EVIDENCE"
+          ],
+          "trust": [
+            "NO_CLAIMS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [
+            "HIGH_REFUSAL_RATE"
+          ],
+          "trust": []
+        },
+        "action_codes": [
+          "UPLOAD_DOCUMENTS",
+          "ADD_ANSWER_SAMPLES",
+          "REVIEW_RETRIEVAL",
+          "EXPAND_KNOWLEDGE_BASE"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "correct-refusal-not-failure",
+      "category": "no_answer",
+      "dimension": "retrieval",
+      "boundary": true,
+      "documents": [],
+      "index_verified": false,
+      "messages": [
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": "refuse",
+          "answer_state": "refused",
+          "query_type": "sensitive"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": "refuse",
+          "answer_state": "refused",
+          "query_type": "sensitive"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": "refuse",
+          "answer_state": "refused",
+          "query_type": "sensitive"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": "refuse",
+          "answer_state": "refused",
+          "query_type": "sensitive"
+        }
+      ],
+      "claims": [],
+      "expected": {
+        "data_score": 0.0,
+        "retrieval_score": 20.0,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "KB_EMPTY"
+          ],
+          "retrieval": [
+            "LOW_CITATION_COVERAGE",
+            "HIGH_REFUSAL_RATE"
+          ],
+          "trust": [
+            "NO_CLAIMS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [
+            "HIGH_INSUFFICIENT_EVIDENCE"
+          ],
+          "trust": []
+        },
+        "action_codes": [
+          "UPLOAD_DOCUMENTS",
+          "ADD_ANSWER_SAMPLES",
+          "REVIEW_RETRIEVAL",
+          "EXPAND_KNOWLEDGE_BASE"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "empty-kb",
+      "category": "no_answer",
+      "dimension": "data",
+      "boundary": true,
+      "documents": [],
+      "index_verified": false,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 0.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "KB_EMPTY"
+          ],
+          "retrieval": [
+            "NO_ANSWER_SAMPLES"
+          ],
+          "trust": [
+            "NO_CLAIMS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "UPLOAD_DOCUMENTS",
+          "ADD_ANSWER_SAMPLES"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "retrieval-insufficient-sample",
+      "category": "no_answer",
+      "dimension": "retrieval",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-02",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-03",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "index_verified": true,
+      "messages": [
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        }
+      ],
+      "claims": [
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        }
+      ],
+      "expected": {
+        "data_score": 100.0,
+        "retrieval_score": null,
+        "trust_score": 100.0,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [
+            "LOW_CITATION_COVERAGE",
+            "HIGH_REFUSAL_RATE",
+            "HIGH_INSUFFICIENT_EVIDENCE"
+          ],
+          "trust": []
+        },
+        "action_codes": [],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "trust-insufficient-sample",
+      "category": "conflict",
+      "dimension": "trust",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-02",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-03",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "index_verified": true,
+      "messages": [
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        }
+      ],
+      "claims": [
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        }
+      ],
+      "expected": {
+        "data_score": 100.0,
+        "retrieval_score": 100.0,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [],
+          "trust": [
+            "LOW_CLAIM_SUPPORT",
+            "INVALID_CITATIONS"
+          ]
+        },
+        "action_codes": [],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "adversarial-combined-warning",
+      "category": "adversarial",
+      "dimension": "combined",
+      "boundary": false,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "failed",
+          "page_count": 0,
+          "version_family": null,
+          "published_at": null,
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "index_verified": false,
+      "messages": [
+        {
+          "citation_count": 1,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "fully_grounded",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        }
+      ],
+      "claims": [
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "consistent",
+          "entailment_status": "not_checked"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        },
+        {
+          "support_status": "supported",
+          "citation_status": "valid",
+          "consistency_status": "consistent",
+          "entailment_status": "entailed"
+        }
+      ],
+      "expected": {
+        "data_score": 42.5,
+        "retrieval_score": 40.0,
+        "trust_score": 81.2,
+        "overall_level": "warning",
+        "deduction_codes": {
+          "data": [
+            "FAILED_DOCUMENTS",
+            "INDEX_MISSING"
+          ],
+          "retrieval": [
+            "LOW_CITATION_COVERAGE",
+            "HIGH_INSUFFICIENT_EVIDENCE"
+          ],
+          "trust": [
+            "LOW_CLAIM_SUPPORT",
+            "INVALID_CITATIONS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [
+            "HIGH_REFUSAL_RATE"
+          ],
+          "trust": [
+            "CONSISTENCY_ISSUES",
+            "ENTAILMENT_CONTRADICTIONS"
+          ]
+        },
+        "action_codes": [
+          "RETRY_FAILED_DOCUMENTS",
+          "REBUILD_INDEX",
+          "REVIEW_RETRIEVAL",
+          "EXPAND_KNOWLEDGE_BASE",
+          "REVIEW_CITATIONS"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "permutation-series",
+      "category": "cross_document",
+      "dimension": "combined",
+      "boundary": true,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "mix",
+          "published_at": "2026-06-01",
+          "effective_at": "2026-06-01",
+          "superseded_at": "2026-06-02",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "mix",
+          "published_at": "2026-01-01",
+          "effective_at": "2026-01-01",
+          "superseded_at": "2026-06-01",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "mix",
+          "published_at": "2026-09-30",
+          "effective_at": "2026-09-30",
+          "superseded_at": null,
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": "mix",
+          "published_at": "2026-02-01",
+          "effective_at": "2026-02-01",
+          "superseded_at": "2026-06-01",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "index_verified": true,
+      "messages": [],
+      "claims": [],
+      "expected": {
+        "data_score": 85.0,
+        "retrieval_score": null,
+        "trust_score": null,
+        "overall_level": null,
+        "deduction_codes": {
+          "data": [
+            "DUPLICATE_DOCUMENTS",
+            "SERIES_GAP"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "forbidden_deduction_codes": {
+          "data": [
+            "TEMPORAL_OVERLAP",
+            "SERIES_ORPHANED"
+          ],
+          "retrieval": [],
+          "trust": []
+        },
+        "action_codes": [
+          "REVIEW_DUPLICATES",
+          "REVIEW_SERIES_GAP"
+        ],
+        "forbidden_action_codes": []
+      }
+    },
+    {
+      "id": "adversarial-combined-critical",
+      "category": "adversarial",
+      "dimension": "combined",
+      "boundary": false,
+      "documents": [
+        {
+          "status": "ready",
+          "page_count": 3,
+          "version_family": null,
+          "published_at": "2026-01-01",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        {
+          "status": "failed",
+          "page_count": 0,
+          "version_family": null,
+          "published_at": "2026-01-02",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "status": "failed",
+          "page_count": 0,
+          "version_family": null,
+          "published_at": "2026-01-03",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        {
+          "status": "failed",
+          "page_count": 0,
+          "version_family": null,
+          "published_at": "2026-01-04",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        {
+          "status": "failed",
+          "page_count": 0,
+          "version_family": null,
+          "published_at": "2026-01-05",
+          "effective_at": null,
+          "superseded_at": null,
+          "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "index_verified": false,
+      "messages": [
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        },
+        {
+          "citation_count": 0,
+          "web_citation_count": 0,
+          "policy_action": null,
+          "answer_state": "insufficient_evidence",
+          "query_type": "fact"
+        }
+      ],
+      "claims": [
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "inconsistent",
+          "entailment_status": "contradicted"
+        },
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "inconsistent",
+          "entailment_status": "contradicted"
+        },
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "inconsistent",
+          "entailment_status": "contradicted"
+        },
+        {
+          "support_status": "unsupported",
+          "citation_status": "missing",
+          "consistency_status": "inconsistent",
+          "entailment_status": "contradicted"
+        }
+      ],
+      "expected": {
+        "data_score": 17.0,
+        "retrieval_score": 20.0,
+        "trust_score": 0.0,
+        "overall_level": "critical",
+        "deduction_codes": {
+          "data": [
+            "FAILED_DOCUMENTS",
+            "INDEX_MISSING"
+          ],
+          "retrieval": [
+            "LOW_CITATION_COVERAGE",
+            "HIGH_INSUFFICIENT_EVIDENCE"
+          ],
+          "trust": [
+            "LOW_CLAIM_SUPPORT",
+            "INVALID_CITATIONS",
+            "CONSISTENCY_ISSUES",
+            "ENTAILMENT_CONTRADICTIONS"
+          ]
+        },
+        "forbidden_deduction_codes": {
+          "data": [],
+          "retrieval": [
+            "HIGH_REFUSAL_RATE"
+          ],
+          "trust": []
+        },
+        "action_codes": [
+          "RETRY_FAILED_DOCUMENTS",
+          "REBUILD_INDEX",
+          "REVIEW_RETRIEVAL",
+          "EXPAND_KNOWLEDGE_BASE",
+          "REVIEW_CITATIONS",
+          "REVIEW_SOURCE_CONFLICTS",
+          "REVIEW_GROUNDING"
+        ],
+        "forbidden_action_codes": []
+      }
+    }
+  ]
+}
