@@ -6,6 +6,27 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)，版本号采用语义化版本的意图，而非把尚未完成的
 评测或外部服务验证包装成发布承诺。
 
+## [Unreleased]
+
+### 新增
+
+- 增加 v0.4 Knowledge Health 起始纵切：知识健康分不是黑盒分数，每次快照保存公式版本、三维得分、
+  原始指标、扣分原因与建议动作。数据健康覆盖文档可用性、失败/空文档、索引状态与业务日期覆盖率；
+  检索健康与回答可信度基于真实问答的引用覆盖、拒答率、证据不足率、声明支持率、无效引用率、一致性
+  冲突与语义矛盾率（样本不足时该维度不参与总分并明确提示）。
+- 增加知识健康快照表与 Alembic 迁移 20260816_0017，支持生成快照、历史对比（与上一快照的 delta）
+  和 API：GET /knowledge-bases/{id}/health、POST /knowledge-bases/{id}/health/snapshot、
+  GET /knowledge-bases/{id}/health/history。
+- 产品工作台知识库详情页增加“知识健康”面板：综合分、数据/检索/可信三维评分条、指标明细、扣分原因、
+  建议动作和快照历史。
+
+### 验证
+
+- 新增 tests/test_knowledge_health.py 12 项：空库、全可用、失败/缺索引、样本不足、拒答扣分、
+  声明扣分、快照持久化与 delta 对比；Python 全量 911 passed、6 skipped。
+- API 冒烟验证：认证后创建知识库、真实文档与 3 条 grounded 问答，GET health 返回 complete 100 分，
+  POST snapshot 生成 khs_ 快照，history 返回 1 条；前端类型检查、4 文件 35 项测试与生产构建通过。
+
 ## [v0.3.0] - 2026-08-16
 
 ### 新增

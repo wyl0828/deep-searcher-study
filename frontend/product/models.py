@@ -99,6 +99,9 @@ class KnowledgeBase(TimestampMixin, Base):
     conversations: Mapped[list["Conversation"]] = relationship(
         back_populates="knowledge_base", cascade="all, delete-orphan"
     )
+    health_snapshots: Mapped[list["KnowledgeHealthSnapshot"]] = relationship(
+        back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
 
 
 class Document(TimestampMixin, Base):
@@ -355,3 +358,41 @@ class Citation(TimestampMixin, Base):
     supported: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     message: Mapped[Message] = relationship(back_populates="citations")
+
+
+class KnowledgeHealthSnapshot(TimestampMixin, Base):
+    """Versioned knowledge health snapshot for one knowledge base.
+
+    The snapshot persists the formula version, the per-dimension scores, the raw
+    metrics that produced them, the deduction reasons and the suggested actions so
+    a health score can be audited instead of being a black-box number.
+    """
+
+    __tablename__ = "knowledge_health_snapshots"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("khs"))
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    formula_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), default="complete", nullable=False
+    )
+    overall_score: Mapped[float | None] = mapped_column(Float)
+    data_score: Mapped[float | None] = mapped_column(Float)
+    retrieval_score: Mapped[float | None] = mapped_column(Float)
+    trust_score: Mapped[float | None] = mapped_column(Float)
+    metrics: Mapped[dict | None] = mapped_column(JSON)
+    deductions: Mapped[list[dict] | None] = mapped_column(JSON)
+    actions: Mapped[list[dict] | None] = mapped_column(JSON)
+
+    knowledge_base: Mapped[KnowledgeBase] = relationship(
+        back_populates="health_snapshots"
+    )

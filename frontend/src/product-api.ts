@@ -33,6 +33,71 @@ export type KnowledgeBase = {
   updated_at: string;
 };
 
+export type KnowledgeHealthComputed = {
+  formula_version: string;
+  status: "complete" | "partial";
+  overall_score: number | null;
+  data_score: number | null;
+  retrieval_score: number | null;
+  trust_score: number | null;
+  metrics: {
+    data: {
+      total_documents: number;
+      ready_documents: number;
+      failed_documents: number;
+      empty_documents: number;
+      total_pages: number;
+      index_verified: boolean;
+      temporal_metadata_ratio: number;
+    };
+    retrieval: {
+      message_sample_count: number;
+      citation_coverage_rate: number;
+      avg_citations_per_message: number;
+      refusal_rate: number;
+      insufficient_evidence_rate: number;
+      web_source_rate: number;
+    };
+    trust: {
+      claim_count: number;
+      supported_claim_rate: number;
+      conflicting_claim_rate: number;
+      invalid_citation_rate: number;
+      consistency_issue_rate: number;
+      entailment_contradiction_rate: number;
+    };
+  };
+  deductions: { code: string; reason: string; impact: string }[];
+  actions: {
+    code: string;
+    action: string;
+    priority: "high" | "medium" | "low";
+  }[];
+};
+
+export type KnowledgeHealthSnapshot = KnowledgeHealthComputed & {
+  id: string;
+  knowledge_base_id: string;
+  created_at: string;
+};
+
+export type KnowledgeHealthView = {
+  snapshot: KnowledgeHealthSnapshot | null;
+  current: KnowledgeHealthComputed;
+};
+
+export type KnowledgeHealthSnapshotResult = {
+  snapshot: KnowledgeHealthSnapshot;
+  previous: KnowledgeHealthSnapshot | null;
+  change: {
+    direction: "new" | "changed";
+    overall_delta: number | null;
+    data_delta: number | null;
+    retrieval_delta: number | null;
+    trust_delta: number | null;
+  };
+};
+
 export type ProductUser = {
   id: string;
   username: string;
@@ -605,6 +670,27 @@ export function setCurrentKnowledgeBase(id: string): Promise<KnowledgeBase> {
 
 export function reindexKnowledgeBase(id: string): Promise<KnowledgeBase> {
   return requestJson(`/api/knowledge-bases/${id}/reindex`, { method: "POST" });
+}
+
+export function getKnowledgeHealth(id: string): Promise<KnowledgeHealthView> {
+  return requestJson(`/api/knowledge-bases/${id}/health`);
+}
+
+export function createKnowledgeHealthSnapshot(
+  id: string,
+): Promise<KnowledgeHealthSnapshotResult> {
+  return requestJson(`/api/knowledge-bases/${id}/health/snapshot`, {
+    method: "POST",
+  });
+}
+
+export async function listKnowledgeHealthHistory(
+  id: string,
+): Promise<KnowledgeHealthSnapshot[]> {
+  const response = await requestJson<{ items: KnowledgeHealthSnapshot[] }>(
+    `/api/knowledge-bases/${id}/health/history`,
+  );
+  return response.items;
 }
 
 export function deleteKnowledgeBase(id: string): Promise<{

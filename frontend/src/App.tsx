@@ -71,6 +71,7 @@ import {
   ProductApiError,
   createConversation,
   createKnowledgeBase,
+  createKnowledgeHealthSnapshot,
   createUser,
   deleteConversation,
   deleteDocument,
@@ -78,9 +79,11 @@ import {
   getConversation,
   getAuthStatus,
   getKnowledgeBase,
+  getKnowledgeHealth,
   listConversations,
   listDocuments,
   listKnowledgeBases,
+  listKnowledgeHealthHistory,
   listUsers,
   loginWorkspace,
   logoutWorkspace,
@@ -2199,6 +2202,299 @@ function DocumentTemporalDialog({
   );
 }
 
+
+function scoreTone(score: number | null): string {
+  if (score === null) return "muted";
+  if (score >= 80) return "good";
+  if (score >= 60) return "warn";
+  return "bad";
+}
+
+function HealthScoreBar({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: number | null;
+  detail?: string;
+}) {
+  const tone = scoreTone(value);
+  return (
+    <div className={`health-score health-score--${tone}`}>
+      <div className="health-score-head">
+        <span>{label}</span>
+        <strong>{value === null ? "样本不足" : value.toFixed(0)}</strong>
+      </div>
+      <div
+        className="health-score-track"
+        role="img"
+        aria-label={`${label} ${value === null ? "样本不足" : value.toFixed(0)} 分`}
+      >
+        <div
+          className="health-score-fill"
+          style={{
+            width: value === null ? 0 : `${Math.max(0, Math.min(100, value))}%`,
+          }}
+        />
+      </div>
+      {detail ? <small>{detail}</small> : null}
+    </div>
+  );
+}
+
+function KnowledgeHealthDialog({
+  open,
+  knowledgeBaseId,
+  onClose,
+}: {
+  open: boolean;
+  knowledgeBaseId: string;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const queryCache = useQueryClient();
+  const createSnapshot = useMutation({
+    mutationFn: () => createKnowledgeHealthSnapshot(knowledgeBaseId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryCache.invalidateQueries({
+          queryKey: ["knowledge-health", knowledgeBaseId],
+        }),
+        queryCache.invalidateQueries({
+          queryKey: ["knowledge-health-history", knowledgeBaseId],
+        }),
+      ]);
+    },
+  });
+  const handleClose = () => {
+    createSnapshot.reset();
+    onClose();
+  };
+  const dialogRef = useModalFocus({
+    open,
+    onDismiss: handleClose,
+    dismissBlocked: false,
+  });
+  const health = useQuery({
+    queryKey: ["knowledge-health", knowledgeBaseId],
+    queryFn: () => getKnowledgeHealth(knowledgeBaseId),
+    enabled: open,
+  });
+  const history = useQuery({
+    queryKey: ["knowledge-health-history", knowledgeBaseId],
+    queryFn: () => listKnowledgeHealthHistory(knowledgeBaseId),
+    enabled: open,
+  });
+  if (!open) return null;
+
+  const current = health.data?.current;
+  const snapshot = health.data?.snapshot;
+  const items = history.data || [];
+  const dataMetrics = current?.metrics.data;
+  const retrievalMetrics = current?.metrics.retrieval;
+  const trustMetrics = current?.metrics.trust;
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={handleClose}>
+      <section
+        ref={dialogRef}
+        className="dialog-card knowledge-health-dialog"
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">知识健康 · 路线图 v0.4</span>
+            <h2 id={titleId}>知识健康</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={handleClose} aria-label="关闭">
+            <XMarkIcon aria-hidden="true" />
+          </button>
+        </div>
+        {health.isLoading ? <LoadingState label="正在计算健康分…" /> : null}
+        {health.error ? <ErrorState message={health.error.message} /> : null}
+        {current ? (
+          <>
+            <p className="dialog-description">
+              健康分不是黑盒分数：每个指标都来自知识库的真实数据。公式版本
+              {current.formula_version}，权重为数据 40% / 检索 30% / 回答可信度 30%。
+              {current.status === "partial"
+                ? " 部分维度样本不足，综合总分暂不计算。"
+                : null}
+            </p>
+            <div className={`health-overall health-overall--${scoreTone(current.overall_score)}`}>
+              <div>
+                <span>综合健康分</span>
+                <strong>
+                  {current.overall_score === null ? "—" : current.overall_score.toFixed(1)}
+                </strong>
+              </div>
+              <span className="health-status-badge">
+                {current.status === "complete" ? "可评估" : "样本不足"}
+              </span>
+            </div>
+            <div className="health-scores">
+              <HealthScoreBar
+                label="数据健康"
+                value={current.data_score}
+                detail={`${dataMetrics?.ready_documents ?? 0}/${dataMetrics?.total_documents ?? 0} 文档可用`}
+              />
+              <HealthScoreBar
+                label="检索健康"
+                value={current.retrieval_score}
+                detail={`${retrievalMetrics?.message_sample_count ?? 0} 条回答样本`}
+              />
+              <HealthScoreBar
+                label="回答可信度"
+                value={current.trust_score}
+                detail={`${trustMetrics?.claim_count ?? 0} 条声明`}
+              />
+            </div>
+            {snapshot ? (
+              <p className="health-last-snapshot">
+                最近快照：{new Date(snapshot.created_at).toLocaleString()}，总分{" "}
+                {snapshot.overall_score === null ? "—" : snapshot.overall_score.toFixed(1)}
+              </p>
+            ) : (
+              <p className="health-last-snapshot health-last-snapshot--missing">
+                还没有保存过快照。点击“生成快照”记录当前状态，便于后续对比变化。
+              </p>
+            )}
+            <details className="health-details-block">
+              <summary>指标明细</summary>
+              <div className="health-metric-grid">
+                <div>
+                  <h4>数据健康</h4>
+                  <dl>
+                    <div><dt>文档总数</dt><dd>{dataMetrics?.total_documents ?? 0}</dd></div>
+                    <div><dt>可用于问答</dt><dd>{dataMetrics?.ready_documents ?? 0}</dd></div>
+                    <div><dt>处理失败</dt><dd>{dataMetrics?.failed_documents ?? 0}</dd></div>
+                    <div><dt>空文档</dt><dd>{dataMetrics?.empty_documents ?? 0}</dd></div>
+                    <div><dt>总页数</dt><dd>{dataMetrics?.total_pages ?? 0}</dd></div>
+                    <div><dt>索引已验证</dt><dd>{dataMetrics?.index_verified ? "是" : "否"}</dd></div>
+                    <div><dt>业务日期覆盖率</dt><dd>{((dataMetrics?.temporal_metadata_ratio ?? 0) * 100).toFixed(0)}%</dd></div>
+                  </dl>
+                </div>
+                <div>
+                  <h4>检索健康</h4>
+                  <dl>
+                    <div><dt>回答样本</dt><dd>{retrievalMetrics?.message_sample_count ?? 0}</dd></div>
+                    <div><dt>引用覆盖率</dt><dd>{((retrievalMetrics?.citation_coverage_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>平均引用数</dt><dd>{(retrievalMetrics?.avg_citations_per_message ?? 0).toFixed(2)}</dd></div>
+                    <div><dt>拒答率</dt><dd>{((retrievalMetrics?.refusal_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>证据不足率</dt><dd>{((retrievalMetrics?.insufficient_evidence_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>联网引用占比</dt><dd>{((retrievalMetrics?.web_source_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                  </dl>
+                </div>
+                <div>
+                  <h4>回答可信度</h4>
+                  <dl>
+                    <div><dt>声明总数</dt><dd>{trustMetrics?.claim_count ?? 0}</dd></div>
+                    <div><dt>支持率</dt><dd>{((trustMetrics?.supported_claim_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>冲突率</dt><dd>{((trustMetrics?.conflicting_claim_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>无效引用率</dt><dd>{((trustMetrics?.invalid_citation_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>一致性冲突率</dt><dd>{((trustMetrics?.consistency_issue_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                    <div><dt>语义矛盾率</dt><dd>{((trustMetrics?.entailment_contradiction_rate ?? 0) * 100).toFixed(0)}%</dd></div>
+                  </dl>
+                </div>
+              </div>
+            </details>
+            {current.deductions.length ? (
+              <section className="health-list-block" aria-labelledby="health-deductions-title">
+                <h3 id="health-deductions-title">扣分原因</h3>
+                <ul>
+                  {current.deductions.map((deduction) => (
+                    <li key={deduction.code}>
+                      <strong>{deduction.reason}</strong>
+                      <span>{deduction.impact}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {current.actions.length ? (
+              <section className="health-list-block" aria-labelledby="health-actions-title">
+                <h3 id="health-actions-title">建议动作</h3>
+                <ul>
+                  {current.actions.map((action) => (
+                    <li key={action.code}>
+                      <strong>{action.action}</strong>
+                      <span>{action.priority === "high" ? "优先处理" : "可选"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {items.length ? (
+              <section className="health-list-block" aria-labelledby="health-history-title">
+                <h3 id="health-history-title">快照历史</h3>
+                <ul className="health-history">
+                  {items.slice(0, 6).map((item, index) => {
+                    const previous = items[index + 1];
+                    const delta =
+                      previous &&
+                      item.overall_score !== null &&
+                      previous.overall_score !== null
+                        ? item.overall_score - previous.overall_score
+                        : null;
+                    return (
+                      <li key={item.id}>
+                        <span>{new Date(item.created_at).toLocaleString()}</span>
+                        <strong>
+                          {item.overall_score === null ? "—" : item.overall_score.toFixed(1)}
+                        </strong>
+                        {delta === null ? null : (
+                          <span
+                            className={
+                              delta > 0
+                                ? "health-delta--up"
+                                : delta < 0
+                                  ? "health-delta--down"
+                                  : ""
+                            }
+                          >
+                            {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+            {createSnapshot.isSuccess ? (
+              <p className="health-notice" role="status">
+                快照已生成并记录。
+              </p>
+            ) : null}
+            {createSnapshot.error ? (
+              <ErrorState message={createSnapshot.error.message} />
+            ) : null}
+            <div className="dialog-actions">
+              <button className="secondary-button" type="button" onClick={handleClose}>
+                关闭
+              </button>
+              <button
+                className="product-primary-button"
+                type="button"
+                disabled={createSnapshot.isPending}
+                onClick={() => createSnapshot.mutate()}
+              >
+                {createSnapshot.isPending ? "正在生成…" : "生成快照"}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+
 function KnowledgeDetailPage() {
   const { knowledgeBaseId = "" } = useParams();
   const navigate = useNavigate();
@@ -2206,6 +2502,7 @@ function KnowledgeDetailPage() {
   const [documentToDelete, setDocumentToDelete] = useState<ProductDocument | null>(null);
   const [showDeleteKnowledgeBase, setShowDeleteKnowledgeBase] = useState(false);
   const [showTemporalDialog, setShowTemporalDialog] = useState(false);
+  const [showHealthDialog, setShowHealthDialog] = useState(false);
   const [documentToEdit, setDocumentToEdit] = useState<ProductDocument | null>(null);
   const knowledgeBase = useQuery({
     queryKey: ["knowledge-base", knowledgeBaseId],
@@ -2389,6 +2686,14 @@ function KnowledgeDetailPage() {
           >
             <PaperClipIcon aria-hidden="true" />
             {upload.isPending ? "正在上传…" : "上传 PDF"}
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setShowHealthDialog(true)}
+          >
+            <ShieldCheckIcon aria-hidden="true" />
+            知识健康
           </button>
         </div>
       </div>
@@ -2635,6 +2940,11 @@ function KnowledgeDetailPage() {
             upload.mutate({ file, temporal });
           }
         }}
+      />
+      <KnowledgeHealthDialog
+        open={showHealthDialog}
+        knowledgeBaseId={knowledgeBaseId}
+        onClose={() => setShowHealthDialog(false)}
       />
       <DangerConfirmDialog
         open={Boolean(documentToDelete)}

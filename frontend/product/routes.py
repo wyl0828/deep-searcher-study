@@ -64,6 +64,13 @@ from frontend.product.services.knowledge_bases import (
     delete_knowledge_base,
     reindex_knowledge_base,
 )
+from frontend.product.services.knowledge_health import (
+    assemble_health_payload,
+    create_health_snapshot,
+    health_snapshot_response,
+    latest_health_snapshot,
+    list_health_snapshots,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -412,6 +419,53 @@ async def reindex_knowledge_base_route(
     await reindex_knowledge_base(session, knowledge_base)
     session.refresh(knowledge_base)
     return knowledge_base_detail(session, knowledge_base)
+
+
+@router.get("/knowledge-bases/{knowledge_base_id}/health")
+def knowledge_health(
+    knowledge_base_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    latest = latest_health_snapshot(session, knowledge_base.id)
+    current = assemble_health_payload(session, knowledge_base)
+    return {
+        "snapshot": health_snapshot_response(latest) if latest is not None else None,
+        "current": current,
+    }
+
+
+@router.post("/knowledge-bases/{knowledge_base_id}/health/snapshot", status_code=201)
+def create_knowledge_health_snapshot_route(
+    knowledge_base_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    snapshot, previous, change = create_health_snapshot(
+        session,
+        knowledge_base,
+        user.id,
+    )
+    return {
+        "snapshot": health_snapshot_response(snapshot),
+        "previous": (
+            health_snapshot_response(previous) if previous is not None else None
+        ),
+        "change": change,
+    }
+
+
+@router.get("/knowledge-bases/{knowledge_base_id}/health/history")
+def knowledge_health_history(
+    knowledge_base_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    _owned_knowledge_base(session, knowledge_base_id, user.id)
+    items = list_health_snapshots(session, knowledge_base_id)
+    return {"items": [health_snapshot_response(item) for item in items]}
 
 
 @router.get("/knowledge-bases/{knowledge_base_id}/documents")
