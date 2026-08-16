@@ -205,6 +205,27 @@ Trust Layer
 Permission。权限定义用户可见的知识空间，必须在 Vector/BM25 检索之前进入过滤条件；
 Retriever、Rerank、Cache、Trace 和 Agent Tool 均不得接触未授权证据。
 
+### 已实现的纵切（2026-08-16，v0.5.0 最小闭环）
+
+- Workspace + WorkspaceMember 固定三角色（owner/editor/viewer），知识库归属工作区并最终
+  `workspace_id NOT NULL`；名称唯一性迁移到工作区级。
+- 三层 access service：`user_workspace_role` / `require_workspace_access` /
+  `require_accessible_knowledge_base`，权限用集合表达。
+- **每次检索前实时授权**：普通/流式问答、会话创建、预览/下载、健康等所有重读 KB 的入口，在读取
+  Cache、构造 Retriever、取得 collection_name 之前按当前成员状态重新 read 授权；会话创建授权不作
+  凭据；已授权运行中的流不中途鉴权。
+- 403/404 语义：不存在/非成员 → 404（不泄露存在性），成员角色不足 → 403。
+- 单 owner 数据库级防线（PostgreSQL partial unique index）+ 服务层约束（owner 不可 PATCH/DELETE）。
+- 工作区管理 API 与前端页面：创建/列表、成员添加/改角色/移除；知识库创建选择工作区；viewer 隐藏
+  上传/删除/重建/生成快照等写入口。
+- 自动个人工作区迁移：现有用户各得个人工作区，legacy 数据归首个 active admin（无 admin 用
+  `__legacy__` 真实用户）；`claim_legacy_data` 同步迁移 owner 与 workspace。
+
+### 待办（v0.5.1+）
+
+- per-KB 差异化角色、Group 成员组、Organization 顶层、工作区所有权转移与删除/重命名。
+- Milvus 侧 ACL（当前依赖集合随机名 + API 白名单，检索核心零侵入）。
+
 ## v0.6 Enterprise Connect
 
 只优先实现两个完整连接器：本地目录/SMB/NAS，以及一个企业协作数据源。每个连接器必须

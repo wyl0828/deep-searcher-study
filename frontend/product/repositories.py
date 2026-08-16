@@ -13,7 +13,11 @@ from frontend.product.models import (
     IngestJob,
     KnowledgeBase,
     Message,
+    User,
+    Workspace,
+    WorkspaceMember,
 )
+from frontend.product.errors import ProductError
 
 
 def _resolved_owner_id(session: Session, owner_id: str | None) -> str:
@@ -25,8 +29,10 @@ def _resolved_owner_id(session: Session, owner_id: str | None) -> str:
     return LEGACY_OWNER_ID
 
 
-def list_knowledge_bases(session: Session, owner_id: str | None = None) -> list[dict]:
-    resolved_owner_id = _resolved_owner_id(session, owner_id)
+def list_knowledge_bases(
+    session: Session,
+    user_id: str | None = None,
+) -> list[dict]:
     document_counts = (
         select(
             Document.knowledge_base_id,
@@ -44,23 +50,38 @@ def list_knowledge_bases(session: Session, owner_id: str | None = None) -> list[
         .group_by(Conversation.knowledge_base_id)
         .subquery()
     )
-    rows = session.execute(
-        select(
-            KnowledgeBase,
-            func.coalesce(document_counts.c.document_count, 0),
-            func.coalesce(document_counts.c.ready_document_count, 0),
-            func.coalesce(conversation_counts.c.conversation_count, 0),
-        )
-        .outerjoin(
+    query = select(
+        KnowledgeBase,
+        func.coalesce(document_counts.c.document_count, 0),
+        func.coalesce(document_counts.c.ready_document_count, 0),
+        func.coalesce(conversation_counts.c.conversation_count, 0),
+    )
+    if user_id is None:
+        query = query.outerjoin(
             document_counts,
             document_counts.c.knowledge_base_id == KnowledgeBase.id,
-        )
-        .outerjoin(
+        ).outerjoin(
             conversation_counts,
             conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
         )
-        .where(KnowledgeBase.owner_id == resolved_owner_id)
-        .order_by(KnowledgeBase.is_current.desc(), KnowledgeBase.updated_at.desc())
+    else:
+        query = query.join(
+            WorkspaceMember,
+            WorkspaceMember.workspace_id == KnowledgeBase.workspace_id,
+        ).where(
+            WorkspaceMember.user_id == user_id
+        ).outerjoin(
+            document_counts,
+            document_counts.c.knowledge_base_id == KnowledgeBase.id,
+        ).outerjoin(
+            conversation_counts,
+            conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
+        )
+    rows = session.execute(
+        query.order_by(
+            KnowledgeBase.is_current.desc(),
+            KnowledgeBase.updated_at.desc(),
+        )
     ).all()
     items = []
     for knowledge_base, document_count, ready_document_count, conversation_count in rows:
@@ -84,6 +105,23 @@ def list_knowledge_bases(session: Session, owner_id: str | None = None) -> list[
                 "index_manifest": index_manifest,
                 "index_status": "verified" if index_manifest is not None else "not_indexed",
                 "index_previous_collection": knowledge_base.index_previous_collection,
+                "workspace_id": knowledge_base.workspace_id,
+                "workspace_name": (
+                    session.get(Workspace, knowledge_base.workspace_id).name
+                    if knowledge_base.workspace_id
+                    else None
+                ),
+                "role": (
+                    session.scalar(
+                        select(WorkspaceMember.role).where(
+                            WorkspaceMember.workspace_id
+                            == knowledge_base.workspace_id,
+                            WorkspaceMember.user_id == user_id,
+                        )
+                    )
+                    if user_id is not None
+                    else None
+                ),
                 "created_at": knowledge_base.created_at,
                 "updated_at": knowledge_base.updated_at,
             }
@@ -96,19 +134,46 @@ def create_knowledge_base(
     *,
     name: str,
     description: str,
+    workspace_id: str | None = None,
     owner_id: str | None = None,
 ) -> KnowledgeBase:
     resolved_owner_id = _resolved_owner_id(session, owner_id)
+    if workspace_id is None:
+        from frontend.product.services.access import ensure_personal_workspaces
+
+        ensure_personal_workspaces(session)
+        workspace = session.scalar(
+            select(Workspace).where(
+                Workspace.owner_id == resolved_owner_id,
+                Workspace.name == (
+                    session.get(User, resolved_owner_id).username
+                    if resolved_owner_id != LEGACY_OWNER_ID
+                    else "__legacy__"
+                ),
+            )
+        )
+        if workspace is None:
+            workspace = session.scalar(
+                select(Workspace).where(Workspace.name == "__legacy__")
+            )
+        if workspace is None:
+            raise ProductError(
+                "WORKSPACE_MISSING",
+                "无法确定知识库所属工作区。",
+                status_code=400,
+            )
+        workspace_id = workspace.id
     has_current = session.scalar(
         select(func.count())
         .select_from(KnowledgeBase)
         .where(
-            KnowledgeBase.owner_id == resolved_owner_id,
+            KnowledgeBase.workspace_id == workspace_id,
             KnowledgeBase.is_current,
         )
     )
     knowledge_base = KnowledgeBase(
         owner_id=resolved_owner_id,
+        workspace_id=workspace_id,
         name=name.strip(),
         description=description.strip(),
         collection_name=f"kb_{uuid4().hex}",
@@ -123,20 +188,15 @@ def create_knowledge_base(
 def set_current_knowledge_base(
     session: Session,
     knowledge_base_id: str,
-    owner_id: str | None = None,
 ) -> KnowledgeBase | None:
-    resolved_owner_id = _resolved_owner_id(session, owner_id)
     knowledge_base = session.scalar(
-        select(KnowledgeBase).where(
-            KnowledgeBase.id == knowledge_base_id,
-            KnowledgeBase.owner_id == resolved_owner_id,
-        )
+        select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id)
     )
     if knowledge_base is None:
         return None
     session.execute(
         update(KnowledgeBase)
-        .where(KnowledgeBase.owner_id == resolved_owner_id)
+        .where(KnowledgeBase.workspace_id == knowledge_base.workspace_id)
         .values(is_current=False)
     )
     knowledge_base.is_current = True

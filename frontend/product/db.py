@@ -433,6 +433,30 @@ def ensure_conversation_summary_table(engine: Engine) -> None:
     ConversationSummary.__table__.create(bind=engine, checkfirst=True)
 
 
+def ensure_workspace_schema(engine: Engine) -> None:
+    """Attach local SQLite knowledge bases to personal workspaces (v0.5.0)."""
+
+    from frontend.product.models import Workspace, WorkspaceMember
+
+    Workspace.__table__.create(bind=engine, checkfirst=True)
+    WorkspaceMember.__table__.create(bind=engine, checkfirst=True)
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("knowledge_bases")
+    }
+    if "workspace_id" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE knowledge_bases "
+                    "ADD COLUMN workspace_id VARCHAR(40)"
+                )
+            )
+    from frontend.product.services.access import ensure_personal_workspaces
+
+    with SessionLocal() as session:
+        ensure_personal_workspaces(session)
+
+
 def init_database() -> None:
     from frontend.product import models  # noqa: F401
 
@@ -448,6 +472,7 @@ def init_database() -> None:
         ensure_document_version_family_columns(ENGINE)
         ensure_document_storage_columns(ENGINE)
         ensure_conversation_summary_table(ENGINE)
+        ensure_workspace_schema(ENGINE)
     else:
         validate_alembic_schema(ENGINE)
     from frontend.product.messaging import rocketmq_enabled

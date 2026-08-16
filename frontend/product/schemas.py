@@ -29,6 +29,21 @@ class UserCreate(BaseModel):
 class KnowledgeBaseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     description: str = Field(default="", max_length=200)
+    workspace_id: str | None = Field(default=None, min_length=1)
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    description: str = Field(default="", max_length=200)
+
+
+class WorkspaceMemberAdd(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+    role: Literal["editor", "viewer"] = "viewer"
+
+
+class WorkspaceMemberRoleUpdate(BaseModel):
+    role: Literal["editor", "viewer"]
 
 
 class HealthActionsRun(BaseModel):

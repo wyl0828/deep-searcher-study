@@ -29,8 +29,29 @@ export type KnowledgeBase = {
   index_status: "verified" | "not_indexed";
   index_manifest: CollectionIndexManifest | null;
   index_previous_collection: string | null;
+  workspace_id: string | null;
+  workspace_name: string | null;
+  role: "owner" | "editor" | "viewer" | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Workspace = {
+  id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  role: "owner" | "editor" | "viewer";
+  member_count: number;
+  knowledge_base_count: number;
+  created_at: string;
+};
+
+export type WorkspaceMember = {
+  user_id: string;
+  username: string;
+  display_name: string;
+  role: "owner" | "editor" | "viewer";
 };
 
 export type KnowledgeHealthComputed = {
@@ -699,10 +720,61 @@ export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
 export function createKnowledgeBase(input: {
   name: string;
   description: string;
+  workspace_id?: string;
 }): Promise<KnowledgeBase> {
   return requestJson("/api/knowledge-bases", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function listWorkspaces(): Promise<{ items: Workspace[] }> {
+  return requestJson("/api/workspaces");
+}
+
+export function createWorkspace(input: {
+  name: string;
+  description: string;
+}): Promise<Workspace> {
+  return requestJson("/api/workspaces", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function listWorkspaceMembers(
+  id: string,
+): Promise<{ items: WorkspaceMember[] }> {
+  return requestJson(`/api/workspaces/${id}/members`);
+}
+
+export function addWorkspaceMember(
+  id: string,
+  input: { username: string; role: "editor" | "viewer" },
+): Promise<{ member: WorkspaceMember }> {
+  return requestJson(`/api/workspaces/${id}/members`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateWorkspaceMemberRole(
+  id: string,
+  userId: string,
+  role: "editor" | "viewer",
+): Promise<{ member: WorkspaceMember }> {
+  return requestJson(`/api/workspaces/${id}/members/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeWorkspaceMember(
+  id: string,
+  userId: string,
+): Promise<void> {
+  return requestJson(`/api/workspaces/${id}/members/${userId}`, {
+    method: "DELETE",
   });
 }
 

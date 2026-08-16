@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from deepsearcher.provenance import build_trust_provenance
@@ -73,6 +74,7 @@ def product_client(tmp_path):
     try:
         client = TestClient(app)
         client.product_session_factory = test_session
+        client.admin_user = test_user
         yield client
     finally:
         app.dependency_overrides.clear()
@@ -2093,3 +2095,138 @@ def test_knowledge_health_trend_and_actions_api(tmp_path):
             json={"actions": ["NOPE"]},
         )
         assert bad.status_code == 400
+
+
+def test_team_trust_revocation_blocks_old_conversation(tmp_path):
+    with product_client(tmp_path) as client:
+        created = client.post(
+            "/api/admin/users",
+            json={
+                "username": "member",
+                "password": "password1234",
+                "display_name": "Member",
+                "role": "member",
+            },
+        )
+        assert created.status_code == 201
+        member_id = created.json()["user"]["id"]
+        with client.product_session_factory() as session:
+            member_user = session.scalar(
+                select(User).where(User.username == "member")
+            )
+
+        workspace = client.post(
+            "/api/workspaces",
+            json={"name": "team", "description": ""},
+        )
+        assert workspace.status_code == 201
+        workspace_id = workspace.json()["id"]
+
+        added = client.post(
+            f"/api/workspaces/{workspace_id}/members",
+            json={"username": "member", "role": "viewer"},
+        )
+        assert added.status_code == 201
+
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "shared", "description": "", "workspace_id": workspace_id},
+        )
+        assert knowledge_base.status_code == 201
+        knowledge_base_id = knowledge_base.json()["id"]
+
+        # member (viewer) can create a conversation while membership exists
+        app.dependency_overrides[require_user] = lambda: member_user
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base_id},
+        )
+        assert conversation.status_code == 201
+        conversation_id = conversation.json()["id"]
+
+        # owner removes the member; the old conversation must not be usable
+        app.dependency_overrides[require_user] = lambda: client.admin_user
+        removed = client.delete(
+            f"/api/workspaces/{workspace_id}/members/{member_id}"
+        )
+        assert removed.status_code == 204
+
+        app.dependency_overrides[require_user] = lambda: member_user
+        denied = client.post(
+            f"/api/conversations/{conversation_id}/messages",
+            json={"content": "hi"},
+        )
+        assert denied.status_code == 404  # resource hidden, no retriever touched
+
+
+def test_team_trust_non_member_cannot_create_conversation(tmp_path):
+    with product_client(tmp_path) as client:
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "stranger",
+                "password": "password1234",
+                "display_name": "Stranger",
+                "role": "member",
+            },
+        )
+        workspace = client.post(
+            "/api/workspaces",
+            json={"name": "private", "description": ""},
+        ).json()
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={
+                "name": "private-kb",
+                "description": "",
+                "workspace_id": workspace["id"],
+            },
+        ).json()
+
+        with client.product_session_factory() as session:
+            stranger = session.scalar(
+                select(User).where(User.username == "stranger")
+            )
+        app.dependency_overrides[require_user] = lambda: stranger
+        denied = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        )
+        assert denied.status_code == 404
+
+
+def test_team_trust_viewer_cannot_write(tmp_path):
+    with product_client(tmp_path) as client:
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "viewer",
+                "password": "password1234",
+                "display_name": "Viewer",
+                "role": "member",
+            },
+        )
+        workspace = client.post(
+            "/api/workspaces",
+            json={"name": "readonly", "description": ""},
+        ).json()
+        client.post(
+            f"/api/workspaces/{workspace['id']}/members",
+            json={"username": "viewer", "role": "viewer"},
+        )
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={
+                "name": "ro-kb",
+                "description": "",
+                "workspace_id": workspace["id"],
+            },
+        ).json()
+
+        with client.product_session_factory() as session:
+            viewer = session.scalar(select(User).where(User.username == "viewer"))
+        app.dependency_overrides[require_user] = lambda: viewer
+        denied = client.post(
+            f"/api/knowledge-bases/{knowledge_base['id']}/reindex",
+        )
+        assert denied.status_code == 403

@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -56,6 +57,70 @@ class User(TimestampMixin, Base):
     )
     knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship(back_populates="owner")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner")
+    owned_workspaces: Mapped[list["Workspace"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
+    workspace_memberships: Mapped[list["WorkspaceMember"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Workspace(TimestampMixin, Base):
+    __tablename__ = "workspaces"
+    __table_args__ = (UniqueConstraint("name", name="uq_workspaces_name"),)
+
+    id: Mapped[str] = mapped_column(
+        String(40), primary_key=True, default=lambda: make_id("wsp")
+    )
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    description: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    owner: Mapped[User] = relationship(back_populates="owned_workspaces")
+    members: Mapped[list["WorkspaceMember"]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+    knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship(
+        back_populates="workspace"
+    )
+
+
+class WorkspaceMember(TimestampMixin, Base):
+    __tablename__ = "workspace_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "user_id",
+            name="uq_workspace_members_workspace_user",
+        ),
+        CheckConstraint(
+            "role IN ('owner', 'editor', 'viewer')",
+            name="ck_workspace_members_role",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(40), primary_key=True, default=lambda: make_id("wsm")
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    workspace: Mapped[Workspace] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(back_populates="workspace_memberships")
 
 
 class UserSession(TimestampMixin, Base):
@@ -76,7 +141,9 @@ class UserSession(TimestampMixin, Base):
 
 class KnowledgeBase(TimestampMixin, Base):
     __tablename__ = "knowledge_bases"
-    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_knowledge_bases_owner_name"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_knowledge_bases_workspace_name"),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("kb"))
     owner_id: Mapped[str] = mapped_column(
@@ -84,6 +151,11 @@ class KnowledgeBase(TimestampMixin, Base):
         index=True,
         nullable=False,
         default=LEGACY_OWNER_ID,
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     name: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str] = mapped_column(String(200), default="", nullable=False)
@@ -93,6 +165,7 @@ class KnowledgeBase(TimestampMixin, Base):
     is_current: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     owner: Mapped[User] = relationship(back_populates="knowledge_bases")
+    workspace: Mapped[Workspace] = relationship(back_populates="knowledge_bases")
     documents: Mapped[list["Document"]] = relationship(
         back_populates="knowledge_base", cascade="all, delete-orphan"
     )

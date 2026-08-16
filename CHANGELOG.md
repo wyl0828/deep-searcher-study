@@ -29,6 +29,19 @@
 - 增加建议动作闭环 POST /knowledge-bases/{id}/health/actions/run（重试失败文档、重建索引、去上传），
   执行后即时重新快照；delta 为即时重新评估值，不隐含异步完成。
 - 前端知识健康面板增加等级徽标、趋势等宽 bar 与可点击动作按钮及执行结果。
+- v0.5.0 Team Trust 最小闭环：新增工作区（Workspace）与成员（owner/editor/viewer 三角色），
+  知识库归属工作区且 workspace_id 最终 NOT NULL；权限用集合表达并集中在三层 access service。
+- 每次触发知识库读取的请求（普通/流式问答、会话创建、预览/下载、健康、引用/证据重读）都在读取
+  Cache、构造 Retriever、取得 collection_name 之前按当前成员状态实时执行 read 授权；会话创建授权
+  不作为后续凭据；已授权运行中的流不中途鉴权。
+- 403/404 语义固定：KB 不存在或非成员返回 404（不泄露存在性），成员角色不足返回 403；单 owner
+  数据库级防线（PostgreSQL partial unique index）与成员 API 约束（owner 不可改/移除）。
+- 新增工作区 API：GET/POST /api/workspaces、GET/POST/PATCH/DELETE /api/workspaces/{id}/members；
+  创建知识库可指定工作区；知识库列表按当前用户可见工作区返回，并带 workspace 与角色信息。
+- 自动个人工作区迁移（Alembic 20260816_0018）：现有用户各得个人工作区，legacy 数据归首个
+  active admin（无 admin 用 __legacy__ 真实用户）；claim_legacy_data 同步迁移 owner 与 workspace。
+- 前端新增“工作区”页面（创建/列表/成员管理，owner 可管理）与知识库创建工作区选择；viewer 角色
+  隐藏上传/删除/重建/生成快照等写入口。
 
 ### 验证
 
@@ -38,6 +51,10 @@
   POST snapshot 生成 khs_ 快照，history 返回 1 条；前端类型检查、4 文件 35 项测试与生产构建通过。
 - 知识健康深化回归：tests/test_knowledge_health.py 扩展至 29 项（series 检测/归因/等级边界/趋势/动作），
   frontend/tests 128 项（含 trend 与 actions/run 路由测试），前端 typecheck、35 项测试与生产构建通过。
+- v0.5.0 回归：新增 tests/test_team_trust.py 9 项（权限矩阵/资源隐藏/实时撤权/降级/owner 不变量/
+  幂等迁移）与 frontend/tests 团队 API 端到端 3 项（撤权后旧会话拒绝、非成员创建会话拒绝、viewer
+  写拒绝）；Alembic 空库与 0017→0018 backfill 真实验证（NULL=0）；前端 typecheck、35 项测试与
+  生产构建通过。
 
 ## [v0.3.0] - 2026-08-16
 

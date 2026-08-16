@@ -17,6 +17,8 @@ from frontend.product.models import (
     KnowledgeBase,
     KnowledgeHealthSnapshot,
     Message,
+    Workspace,
+    WorkspaceMember,
     User,
 )
 from frontend.product.services.knowledge_health import (
@@ -57,8 +59,23 @@ def make_user(session: Session) -> User:
 
 
 def make_knowledge_base(session: Session, user: User) -> KnowledgeBase:
+    workspace = Workspace(
+        name=f"{user.username}-ws",
+        description="",
+        owner_id=user.id,
+    )
+    session.add(workspace)
+    session.flush()
+    session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
     knowledge_base = KnowledgeBase(
         owner_id=user.id,
+        workspace_id=workspace.id,
         name="测试知识库",
         description="",
         collection_name="test_coll",

@@ -2950,6 +2950,82 @@ body {
 .health-action-result--failed { color: var(--workspace-danger); }
 .health-action-result--requires_user_action { color: var(--workspace-warning); }
 
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.workspace-card {
+  padding: 16px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 10px;
+  background: var(--workspace-panel);
+}
+.workspace-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.workspace-card-head h2 { margin: 0; font-size: 16px; }
+.workspace-card-head p { margin: 4px 0 0; color: #718096; font-size: 12px; }
+.workspace-role-badge {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--workspace-blue-soft);
+  color: var(--workspace-blue-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+.workspace-stats {
+  display: flex;
+  gap: 12px;
+  margin: 12px 0;
+  color: #718096;
+  font-size: 12px;
+}
+.workspace-members { margin-top: 12px; }
+.workspace-add-member {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.workspace-add-member input {
+  flex: 1 1 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 7px;
+}
+.workspace-member-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.workspace-member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12px;
+}
+.workspace-member-id { flex: 1 1 auto; display: flex; flex-direction: column; }
+.workspace-member-id span { color: #718096; font-size: 11px; }
+.workspace-member-actions { display: flex; gap: 6px; align-items: center; }
+.workspace-member-actions select {
+  padding: 4px 6px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.workspace-remove-member { padding: 3px 8px; font-size: 11px; }
+
 .health-notice {
   margin: 12px 0 0;
   color: var(--workspace-success);

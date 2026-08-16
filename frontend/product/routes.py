@@ -33,6 +33,8 @@ from frontend.product.models import (
     KnowledgeBase,
     Message,
     User,
+    Workspace,
+    WorkspaceMember,
 )
 from frontend.product.repositories import (
     create_knowledge_base,
@@ -51,8 +53,23 @@ from frontend.product.schemas import (
     MessageCreate,
     MessageResponse,
     UserCreate,
+    WorkspaceCreate,
+    WorkspaceMemberAdd,
+    WorkspaceMemberRoleUpdate,
 )
 from frontend.product.services import documents as document_service
+from frontend.product.services.access import (
+    add_workspace_member,
+    create_workspace,
+    get_workspace,
+    list_workspace_members,
+    list_workspaces,
+    remove_workspace_member,
+    require_accessible_knowledge_base,
+    require_workspace_access,
+    set_member_role,
+    workspace_response,
+)
 from frontend.product.services.conversations import stream_message_events, submit_message
 from frontend.product.services.documents import (
     create_document_from_upload,
@@ -78,49 +95,39 @@ from frontend.product.services.knowledge_health import (
 router = APIRouter(prefix="/api")
 
 
-def _owned_knowledge_base(
+def _accessible_document(
     session: Session,
-    knowledge_base_id: str,
-    owner_id: str,
-) -> KnowledgeBase:
-    knowledge_base = session.scalar(
-        select(KnowledgeBase).where(
-            KnowledgeBase.id == knowledge_base_id,
-            KnowledgeBase.owner_id == owner_id,
-        )
-    )
-    if knowledge_base is None:
-        raise ProductError(
-            "KNOWLEDGE_BASE_NOT_FOUND",
-            "没有找到这个知识库。",
-            status_code=404,
-        )
-    return knowledge_base
-
-
-def _owned_document(session: Session, document_id: str, owner_id: str) -> Document:
+    user: User,
+    document_id: str,
+    permission: str = "read",
+) -> Document:
     document = session.scalar(
         select(Document)
         .join(Document.knowledge_base)
         .where(
             Document.id == document_id,
-            KnowledgeBase.owner_id == owner_id,
         )
     )
     if document is None:
         raise ProductError("DOCUMENT_NOT_FOUND", "没有找到这个文档。", status_code=404)
+    require_accessible_knowledge_base(
+        session,
+        user,
+        document.knowledge_base_id,
+        permission,
+    )
     return document
 
 
-def _owned_ingest_job(session: Session, job_id: str, owner_id: str) -> IngestJob:
+def _accessible_ingest_job(
+    session: Session,
+    user: User,
+    job_id: str,
+) -> IngestJob:
     job = session.scalar(
         select(IngestJob)
         .join(IngestJob.document)
-        .join(Document.knowledge_base)
-        .where(
-            IngestJob.id == job_id,
-            KnowledgeBase.owner_id == owner_id,
-        )
+        .where(IngestJob.id == job_id)
     )
     if job is None:
         raise ProductError(
@@ -128,6 +135,12 @@ def _owned_ingest_job(session: Session, job_id: str, owner_id: str) -> IngestJob
             "没有找到这个文档处理任务。",
             status_code=404,
         )
+    require_accessible_knowledge_base(
+        session,
+        user,
+        job.document.knowledge_base_id,
+        "read",
+    )
     return job
 
 
@@ -278,6 +291,12 @@ def knowledge_base_detail(session: Session, knowledge_base: KnowledgeBase) -> di
         "index_manifest": index_manifest,
         "index_status": "verified" if index_manifest is not None else "not_indexed",
         "index_previous_collection": knowledge_base.index_previous_collection,
+        "workspace_id": knowledge_base.workspace_id,
+        "workspace_name": (
+            session.get(Workspace, knowledge_base.workspace_id).name
+            if knowledge_base.workspace_id is not None
+            else None
+        ),
         "created_at": knowledge_base.created_at,
         "updated_at": knowledge_base.updated_at,
     }
@@ -341,6 +360,129 @@ def _sse_message(envelope: dict) -> str:
     )
 
 
+@router.get("/workspaces")
+def workspaces(
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"items": list_workspaces(session, user.id)}
+
+
+@router.post("/workspaces", status_code=201)
+def add_workspace(
+    request: WorkspaceCreate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        workspace = create_workspace(
+            session,
+            name=request.name,
+            description=request.description,
+            owner_id=user.id,
+        )
+    except IntegrityError as exc:
+        session.rollback()
+        raise ProductError(
+            "WORKSPACE_NAME_EXISTS",
+            "已经存在同名工作区。",
+            status_code=409,
+        ) from exc
+    return workspace_response(session, workspace, role="owner")
+
+
+@router.get("/workspaces/{workspace_id}/members")
+def workspace_members(
+    workspace_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    return {"items": list_workspace_members(session, workspace_id)}
+
+
+@router.post("/workspaces/{workspace_id}/members", status_code=201)
+def add_workspace_member_route(
+    workspace_id: str,
+    payload: WorkspaceMemberAdd,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    workspace = get_workspace(session, workspace_id)
+    if workspace is None:
+        raise ProductError(
+            "WORKSPACE_NOT_FOUND",
+            "没有找到这个工作区。",
+            status_code=404,
+        )
+    target = session.scalar(
+        select(User).where(User.username == payload.username.strip().casefold())
+    )
+    if target is None:
+        raise ProductError(
+            "USER_NOT_FOUND",
+            "没有找到这个用户。",
+            status_code=404,
+        )
+    member = add_workspace_member(session, workspace, target.id, payload.role)
+    return {
+        "member": {
+            "user_id": member.user_id,
+            "username": target.username,
+            "display_name": target.display_name,
+            "role": member.role,
+        }
+    }
+
+
+@router.patch("/workspaces/{workspace_id}/members/{user_id}")
+def update_workspace_member_role(
+    workspace_id: str,
+    user_id: str,
+    payload: WorkspaceMemberRoleUpdate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_workspace_access(session, user, workspace_id, "admin")
+    workspace = get_workspace(session, workspace_id)
+    if workspace is None:
+        raise ProductError(
+            "WORKSPACE_NOT_FOUND",
+            "没有找到这个工作区。",
+            status_code=404,
+        )
+    member = set_member_role(session, workspace, user_id, payload.role)
+    target = session.get(User, user_id)
+    return {
+        "member": {
+            "user_id": member.user_id,
+            "username": target.username if target is not None else user_id,
+            "display_name": target.display_name if target is not None else user_id,
+            "role": member.role,
+        }
+    }
+
+
+@router.delete("/workspaces/{workspace_id}/members/{user_id}", status_code=204)
+def delete_workspace_member_route(
+    workspace_id: str,
+    user_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    require_workspace_access(session, user, workspace_id, "admin")
+    workspace = get_workspace(session, workspace_id)
+    if workspace is None:
+        raise ProductError(
+            "WORKSPACE_NOT_FOUND",
+            "没有找到这个工作区。",
+            status_code=404,
+        )
+    remove_workspace_member(session, workspace, user_id)
+    return Response(status_code=204)
+
+
 @router.get("/knowledge-bases")
 def knowledge_bases(
     user: User = Depends(require_user),
@@ -355,11 +497,31 @@ def add_knowledge_base(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
+    workspace_id = request.workspace_id
+    if workspace_id is None:
+        from frontend.product.services.access import ensure_personal_workspaces
+
+        ensure_personal_workspaces(session)
+        workspace = session.scalar(
+            select(Workspace).where(
+                Workspace.owner_id == user.id,
+                Workspace.name == user.username,
+            )
+        )
+        if workspace is None:
+            raise ProductError(
+                "WORKSPACE_MISSING",
+                "请先创建工作区。",
+                status_code=400,
+            )
+        workspace_id = workspace.id
+    require_workspace_access(session, user, workspace_id, "write")
     try:
         knowledge_base = create_knowledge_base(
             session,
             name=request.name,
             description=request.description,
+            workspace_id=workspace_id,
             owner_id=user.id,
         )
     except IntegrityError as exc:
@@ -378,7 +540,7 @@ def get_knowledge_base(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
     return knowledge_base_detail(session, knowledge_base)
 
 
@@ -388,14 +550,15 @@ def select_knowledge_base(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = set_current_knowledge_base(session, knowledge_base_id, user.id)
-    if knowledge_base is None:
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
+    updated = set_current_knowledge_base(session, knowledge_base_id)
+    if updated is None:
         raise ProductError(
             "KNOWLEDGE_BASE_NOT_FOUND",
             "没有找到这个知识库。",
             status_code=404,
         )
-    return knowledge_base_detail(session, knowledge_base)
+    return knowledge_base_detail(session, updated)
 
 
 @router.delete("/knowledge-bases/{knowledge_base_id}")
@@ -404,7 +567,7 @@ async def remove_knowledge_base(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
     next_current = await delete_knowledge_base(session, knowledge_base)
     return {
         "deleted_id": knowledge_base_id,
@@ -418,7 +581,7 @@ async def reindex_knowledge_base_route(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
     await reindex_knowledge_base(session, knowledge_base)
     session.refresh(knowledge_base)
     return knowledge_base_detail(session, knowledge_base)
@@ -430,7 +593,7 @@ def knowledge_health(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
     latest = latest_health_snapshot(session, knowledge_base.id)
     current = assemble_health_payload(session, knowledge_base)
     return {
@@ -445,7 +608,7 @@ def create_knowledge_health_snapshot_route(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
     snapshot, previous, change = create_health_snapshot(
         session,
         knowledge_base,
@@ -466,7 +629,7 @@ def knowledge_health_history(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    _owned_knowledge_base(session, knowledge_base_id, user.id)
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
     items = list_health_snapshots(session, knowledge_base_id)
     return {"items": [health_snapshot_response(item) for item in items]}
 
@@ -478,7 +641,7 @@ def knowledge_health_trend(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    _owned_knowledge_base(session, knowledge_base_id, user.id)
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
     snapshots = list_health_snapshots(session, knowledge_base_id, limit=limit)
     return health_trend_payload(snapshots)
 
@@ -490,7 +653,7 @@ async def run_knowledge_health_actions_route(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
     return await run_health_actions(session, knowledge_base, user.id, payload.actions)
 
 
@@ -500,7 +663,7 @@ def documents(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    _owned_knowledge_base(session, knowledge_base_id, user.id)
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
     items = session.scalars(
         select(Document)
         .where(Document.knowledge_base_id == knowledge_base_id)
@@ -515,7 +678,7 @@ def document_content(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
-    document = _owned_document(session, document_id, user.id)
+    document = _accessible_document(session, user, document_id, "read")
     try:
         stream = document_service.document_storage(document).open(
             document_service.document_object_key(document)
@@ -569,7 +732,7 @@ async def upload_document(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
     try:
         document, job = await create_document_from_upload(
             session,
@@ -594,7 +757,7 @@ def get_document(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    document = _owned_document(session, document_id, user.id)
+    document = _accessible_document(session, user, document_id, "read")
     return document_response(document)
 
 
@@ -605,7 +768,7 @@ def update_document_temporal_metadata_route(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    document = _owned_document(session, document_id, user.id)
+    document = _accessible_document(session, user, document_id, "write")
     job = update_document_temporal_metadata(
         session,
         document,
@@ -626,7 +789,7 @@ def update_document_governance_metadata_route(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    document = _owned_document(session, document_id, user.id)
+    document = _accessible_document(session, user, document_id, "write")
     job = update_document_governance_metadata(
         session,
         document,
@@ -647,7 +810,7 @@ def get_ingest_job(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    job = _owned_ingest_job(session, job_id, user.id)
+    job = _accessible_ingest_job(session, user, job_id)
     return ingest_job_response(job)
 
 
@@ -657,7 +820,7 @@ async def remove_document(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    document = _owned_document(session, document_id, user.id)
+    document = _accessible_document(session, user, document_id, "write")
     await delete_document(session, document)
     return Response(status_code=204)
 
@@ -668,7 +831,7 @@ def retry_failed_document(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    document = _owned_document(session, document_id, user.id)
+    document = _accessible_document(session, user, document_id, "write")
     job = retry_document(session, document)
     return {"document": document_response(document), "job": ingest_job_response(job)}
 
@@ -707,7 +870,7 @@ def add_conversation(
     user: User = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    knowledge_base = _owned_knowledge_base(session, request.knowledge_base_id, user.id)
+    knowledge_base = require_accessible_knowledge_base(session, user, request.knowledge_base_id, "read")
     conversation = Conversation(
         owner_id=user.id,
         knowledge_base_id=knowledge_base.id,
@@ -737,6 +900,12 @@ def conversation_detail(
             "没有找到这个对话。",
             status_code=404,
         )
+    require_accessible_knowledge_base(
+        session,
+        user,
+        conversation.knowledge_base_id,
+        "read",
+    )
     return {
         "id": conversation.id,
         "title": conversation.title,
@@ -780,6 +949,12 @@ async def add_message(
             "没有找到这个对话。",
             status_code=404,
         )
+    require_accessible_knowledge_base(
+        session,
+        user,
+        conversation.knowledge_base_id,
+        "read",
+    )
     user_message, assistant_message = await submit_message(
         session,
         conversation=conversation,
@@ -812,6 +987,12 @@ async def stream_message(
             "没有找到这个对话。",
             status_code=404,
         )
+    require_accessible_knowledge_base(
+        session,
+        user,
+        conversation.knowledge_base_id,
+        "read",
+    )
     if not payload.content.strip():
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
 

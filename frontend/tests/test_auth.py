@@ -6,7 +6,13 @@ from sqlalchemy.orm import sessionmaker
 
 from frontend.product.auth import ensure_legacy_owner
 from frontend.product.db import Base, create_database_engine, get_session
-from frontend.product.models import Conversation, KnowledgeBase
+from frontend.product.models import (
+    LEGACY_OWNER_ID,
+    Conversation,
+    KnowledgeBase,
+    Workspace,
+    WorkspaceMember,
+)
 from frontend.server import app
 
 
@@ -92,11 +98,26 @@ def test_first_run_setup_login_logout_and_session_cookie(tmp_path):
 
         with client.auth_session_factory() as session:
             ensure_legacy_owner(session)
+            legacy_workspace = Workspace(
+                name="__legacy__",
+                description="待接管的旧数据",
+                owner_id=LEGACY_OWNER_ID,
+            )
+            session.add(legacy_workspace)
+            session.flush()
+            session.add(
+                WorkspaceMember(
+                    workspace_id=legacy_workspace.id,
+                    user_id=LEGACY_OWNER_ID,
+                    role="owner",
+                )
+            )
             legacy_kb = KnowledgeBase(
                 name="升级前资料",
                 description="待首位管理员接管",
                 collection_name="legacy_auth_test",
                 is_current=True,
+                workspace_id=legacy_workspace.id,
             )
             legacy_conversation = Conversation(
                 knowledge_base=legacy_kb,

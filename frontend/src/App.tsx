@@ -68,11 +68,15 @@ import {
   type ProductDocument,
   type ProductUser,
   type QueryStageEvent,
+  type Workspace,
+  type WorkspaceMember,
   ProductApiError,
+  addWorkspaceMember,
   createConversation,
   createKnowledgeBase,
   createKnowledgeHealthSnapshot,
   createUser,
+  createWorkspace,
   deleteConversation,
   deleteDocument,
   deleteKnowledgeBase,
@@ -85,17 +89,21 @@ import {
   listDocuments,
   listKnowledgeBases,
   listKnowledgeHealthHistory,
+  listWorkspaceMembers,
+  listWorkspaces,
   listUsers,
   loginWorkspace,
   logoutWorkspace,
   reindexKnowledgeBase,
   retryDocument,
+  removeWorkspaceMember,
   runKnowledgeHealthActions,
   setCurrentKnowledgeBase,
   setupWorkspace,
   streamMessage,
   uploadDocument,
   updateDocumentGovernanceMetadata,
+  updateWorkspaceMemberRole,
 } from "./product-api";
 import "./workspace.css";
 
@@ -258,8 +266,19 @@ function CreateKnowledgeBaseDialog({
   const queryCache = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [workspaceId, setWorkspaceId] = useState("");
+  const workspaces = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => listWorkspaces(),
+    enabled: open,
+  });
+  const workspaceItems = workspaces.data?.items || [];
   const mutation = useMutation({
-    mutationFn: createKnowledgeBase,
+    mutationFn: (input: { name: string; description: string }) =>
+      createKnowledgeBase({
+        ...input,
+        workspace_id: workspaceId || undefined,
+      }),
     onSuccess: async (knowledgeBase) => {
       await queryCache.invalidateQueries({ queryKey: ["knowledge-bases"] });
       setName("");
@@ -331,6 +350,27 @@ function CreateKnowledgeBaseDialog({
               placeholder="说明这个知识库包含哪些资料"
             />
           </label>
+          <label className="form-field">
+            <span>所属工作区</span>
+            <select
+              value={workspaceId}
+              onChange={(event) => setWorkspaceId(event.target.value)}
+              disabled={mutation.isPending}
+            >
+              <option value="">默认个人工作区</option>
+              {workspaceItems.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}（
+                  {workspace.role === "owner"
+                    ? "所有者"
+                    : workspace.role === "editor"
+                      ? "可编辑"
+                      : "只读"}
+                  ）
+                </option>
+              ))}
+            </select>
+          </label>
           {mutation.error ? <ErrorState message={mutation.error.message} /> : null}
           <div className="dialog-actions">
             <button
@@ -354,6 +394,319 @@ function CreateKnowledgeBaseDialog({
     </div>
   );
 }
+
+
+function CreateWorkspaceDialog({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const mutation = useMutation({
+    mutationFn: (input: { name: string; description: string }) =>
+      createWorkspace(input),
+    onSuccess: onCreated,
+  });
+  const dialogRef = useModalFocus({
+    open,
+    onDismiss: onClose,
+    dismissBlocked: mutation.isPending,
+  });
+  if (!open) return null;
+  return (
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onMouseDown={() => {
+        if (!mutation.isPending) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="dialog-card"
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby="create-workspace-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">团队与共享</span>
+            <h2 id="create-workspace-title">新建工作区</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={onClose}
+            aria-label="关闭"
+            disabled={mutation.isPending}
+          >
+            <XMarkIcon aria-hidden="true" />
+          </button>
+        </div>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            mutation.mutate({ name: name.trim(), description: description.trim() });
+          }}
+        >
+          <label className="form-field">
+            <span>工作区名称</span>
+            <input
+              data-dialog-initial-focus
+              value={name}
+              maxLength={40}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="例如：研发团队"
+            />
+          </label>
+          <label className="form-field">
+            <span>描述（可选）</span>
+            <textarea
+              value={description}
+              maxLength={200}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="说明这个工作区的用途"
+            />
+          </label>
+          {mutation.error ? <ErrorState message={mutation.error.message} /> : null}
+          <div className="dialog-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onClose}
+              disabled={mutation.isPending}
+            >
+              取消
+            </button>
+            <button
+              className="product-primary-button"
+              type="submit"
+              disabled={!name.trim() || mutation.isPending}
+            >
+              {mutation.isPending ? "正在创建…" : "创建工作区"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+
+function WorkspaceMemberRow({
+  workspace,
+  member,
+  canManage,
+}: {
+  workspace: Workspace;
+  member: WorkspaceMember;
+  canManage: boolean;
+}) {
+  const queryCache = useQueryClient();
+  const [role, setRole] = useState(member.role);
+  const invalidate = async () => {
+    await Promise.all([
+      queryCache.invalidateQueries({ queryKey: ["workspace-members", workspace.id] }),
+      queryCache.invalidateQueries({ queryKey: ["workspaces"] }),
+    ]);
+  };
+  const changeRole = useMutation({
+    mutationFn: (nextRole: "editor" | "viewer") =>
+      updateWorkspaceMemberRole(workspace.id, member.user_id, nextRole),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: () => removeWorkspaceMember(workspace.id, member.user_id),
+    onSuccess: invalidate,
+  });
+  const isOwner = member.role === "owner";
+  return (
+    <li className="workspace-member-row">
+      <div className="workspace-member-id">
+        <strong>{member.display_name}</strong>
+        <span>@{member.username}</span>
+      </div>
+      <span className="workspace-role-badge">
+        {isOwner ? "所有者" : member.role === "editor" ? "可编辑" : "只读"}
+      </span>
+      {canManage && !isOwner ? (
+        <div className="workspace-member-actions">
+          <select
+            value={role}
+            disabled={changeRole.isPending}
+            onChange={(event) => {
+              const next = event.target.value as "editor" | "viewer";
+              setRole(next);
+              changeRole.mutate(next);
+            }}
+          >
+            <option value="editor">可编辑</option>
+            <option value="viewer">只读</option>
+          </select>
+          <button
+            className="secondary-button workspace-remove-member"
+            type="button"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            移除
+          </button>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+
+function WorkspaceCard({ workspace }: { workspace: Workspace }) {
+  const queryCache = useQueryClient();
+  const [showMembers, setShowMembers] = useState(false);
+  const [username, setUsername] = useState("");
+  const [newRole, setNewRole] = useState<"editor" | "viewer">("viewer");
+  const canManage = workspace.role === "owner";
+  const members = useQuery({
+    queryKey: ["workspace-members", workspace.id],
+    queryFn: () => listWorkspaceMembers(workspace.id),
+    enabled: showMembers,
+  });
+  const addMember = useMutation({
+    mutationFn: (input: { username: string; role: "editor" | "viewer" }) =>
+      addWorkspaceMember(workspace.id, input),
+    onSuccess: async () => {
+      setUsername("");
+      await Promise.all([
+        queryCache.invalidateQueries({ queryKey: ["workspace-members", workspace.id] }),
+        queryCache.invalidateQueries({ queryKey: ["workspaces"] }),
+      ]);
+    },
+  });
+  return (
+    <section className="workspace-card">
+      <div className="workspace-card-head">
+        <div>
+          <h2>{workspace.name}</h2>
+          <p>{workspace.description || "暂无描述"}</p>
+        </div>
+        <span className="workspace-role-badge">
+          {workspace.role === "owner"
+            ? "所有者"
+            : workspace.role === "editor"
+              ? "可编辑"
+              : "只读"}
+        </span>
+      </div>
+      <div className="workspace-stats">
+        <span>{workspace.member_count} 位成员</span>
+        <span>{workspace.knowledge_base_count} 个知识库</span>
+      </div>
+      <button
+        className="secondary-button"
+        type="button"
+        onClick={() => setShowMembers((value) => !value)}
+      >
+        {showMembers ? "收起成员" : "查看成员"}
+      </button>
+      {showMembers ? (
+        <div className="workspace-members">
+          {canManage ? (
+            <form
+              className="workspace-add-member"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (username.trim()) addMember.mutate({ username: username.trim(), role: newRole });
+              }}
+            >
+              <input
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="输入用户名"
+                maxLength={32}
+              />
+              <select
+                value={newRole}
+                onChange={(event) =>
+                  setNewRole(event.target.value as "editor" | "viewer")
+                }
+              >
+                <option value="editor">可编辑</option>
+                <option value="viewer">只读</option>
+              </select>
+              <button
+                className="product-primary-button"
+                type="submit"
+                disabled={!username.trim() || addMember.isPending}
+              >
+                添加成员
+              </button>
+            </form>
+          ) : null}
+          {members.isLoading ? <LoadingState label="正在加载成员…" /> : null}
+          {members.error ? <ErrorState message={members.error.message} /> : null}
+          <ul className="workspace-member-list">
+            {(members.data?.items || []).map((member) => (
+              <WorkspaceMemberRow
+                key={member.user_id}
+                workspace={workspace}
+                member={member}
+                canManage={canManage}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+
+function WorkspacesPage() {
+  const queryCache = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const workspaces = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => listWorkspaces(),
+  });
+  return (
+    <div className="page-container">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">团队与共享</span>
+          <h1>工作区</h1>
+        </div>
+        <button
+          className="product-primary-button"
+          type="button"
+          onClick={() => setShowCreate(true)}
+        >
+          新建工作区
+        </button>
+      </div>
+      {workspaces.isLoading ? <LoadingState label="正在加载工作区…" /> : null}
+      {workspaces.error ? <ErrorState message={workspaces.error.message} /> : null}
+      <div className="workspace-grid">
+        {(workspaces.data?.items || []).map((workspace) => (
+          <WorkspaceCard key={workspace.id} workspace={workspace} />
+        ))}
+      </div>
+      <CreateWorkspaceDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={() => {
+          setShowCreate(false);
+          void queryCache.invalidateQueries({ queryKey: ["workspaces"] });
+        }}
+      />
+    </div>
+  );
+}
+
 
 function AuthScreen({ setupRequired }: { setupRequired: boolean }) {
   const queryClient = useQueryClient();
@@ -543,6 +896,10 @@ function WorkspaceLayout({
           <NavLink to="/knowledge">
             <CircleStackIcon aria-hidden="true" />
             知识库
+          </NavLink>
+          <NavLink to="/workspaces">
+            <RectangleGroupIcon aria-hidden="true" />
+            工作区
           </NavLink>
           {user.role === "admin" ? (
             <NavLink className="admin-users-link" to="/users">
@@ -2621,6 +2978,14 @@ function KnowledgeDetailPage() {
     queryKey: ["knowledge-base", knowledgeBaseId],
     queryFn: () => getKnowledgeBase(knowledgeBaseId),
   });
+  const allKnowledgeBases = useQuery({
+    queryKey: ["knowledge-bases"],
+    queryFn: () => listKnowledgeBases(),
+  });
+  const myRole = allKnowledgeBases.data?.find(
+    (item) => item.id === knowledgeBaseId,
+  )?.role;
+  const canWrite = myRole !== "viewer";
   const documents = useQuery({
     queryKey: ["documents", knowledgeBaseId],
     queryFn: () => listDocuments(knowledgeBaseId),
@@ -2756,27 +3121,29 @@ function KnowledgeDetailPage() {
           <p>{knowledgeBase.data.description || "这个知识库还没有描述。"}</p>
         </div>
         <div className="knowledge-detail-actions">
-          <button
-            className="danger-outline-button"
-            type="button"
-            title={
-              documents.data?.some((document) =>
+          {canWrite ? (
+            <button
+              className="danger-outline-button"
+              type="button"
+              title={
+                documents.data?.some((document) =>
+                  ["queued", "processing"].includes(document.status),
+                )
+                  ? "所有文档处理完成后才能删除知识库"
+                  : "删除知识库"
+              }
+              disabled={documents.data?.some((document) =>
                 ["queued", "processing"].includes(document.status),
-              )
-                ? "所有文档处理完成后才能删除知识库"
-                : "删除知识库"
-            }
-            disabled={documents.data?.some((document) =>
-              ["queued", "processing"].includes(document.status),
-            )}
-            onClick={() => {
-              removeKnowledgeBase.reset();
-              setShowDeleteKnowledgeBase(true);
-            }}
-          >
-            <TrashIcon aria-hidden="true" />
-            删除知识库
-          </button>
+              )}
+              onClick={() => {
+                removeKnowledgeBase.reset();
+                setShowDeleteKnowledgeBase(true);
+              }}
+            >
+              <TrashIcon aria-hidden="true" />
+              删除知识库
+            </button>
+          ) : null}
           {!knowledgeBase.data.is_current ? (
             <button
               className="secondary-button"
@@ -2787,19 +3154,21 @@ function KnowledgeDetailPage() {
               {select.isPending ? "正在切换…" : "设为当前"}
             </button>
           ) : null}
-          <button
-            className="product-primary-button"
-            type="button"
-            onClick={() => {
-              upload.reset();
-              setDocumentToEdit(null);
-              setShowTemporalDialog(true);
-            }}
-            disabled={upload.isPending}
-          >
-            <PaperClipIcon aria-hidden="true" />
-            {upload.isPending ? "正在上传…" : "上传 PDF"}
-          </button>
+          {canWrite ? (
+            <button
+              className="product-primary-button"
+              type="button"
+              onClick={() => {
+                upload.reset();
+                setDocumentToEdit(null);
+                setShowTemporalDialog(true);
+              }}
+              disabled={upload.isPending}
+            >
+              <PaperClipIcon aria-hidden="true" />
+              {upload.isPending ? "正在上传…" : "上传 PDF"}
+            </button>
+          ) : null}
           <button
             className="secondary-button"
             type="button"
@@ -2888,7 +3257,7 @@ function KnowledgeDetailPage() {
             </dl>
           ) : null}
         </div>
-        {knowledgeBase.data.document_count ? (
+        {knowledgeBase.data.document_count && canWrite ? (
           <button
             className="secondary-button index-rebuild-button"
             type="button"
@@ -3244,6 +3613,7 @@ function ProductRouter({
       <Route element={<WorkspaceLayout user={user} onLogout={onLogout} />}>
         <Route index element={<NewChatPage />} />
         <Route path="chat/:conversationId" element={<ChatPage />} />
+        <Route path="workspaces" element={<WorkspacesPage />} />
         <Route path="knowledge" element={<KnowledgeListPage />} />
         <Route path="knowledge/:knowledgeBaseId" element={<KnowledgeDetailRoute />} />
         {user.role === "admin" ? (

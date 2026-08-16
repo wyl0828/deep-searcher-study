@@ -19,6 +19,7 @@ from frontend.product.models import (
     KnowledgeBase,
     User,
     UserSession,
+    Workspace,
     utcnow,
 )
 
@@ -269,10 +270,29 @@ def require_admin(user: User = Depends(require_user)) -> User:
 
 
 def claim_legacy_data(session: Session, owner_id: str) -> None:
+    from frontend.product.services.access import ensure_personal_workspaces
+
+    ensure_personal_workspaces(session)
+    user = session.get(User, owner_id)
+    personal_workspace = session.scalar(
+        select(Workspace).where(
+            Workspace.owner_id == owner_id,
+            Workspace.name == (user.username if user is not None else "__legacy__"),
+        )
+    )
+    if personal_workspace is None:
+        personal_workspace = session.scalar(
+            select(Workspace).where(Workspace.name == "__legacy__")
+        )
     session.execute(
         update(KnowledgeBase)
         .where(KnowledgeBase.owner_id == LEGACY_OWNER_ID)
-        .values(owner_id=owner_id)
+        .values(
+            owner_id=owner_id,
+            workspace_id=(
+                personal_workspace.id if personal_workspace is not None else None
+            ),
+        )
     )
     session.execute(
         update(Conversation)
