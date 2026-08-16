@@ -6,7 +6,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)，版本号采用语义化版本的意图，而非把尚未完成的
 评测或外部服务验证包装成发布承诺。
 
-## [Unreleased]
+## [v0.3.0] - 2026-08-16
 
 ### 新增
 
@@ -76,6 +76,28 @@
   不是硬发布门禁。
 - Full Quality Gate 保留一个已知质量观察：ChainOfRAG Claim Support `0.625 < 0.65`；未修改既有
   tolerance，相关报告不宣称为完整门禁通过。
+
+- 阿里云 ECS 停机重启后恢复验证（2026-08-16）：公网 IP 变更后本地脚本与 `.env.server` 同步新 IP；
+  core-api runtime 重启修复、Consumer gRPC 重启恢复、Nginx `/docs`/`/openapi.json` 公网封堵
+  （应用层保留 OpenAPI 契约，仅 Nginx 层 404）均验证通过；记录见
+  docs/验证记录/2026-08-16-server-recovery-and-verification.md。
+- 服务器连续 4 小时观察（08:22-12:23）：191 个采样 12/12 容器 healthy、0 告警、内存 3.5-3.9GiB
+  无上涨、磁盘稳定 53%、日志 4 小时仅增约 2M；观察结束后真实业务链路复验通过（答案 4970 字、
+  10 条 Citation、预览 57338B）。记录见 docs/验证记录/2026-08-16-resource-boundary.md。
+- 部署可重复性验证（独立 Compose 项目名）：空环境部署（Storage→Alembic→Vector→Messaging→
+  Application 12 容器 healthy）、重复部署幂等（数据卷/数据库/容器不受影响）、失败中断恢复
+  （坏 env 的 migrate Exited(1) 被捕获，修复后从失败阶段续跑成功）全部通过；记录见
+  docs/验证记录/2026-08-16-deploy-repeatability.md。
+- 数据备份与恢复验证：`deploy/server/backup.ps1` 生成 pg_dump/MinIO 对象/配置快照备份包；
+  `restore-check.ps1` 恢复验证 PASS（PostgreSQL 11 张业务表全量恢复、MinIO 对象 1:1、Milvus
+  卷存在、测试资源清理）。
+- 修复 RocketMQ Broker healthcheck 超时缺陷：`mqadmin clusterList` 在 4 核并发下实测约 11.4s，
+  超过原 `timeout: 8s` 导致 broker 被误标 unhealthy（生产 broker 亦受影响）；改为
+  `interval: 15s / timeout: 30s / start_period: 60s` 后 broker 正常 healthy；
+  `tests/test_compose_contract.py` 13 项通过。
+- 本地 Fast Gate 全绿（2026-08-16）：1000 项 Python 测试、35 项前端测试、2 项 E2E、Alembic
+  全量升级、Trust/Citation/Entailment/Risk/Provenance 门禁、MkDocs 构建全部通过；本地轻量模式
+  （SQLite + Local 存储 + 本地 Worker）真实启动冒烟通过。
 
 ## [0.3.0-rc.1] - 2026-08-13
 

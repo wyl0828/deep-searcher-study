@@ -37,6 +37,14 @@ server {
     proxy_set_header Connection "";
     chunked_transfer_encoding on;
 
+    # 安全：不对外暴露 FastAPI 自动文档与 OpenAPI schema。
+    # /docs、/redoc、/openapi.json 仅用于本地/内网调试，公网一律返回 404。
+    # 注意：应用层保留 openapi_url（tests/test_query_api.py 依赖 /openapi.json 契约），
+    # 因此只在 Nginx 层封堵公网访问，不改业务代码。
+    location ~ ^/(docs|redoc|openapi\.json)$ {
+        return 404;
+    }
+
     location / {
         proxy_pass http://deepsearcher_api;
         proxy_http_version 1.1;

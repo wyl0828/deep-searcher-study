@@ -150,10 +150,10 @@ services:
       - rocketmq-logs:/home/rocketmq/logs
     healthcheck:
       test: ["CMD-SHELL", "sh mqadmin clusterList -n rocketmq-namesrv:9876 >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 8s
+      interval: 15s
+      timeout: 30s
       retries: 30
-      start_period: 30s
+      start_period: 60s
     mem_limit: 1400m
     networks: [deepsearcher]
 

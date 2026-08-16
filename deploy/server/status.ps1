@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     查看服务器 deep-searcher-study 部署状态：容器、资源、磁盘、日志体积。
 .PARAMETER Release
@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [string]$Release = "20260815-01",
-    [string]$Server = "root@118.178.234.18",
+    [string]$Server = "root@47.96.40.156",
     [string]$KeyPath = "D:\code\ecs_key.pem",
     [string]$RemoteRoot = "/opt/deepsearcher-study"
 )

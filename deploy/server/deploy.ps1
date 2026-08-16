@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     本地 Codex + SSH 方式部署 deep-searcher-study 到阿里云 ECS。
 .DESCRIPTION
@@ -19,7 +19,7 @@
 .PARAMETER Release
     版本目录名，例如 20260815-01，默认按当天日期 + 序号。
 .PARAMETER Server
-    SSH 目标，默认 root@118.178.234.18。
+    SSH 目标，默认 root@47.96.40.156。
 .PARAMETER KeyPath
     SSH 私钥，默认 D:\code\ecs_key.pem。
 .PARAMETER RemoteRoot
@@ -36,7 +36,7 @@ param(
     [ValidateSet("package", "upload", "prepare", "build", "deploy", "validate", "start", "stop", "down", "status", "logs")]
     [string]$Action = "status",
     [string]$Release = "",
-    [string]$Server = "root@118.178.234.18",
+    [string]$Server = "root@47.96.40.156",
     [string]$KeyPath = "D:\code\ecs_key.pem",
     [string]$RemoteRoot = "/opt/deepsearcher-study",
     [ValidateSet("storage", "vector", "messaging", "app", "full")]
