@@ -7,11 +7,28 @@ import socket
 import threading
 from uuid import uuid4
 
-from frontend.product.db import init_database
+from frontend.product.db import SessionLocal, init_database, record_worker_heartbeat
 from frontend.product.messaging import RocketMQSettings
 from frontend.product.services.documents import process_rocketmq_ingest_job
 
 logger = logging.getLogger("deepsearcher.rocketmq_ingest_worker")
+HEARTBEAT_INTERVAL_SECONDS = 5.0
+WORKER_NAME = "document-ingest"
+
+
+async def heartbeat(worker_id: str, stopping: asyncio.Event) -> None:
+    while not stopping.is_set():
+        with SessionLocal() as session:
+            record_worker_heartbeat(
+                session,
+                worker_name=WORKER_NAME,
+                worker_id=worker_id,
+                status="running",
+            )
+        try:
+            await asyncio.wait_for(stopping.wait(), timeout=HEARTBEAT_INTERVAL_SECONDS)
+        except asyncio.TimeoutError:
+            pass
 
 
 def _consumer(settings: RocketMQSettings):
@@ -45,10 +62,12 @@ async def run_rocketmq_worker(*, once: bool = False) -> None:
     settings = RocketMQSettings.from_environment()
     consumer = _consumer(settings)
     worker_id = f"{socket.gethostname()}-{os.getpid()}-{uuid4().hex[:12]}"
+    stopping = asyncio.Event()
+    heartbeat_task = asyncio.create_task(heartbeat(worker_id, stopping))
     consumer.startup()
     logger.info("rocketmq_ingest_worker_started worker_id=%s", worker_id)
     try:
-        while True:
+        while not stopping.is_set():
             try:
                 messages = await asyncio.to_thread(
                     consumer.receive,
@@ -97,6 +116,15 @@ async def run_rocketmq_worker(*, once: bool = False) -> None:
                 if once:
                     return
     finally:
+        stopping.set()
+        await heartbeat_task
+        with SessionLocal() as session:
+            record_worker_heartbeat(
+                session,
+                worker_name=WORKER_NAME,
+                worker_id=worker_id,
+                status="stopped",
+            )
         consumer.shutdown()
         logger.info("rocketmq_ingest_worker_stopped worker_id=%s", worker_id)
 
