@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlalchemy import Integer, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from frontend.product.errors import ProductError
 from frontend.product.models import (
     LEGACY_OWNER_ID,
     Conversation,
@@ -17,7 +18,6 @@ from frontend.product.models import (
     Workspace,
     WorkspaceMember,
 )
-from frontend.product.errors import ProductError
 
 
 def _resolved_owner_id(session: Session, owner_id: str | None) -> str:
@@ -65,17 +65,20 @@ def list_knowledge_bases(
             conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
         )
     else:
-        query = query.join(
-            WorkspaceMember,
-            WorkspaceMember.workspace_id == KnowledgeBase.workspace_id,
-        ).where(
-            WorkspaceMember.user_id == user_id
-        ).outerjoin(
-            document_counts,
-            document_counts.c.knowledge_base_id == KnowledgeBase.id,
-        ).outerjoin(
-            conversation_counts,
-            conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
+        query = (
+            query.join(
+                WorkspaceMember,
+                WorkspaceMember.workspace_id == KnowledgeBase.workspace_id,
+            )
+            .where(WorkspaceMember.user_id == user_id)
+            .outerjoin(
+                document_counts,
+                document_counts.c.knowledge_base_id == KnowledgeBase.id,
+            )
+            .outerjoin(
+                conversation_counts,
+                conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
+            )
         )
     rows = session.execute(
         query.order_by(
@@ -114,8 +117,7 @@ def list_knowledge_bases(
                 "role": (
                     session.scalar(
                         select(WorkspaceMember.role).where(
-                            WorkspaceMember.workspace_id
-                            == knowledge_base.workspace_id,
+                            WorkspaceMember.workspace_id == knowledge_base.workspace_id,
                             WorkspaceMember.user_id == user_id,
                         )
                     )
@@ -145,7 +147,8 @@ def create_knowledge_base(
         workspace = session.scalar(
             select(Workspace).where(
                 Workspace.owner_id == resolved_owner_id,
-                Workspace.name == (
+                Workspace.name
+                == (
                     session.get(User, resolved_owner_id).username
                     if resolved_owner_id != LEGACY_OWNER_ID
                     else "__legacy__"
@@ -153,9 +156,7 @@ def create_knowledge_base(
             )
         )
         if workspace is None:
-            workspace = session.scalar(
-                select(Workspace).where(Workspace.name == "__legacy__")
-            )
+            workspace = session.scalar(select(Workspace).where(Workspace.name == "__legacy__"))
         if workspace is None:
             raise ProductError(
                 "WORKSPACE_MISSING",
@@ -224,11 +225,22 @@ def get_conversation(
     return session.scalar(query)
 
 
-def create_ingest_job(session: Session, document: Document) -> IngestJob:
+def create_ingest_job(
+    session: Session,
+    document: Document,
+    *,
+    pipeline_steps: list[dict] | None = None,
+    pipeline_version: str | None = None,
+) -> IngestJob:
     latest_attempt = session.scalar(
         select(func.max(IngestJob.attempt)).where(IngestJob.document_id == document.id)
     )
-    job = IngestJob(document_id=document.id, attempt=int(latest_attempt or 0) + 1)
+    job = IngestJob(
+        document_id=document.id,
+        attempt=int(latest_attempt or 0) + 1,
+        pipeline_steps=pipeline_steps,
+        pipeline_version=pipeline_version,
+    )
     session.add(job)
     session.flush()
     return job

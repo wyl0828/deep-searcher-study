@@ -8,7 +8,7 @@ plain rows so they can be unit tested without a database.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any, Sequence
 
 from sqlalchemy import select
@@ -22,6 +22,7 @@ from frontend.product.models import (
     KnowledgeBase,
     KnowledgeHealthSnapshot,
     Message,
+    MessageFeedback,
 )
 from frontend.product.services.documents import retry_document
 from frontend.product.services.knowledge_bases import reindex_knowledge_base
@@ -101,9 +102,7 @@ def compute_series_detections(
     penalty = 0
 
     scoped = [
-        document
-        for document in documents
-        if document.status == "ready" and document.version_family
+        document for document in documents if document.status == "ready" and document.version_family
     ]
     if not scoped:
         return deductions, actions, 0
@@ -196,8 +195,7 @@ def compute_series_detections(
         current_docs = [
             document
             for document in representatives
-            if _series_bounds(document)[1] is None
-            and _series_bounds(document)[0] <= now
+            if _series_bounds(document)[1] is None and _series_bounds(document)[0] <= now
         ]
         if len(current_docs) > 1:
             record(
@@ -310,12 +308,7 @@ def compute_data_health(
     failed_ratio = failed / total
     index_score = 100.0 if index_verified else 0.0
     score = _clamp(
-        100.0
-        * (
-            0.70 * readiness
-            + 0.15 * (1.0 - failed_ratio)
-            + 0.15 * (index_score / 100.0)
-        )
+        100.0 * (0.70 * readiness + 0.15 * (1.0 - failed_ratio) + 0.15 * (index_score / 100.0))
     )
 
     deductions: list[dict[str, str]] = []
@@ -381,9 +374,7 @@ def compute_data_health(
             )
         )
 
-    series_deductions, series_actions, series_penalty = compute_series_detections(
-        documents
-    )
+    series_deductions, series_actions, series_penalty = compute_series_detections(documents)
     score = _clamp(score - series_penalty)
     deductions = deductions + series_deductions
     actions = actions + series_actions
@@ -428,10 +419,10 @@ def compute_retrieval_attribution(
             bucket["sample_count"] += 1
             if flag == "refusal" and row.get("policy_action") == "refuse":
                 bucket["count"] += 1
-            if (
-                flag == "insufficient"
-                and row.get("answer_state") in {"insufficient_evidence", "failed"}
-            ):
+            if flag == "insufficient" and row.get("answer_state") in {
+                "insufficient_evidence",
+                "failed",
+            }:
                 bucket["count"] += 1
         return [
             {
@@ -452,11 +443,7 @@ def compute_retrieval_attribution(
         unreferenced: list[dict[str, Any]] = []
         referenced_ready_coverage: float | None = None
     else:
-        ready_ids = {
-            document.id
-            for document in ready_documents
-            if document.status == "ready"
-        }
+        ready_ids = {document.id for document in ready_documents if document.status == "ready"}
         referenced_ready = ready_ids & referenced_document_ids
         total_ready = len(ready_ids)
         referenced_ready_coverage = (
@@ -465,8 +452,7 @@ def compute_retrieval_attribution(
         unreferenced = [
             {"id": document.id, "display_name": document.display_name}
             for document in ready_documents
-            if document.status == "ready"
-            and document.id not in referenced_document_ids
+            if document.status == "ready" and document.id not in referenced_document_ids
         ]
 
     return {
@@ -500,6 +486,7 @@ def compute_retrieval_health(
                 "refusal_rate": 0.0,
                 "insufficient_evidence_rate": 0.0,
                 "web_source_rate": 0.0,
+                "negative_feedback_rate": 0.0,
                 "attribution": compute_retrieval_attribution(
                     message_rows,
                     ready_documents,
@@ -522,14 +509,35 @@ def compute_retrieval_health(
             ],
         }
 
+    # P1-4.2 feedback aggregation. Rows may carry an internal message_id so the
+    # numerator and denominator are both over distinct sampled messages (one
+    # assistant message never counts twice); legacy rows without message_id fall
+    # back to one-row-per-message semantics.
+    if any("message_id" in row for row in message_rows):
+        feedback_sample_count = len(
+            {row["message_id"] for row in message_rows if row.get("message_id")}
+        )
+        negative_feedback_message_count = len(
+            {
+                row["message_id"]
+                for row in message_rows
+                if row.get("has_negative_feedback") and row.get("message_id")
+            }
+        )
+    else:
+        feedback_sample_count = sample_count
+        negative_feedback_message_count = sum(
+            1 for row in message_rows if row.get("has_negative_feedback")
+        )
+    negative_feedback_rate = (
+        negative_feedback_message_count / feedback_sample_count if feedback_sample_count else 0.0
+    )
+
     cited = sum(1 for row in message_rows if row.get("citation_count", 0) > 0)
     citation_coverage = cited / sample_count
-    avg_citations = (
-        sum(row.get("citation_count", 0) for row in message_rows) / sample_count
-    )
+    avg_citations = sum(row.get("citation_count", 0) for row in message_rows) / sample_count
     refusal_rate = (
-        sum(1 for row in message_rows if row.get("policy_action") == "refuse")
-        / sample_count
+        sum(1 for row in message_rows if row.get("policy_action") == "refuse") / sample_count
     )
     insufficient_rate = (
         sum(
@@ -603,6 +611,24 @@ def compute_retrieval_health(
                 )
             )
 
+        # P1-4.2: informational feedback signal. Appended after the score is
+        # computed and never feeds back into the formula 1.1 aggregation.
+        if negative_feedback_rate > 0.2:
+            deductions.append(
+                _deduction(
+                    "NEGATIVE_FEEDBACK",
+                    "近期回答被用户标记为“没帮助”的比例偏高",
+                    "用户对回答质量的负面反馈可作为检索改进的信号。",
+                )
+            )
+            actions.append(
+                _action(
+                    "REVIEW_RETRIEVAL",
+                    "检查检索阈值与分块配置，必要时重建索引",
+                    "medium",
+                )
+            )
+
     metrics = {
         "message_sample_count": sample_count,
         "citation_coverage_rate": round(citation_coverage, 4),
@@ -610,6 +636,7 @@ def compute_retrieval_health(
         "refusal_rate": round(refusal_rate, 4),
         "insufficient_evidence_rate": round(insufficient_rate, 4),
         "web_source_rate": round(web_source_rate, 4),
+        "negative_feedback_rate": round(negative_feedback_rate, 4),
         "attribution": compute_retrieval_attribution(
             message_rows,
             ready_documents,
@@ -657,26 +684,16 @@ def compute_trust_health(
             ],
         }
 
-    supported = sum(
-        1 for row in claim_rows if row.get("support_status") == "supported"
-    )
-    conflicting = sum(
-        1 for row in claim_rows if row.get("support_status") == "conflicting"
-    )
+    supported = sum(1 for row in claim_rows if row.get("support_status") == "supported")
+    conflicting = sum(1 for row in claim_rows if row.get("support_status") == "conflicting")
     invalid_citations = sum(
-        1
-        for row in claim_rows
-        if row.get("citation_status") in {"invalid", "missing"}
+        1 for row in claim_rows if row.get("citation_status") in {"invalid", "missing"}
     )
     consistency_issues = sum(
-        1
-        for row in claim_rows
-        if row.get("consistency_status") == "inconsistent"
+        1 for row in claim_rows if row.get("consistency_status") == "inconsistent"
     )
     entailment_contradictions = sum(
-        1
-        for row in claim_rows
-        if row.get("entailment_status") == "contradicted"
+        1 for row in claim_rows if row.get("entailment_status") == "contradicted"
     )
 
     supported_rate = supported / claim_count
@@ -796,11 +813,23 @@ def assemble_health_payload(
         .where(
             Conversation.knowledge_base_id == knowledge_base.id,
             Message.role == "assistant",
-            Message.status == "completed",
+            Message.status == "succeeded",
         )
         .order_by(Message.created_at.desc())
         .limit(RETRIEVAL_SAMPLE_LIMIT)
     ).all()
+    sample_message_ids = [message.id for message in messages]
+    negative_feedback_message_ids: set[str] = set()
+    if sample_message_ids:
+        negative_feedback_message_ids = set(
+            session.scalars(
+                select(MessageFeedback.message_id).where(
+                    MessageFeedback.message_id.in_(sample_message_ids),
+                    MessageFeedback.cancelled.is_(False),
+                    MessageFeedback.vote == -1,
+                )
+            ).all()
+        )
     referenced_document_ids: set[str] = set()
     message_rows = []
     for message in messages:
@@ -809,11 +838,11 @@ def assemble_health_payload(
                 referenced_document_ids.add(citation.document_id)
         message_rows.append(
             {
+                "message_id": message.id,
+                "has_negative_feedback": message.id in negative_feedback_message_ids,
                 "citation_count": len(message.citations),
                 "web_citation_count": sum(
-                    1
-                    for citation in message.citations
-                    if citation.source_type == "web"
+                    1 for citation in message.citations if citation.source_type == "web"
                 ),
                 "policy_action": message.policy_action,
                 "answer_state": message.answer_state,

@@ -135,7 +135,7 @@ def make_message(
         conversation_id=conversation.id,
         role="assistant",
         content="回答",
-        status="completed",
+        status="succeeded",
         answer_state=answer_state,
         policy_action=policy_action,
     )
@@ -304,6 +304,89 @@ def test_retrieval_health_refusal_penalty():
     assert "HIGH_INSUFFICIENT_EVIDENCE" in codes
 
 
+# ---- retrieval feedback (P1-4.2) ----
+
+
+def _feedback_row(
+    message_id: str | None = None,
+    *,
+    negative: bool = False,
+) -> dict:
+    row = {
+        "citation_count": 1,
+        "web_citation_count": 0,
+        "policy_action": None,
+        "answer_state": "fully_grounded",
+    }
+    if message_id is not None:
+        row["message_id"] = message_id
+    if negative:
+        row["has_negative_feedback"] = True
+    return row
+
+
+def test_retrieval_health_negative_feedback_distinct_message_denominator():
+    # One assistant message (A) contributes 3 retrieval rows; a second (B) one
+    # row. Negative feedback is counted per distinct message, so the rate is
+    # 1 / 2 = 0.5, never 1 / 4.
+    rows = [_feedback_row("msg-a", negative=True) for _ in range(3)]
+    rows.append(_feedback_row("msg-b"))
+    result = compute_retrieval_health(rows)
+    assert result["metrics"]["message_sample_count"] == 4
+    assert result["metrics"]["negative_feedback_rate"] == 0.5
+
+
+def test_retrieval_health_negative_feedback_legacy_rows_fallback():
+    # Rows without message_id fall back to one-row-per-message semantics.
+    rows = [_feedback_row(negative=True) for _ in range(2)]
+    rows += [_feedback_row() for _ in range(2)]
+    result = compute_retrieval_health(rows)
+    assert result["metrics"]["negative_feedback_rate"] == 0.5
+
+
+def test_retrieval_health_negative_feedback_threshold():
+    below = [_feedback_row(f"m{i}", negative=(i == 0)) for i in range(5)]
+    result_below = compute_retrieval_health(below)
+    assert result_below["metrics"]["negative_feedback_rate"] == 0.2
+    codes_below = {item["code"] for item in result_below["deductions"]}
+    assert "NEGATIVE_FEEDBACK" not in codes_below
+
+    above = [_feedback_row(f"m{i}", negative=(i == 0)) for i in range(4)]
+    result_above = compute_retrieval_health(above)
+    assert result_above["metrics"]["negative_feedback_rate"] == 0.25
+    codes_above = {item["code"] for item in result_above["deductions"]}
+    assert "NEGATIVE_FEEDBACK" in codes_above
+    action_codes = {item["code"] for item in result_above["actions"]}
+    assert "REVIEW_RETRIEVAL" in action_codes
+
+
+def test_retrieval_health_negative_feedback_does_not_change_score():
+    baseline_rows = [_feedback_row(f"m{i}") for i in range(4)]
+    flagged_rows = [{**row, "has_negative_feedback": True} for row in baseline_rows]
+    baseline = compute_retrieval_health(baseline_rows)
+    flagged = compute_retrieval_health(flagged_rows)
+    assert flagged["metrics"]["negative_feedback_rate"] == 1.0
+    assert flagged["score"] == baseline["score"]
+    codes = {item["code"] for item in flagged["deductions"]}
+    assert "NEGATIVE_FEEDBACK" in codes
+
+
+def test_retrieval_health_no_feedback_flag_backward_compat():
+    rows = [_feedback_row() for _ in range(4)]
+    result = compute_retrieval_health(rows)
+    assert result["metrics"]["negative_feedback_rate"] == 0.0
+    codes = {item["code"] for item in result["deductions"]}
+    assert "NEGATIVE_FEEDBACK" not in codes
+
+
+def test_retrieval_health_negative_feedback_empty_sample():
+    result = compute_retrieval_health([])
+    assert result["metrics"]["negative_feedback_rate"] == 0.0
+    codes = {item["code"] for item in result["deductions"]}
+    assert "NO_ANSWER_SAMPLES" in codes
+    assert "NEGATIVE_FEEDBACK" not in codes
+
+
 # ---- trust health ----
 
 
@@ -460,9 +543,15 @@ def make_series_document(
 
 def test_series_duplicate_group_single_deduction():
     documents = [
-        make_series_document(family="handbook", sha256="a" * 64, start=date(2026, 1, 1), display_name="a.pdf"),
-        make_series_document(family="handbook", sha256="a" * 64, start=date(2026, 1, 2), display_name="b.pdf"),
-        make_series_document(family="handbook", sha256="a" * 64, start=date(2026, 1, 3), display_name="c.pdf"),
+        make_series_document(
+            family="handbook", sha256="a" * 64, start=date(2026, 1, 1), display_name="a.pdf"
+        ),
+        make_series_document(
+            family="handbook", sha256="a" * 64, start=date(2026, 1, 2), display_name="b.pdf"
+        ),
+        make_series_document(
+            family="handbook", sha256="a" * 64, start=date(2026, 1, 3), display_name="c.pdf"
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     codes = [item["code"] for item in deductions]
@@ -475,8 +564,16 @@ def test_series_duplicate_group_single_deduction():
 
 def test_series_equal_end_start_is_continuity():
     documents = [
-        make_series_document(family="handbook", sha256="1" * 64, start=date(2026, 1, 1), end=date(2026, 6, 1), display_name="v1.pdf"),
-        make_series_document(family="handbook", sha256="2" * 64, start=date(2026, 6, 1), display_name="v2.pdf"),
+        make_series_document(
+            family="handbook",
+            sha256="1" * 64,
+            start=date(2026, 1, 1),
+            end=date(2026, 6, 1),
+            display_name="v1.pdf",
+        ),
+        make_series_document(
+            family="handbook", sha256="2" * 64, start=date(2026, 6, 1), display_name="v2.pdf"
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     assert deductions == []
@@ -491,8 +588,12 @@ def test_series_gap_threshold_90_and_91():
         v1_end = v1_start + timedelta(days=30)
         v2_start = v1_end + timedelta(days=gap_days)
         return [
-            make_series_document(family="policy", sha256="1" * 64, start=v1_start, end=v1_end, display_name="v1.pdf"),
-            make_series_document(family="policy", sha256="2" * 64, start=v2_start, display_name="v2.pdf"),
+            make_series_document(
+                family="policy", sha256="1" * 64, start=v1_start, end=v1_end, display_name="v1.pdf"
+            ),
+            make_series_document(
+                family="policy", sha256="2" * 64, start=v2_start, display_name="v2.pdf"
+            ),
         ]
 
     deductions_90, _, penalty_90 = compute_series_detections(chain(90))
@@ -507,8 +608,18 @@ def test_series_gap_threshold_90_and_91():
 def test_series_future_effective_not_multiple_current():
     today = date.today()
     documents = [
-        make_series_document(family="roadmap", sha256="1" * 64, start=today - timedelta(days=10), display_name="current.pdf"),
-        make_series_document(family="roadmap", sha256="2" * 64, start=today + timedelta(days=90), display_name="future.pdf"),
+        make_series_document(
+            family="roadmap",
+            sha256="1" * 64,
+            start=today - timedelta(days=10),
+            display_name="current.pdf",
+        ),
+        make_series_document(
+            family="roadmap",
+            sha256="2" * 64,
+            start=today + timedelta(days=90),
+            display_name="future.pdf",
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     codes = [item["code"] for item in deductions]
@@ -518,8 +629,16 @@ def test_series_future_effective_not_multiple_current():
 
 def test_series_invalid_interval_excluded_from_downstream():
     documents = [
-        make_series_document(family="handbook", sha256="1" * 64, start=date(2026, 6, 1), end=date(2026, 1, 1), display_name="bad.pdf"),
-        make_series_document(family="handbook", sha256="2" * 64, start=date(2026, 3, 1), display_name="ok.pdf"),
+        make_series_document(
+            family="handbook",
+            sha256="1" * 64,
+            start=date(2026, 6, 1),
+            end=date(2026, 1, 1),
+            display_name="bad.pdf",
+        ),
+        make_series_document(
+            family="handbook", sha256="2" * 64, start=date(2026, 3, 1), display_name="ok.pdf"
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     codes = [item["code"] for item in deductions]
@@ -531,10 +650,33 @@ def test_series_invalid_interval_excluded_from_downstream():
 
 def test_series_local_suppression_duplicate_and_gap_coexist():
     documents = [
-        make_series_document(family="mix", sha256="a" * 64, start=date(2026, 1, 1), end=date(2026, 6, 1), display_name="a1.pdf"),
-        make_series_document(family="mix", sha256="a" * 64, start=date(2026, 2, 1), end=date(2026, 6, 1), display_name="a2.pdf"),
-        make_series_document(family="mix", sha256="b" * 64, start=date(2026, 6, 1), end=date(2026, 6, 2), display_name="b.pdf"),
-        make_series_document(family="mix", sha256="c" * 64, start=date(2026, 6, 2) + timedelta(days=120), display_name="c.pdf"),
+        make_series_document(
+            family="mix",
+            sha256="a" * 64,
+            start=date(2026, 1, 1),
+            end=date(2026, 6, 1),
+            display_name="a1.pdf",
+        ),
+        make_series_document(
+            family="mix",
+            sha256="a" * 64,
+            start=date(2026, 2, 1),
+            end=date(2026, 6, 1),
+            display_name="a2.pdf",
+        ),
+        make_series_document(
+            family="mix",
+            sha256="b" * 64,
+            start=date(2026, 6, 1),
+            end=date(2026, 6, 2),
+            display_name="b.pdf",
+        ),
+        make_series_document(
+            family="mix",
+            sha256="c" * 64,
+            start=date(2026, 6, 2) + timedelta(days=120),
+            display_name="c.pdf",
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     codes = [item["code"] for item in deductions]
@@ -545,10 +687,30 @@ def test_series_local_suppression_duplicate_and_gap_coexist():
 
 def test_series_overlap_adjacent_only():
     documents = [
-        make_series_document(family="handbook", sha256="1" * 64, start=date(2026, 1, 1), end=date(2026, 3, 15), display_name="a.pdf"),
-        make_series_document(family="handbook", sha256="2" * 64, start=date(2026, 3, 1), end=date(2026, 3, 20), display_name="b.pdf"),
-        make_series_document(family="handbook", sha256="3" * 64, start=date(2026, 3, 20), end=date(2026, 4, 1), display_name="c.pdf"),
-        make_series_document(family="handbook", sha256="4" * 64, start=date(2026, 4, 1), display_name="d.pdf"),
+        make_series_document(
+            family="handbook",
+            sha256="1" * 64,
+            start=date(2026, 1, 1),
+            end=date(2026, 3, 15),
+            display_name="a.pdf",
+        ),
+        make_series_document(
+            family="handbook",
+            sha256="2" * 64,
+            start=date(2026, 3, 1),
+            end=date(2026, 3, 20),
+            display_name="b.pdf",
+        ),
+        make_series_document(
+            family="handbook",
+            sha256="3" * 64,
+            start=date(2026, 3, 20),
+            end=date(2026, 4, 1),
+            display_name="c.pdf",
+        ),
+        make_series_document(
+            family="handbook", sha256="4" * 64, start=date(2026, 4, 1), display_name="d.pdf"
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     codes = [item["code"] for item in deductions]
@@ -558,7 +720,13 @@ def test_series_overlap_adjacent_only():
 
 def test_series_orphan_no_successor():
     documents = [
-        make_series_document(family="handbook", sha256="1" * 64, start=date(2026, 1, 1), end=date(2026, 6, 1), display_name="v1.pdf"),
+        make_series_document(
+            family="handbook",
+            sha256="1" * 64,
+            start=date(2026, 1, 1),
+            end=date(2026, 6, 1),
+            display_name="v1.pdf",
+        ),
     ]
     deductions, _, penalty = compute_series_detections(documents)
     codes = [item["code"] for item in deductions]
@@ -590,8 +758,20 @@ def test_series_penalty_cap_at_40():
 
 def test_retrieval_attribution_unknown_query_type():
     rows = [
-        {"citation_count": 0, "web_citation_count": 0, "policy_action": "refuse", "answer_state": "insufficient_evidence", "query_type": None},
-        {"citation_count": 1, "web_citation_count": 0, "policy_action": None, "answer_state": "fully_grounded", "query_type": "comparison"},
+        {
+            "citation_count": 0,
+            "web_citation_count": 0,
+            "policy_action": "refuse",
+            "answer_state": "insufficient_evidence",
+            "query_type": None,
+        },
+        {
+            "citation_count": 1,
+            "web_citation_count": 0,
+            "policy_action": None,
+            "answer_state": "fully_grounded",
+            "query_type": "comparison",
+        },
     ]
     attribution = compute_retrieval_attribution(rows)
     refusal = {item["query_type"]: item for item in attribution["refusal_by_query_type"]}
@@ -603,9 +783,27 @@ def test_retrieval_attribution_unknown_query_type():
 
 def test_retrieval_attribution_counts_and_rates():
     rows = [
-        {"query_type": "comparison", "policy_action": "refuse", "answer_state": "insufficient_evidence", "citation_count": 0, "web_citation_count": 0},
-        {"query_type": "comparison", "policy_action": None, "answer_state": "fully_grounded", "citation_count": 1, "web_citation_count": 0},
-        {"query_type": "comparison", "policy_action": None, "answer_state": "fully_grounded", "citation_count": 1, "web_citation_count": 0},
+        {
+            "query_type": "comparison",
+            "policy_action": "refuse",
+            "answer_state": "insufficient_evidence",
+            "citation_count": 0,
+            "web_citation_count": 0,
+        },
+        {
+            "query_type": "comparison",
+            "policy_action": None,
+            "answer_state": "fully_grounded",
+            "citation_count": 1,
+            "web_citation_count": 0,
+        },
+        {
+            "query_type": "comparison",
+            "policy_action": None,
+            "answer_state": "fully_grounded",
+            "citation_count": 1,
+            "web_citation_count": 0,
+        },
     ]
     attribution = compute_retrieval_attribution(rows)
     comparison = attribution["refusal_by_query_type"][0]
@@ -616,9 +814,36 @@ def test_retrieval_attribution_counts_and_rates():
 
 def test_retrieval_attribution_unreferenced_denominator():
     ready = [
-        Document(id="d1", knowledge_base_id="kb", display_name="used.pdf", storage_path="x", size_bytes=1, page_count=1, sha256="1" * 64, status="ready"),
-        Document(id="d2", knowledge_base_id="kb", display_name="unused.pdf", storage_path="x", size_bytes=1, page_count=1, sha256="2" * 64, status="ready"),
-        Document(id="d3", knowledge_base_id="kb", display_name="failed.pdf", storage_path="x", size_bytes=1, page_count=0, sha256="3" * 64, status="failed"),
+        Document(
+            id="d1",
+            knowledge_base_id="kb",
+            display_name="used.pdf",
+            storage_path="x",
+            size_bytes=1,
+            page_count=1,
+            sha256="1" * 64,
+            status="ready",
+        ),
+        Document(
+            id="d2",
+            knowledge_base_id="kb",
+            display_name="unused.pdf",
+            storage_path="x",
+            size_bytes=1,
+            page_count=1,
+            sha256="2" * 64,
+            status="ready",
+        ),
+        Document(
+            id="d3",
+            knowledge_base_id="kb",
+            display_name="failed.pdf",
+            storage_path="x",
+            size_bytes=1,
+            page_count=0,
+            sha256="3" * 64,
+            status="failed",
+        ),
     ]
     attribution = compute_retrieval_attribution([], ready, {"d1"})
     assert attribution["referenced_ready_coverage"] == pytest.approx(0.5)
@@ -644,8 +869,26 @@ def test_health_trend_payload_ascending_with_level(session):
     user = make_user(session)
     knowledge_base = make_knowledge_base(session, user)
     snapshots = [
-        KnowledgeHealthSnapshot(knowledge_base_id=knowledge_base.id, owner_id=user.id, formula_version="1.1", status="complete", overall_score=50.0, data_score=60.0, retrieval_score=40.0, trust_score=50.0),
-        KnowledgeHealthSnapshot(knowledge_base_id=knowledge_base.id, owner_id=user.id, formula_version="1.1", status="complete", overall_score=80.0, data_score=90.0, retrieval_score=70.0, trust_score=80.0),
+        KnowledgeHealthSnapshot(
+            knowledge_base_id=knowledge_base.id,
+            owner_id=user.id,
+            formula_version="1.1",
+            status="complete",
+            overall_score=50.0,
+            data_score=60.0,
+            retrieval_score=40.0,
+            trust_score=50.0,
+        ),
+        KnowledgeHealthSnapshot(
+            knowledge_base_id=knowledge_base.id,
+            owner_id=user.id,
+            formula_version="1.1",
+            status="complete",
+            overall_score=80.0,
+            data_score=90.0,
+            retrieval_score=70.0,
+            trust_score=80.0,
+        ),
     ]
     session.add_all(snapshots)
     session.flush()
@@ -658,9 +901,7 @@ def test_health_trend_payload_ascending_with_level(session):
 def test_run_health_actions_upload(session):
     user = make_user(session)
     knowledge_base = make_knowledge_base(session, user)
-    result = asyncio.run(
-        run_health_actions(session, knowledge_base, user.id, ["UPLOAD_DOCUMENTS"])
-    )
+    result = asyncio.run(run_health_actions(session, knowledge_base, user.id, ["UPLOAD_DOCUMENTS"]))
     assert result["results"][0]["status"] == "requires_user_action"
     assert result["snapshot"]["formula_version"] == "1.1"
     assert result["delta"]["direction"] == "new"
@@ -670,9 +911,7 @@ def test_run_health_actions_unknown_raises(session):
     user = make_user(session)
     knowledge_base = make_knowledge_base(session, user)
     with pytest.raises(ProductError):
-        asyncio.run(
-            run_health_actions(session, knowledge_base, user.id, ["NOT_A_REAL_ACTION"])
-        )
+        asyncio.run(run_health_actions(session, knowledge_base, user.id, ["NOT_A_REAL_ACTION"]))
 
 
 def test_run_health_actions_retry_uses_service(session, monkeypatch):

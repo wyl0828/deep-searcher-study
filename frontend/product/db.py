@@ -245,6 +245,77 @@ def ensure_ingest_lifecycle_columns(engine: Engine) -> None:
         )
 
 
+def ensure_ingest_pipeline_columns(engine: Engine) -> None:
+    """Upgrade local SQLite workspaces with ingest pipeline configuration (P2-B)."""
+    job_columns = {column["name"] for column in inspect(engine).get_columns("ingest_jobs")}
+    definitions = {
+        "pipeline_steps": "JSON",
+        "pipeline_version": "VARCHAR(16)",
+    }
+    for column_name, column_type in definitions.items():
+        if column_name in job_columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"ALTER TABLE ingest_jobs ADD COLUMN {column_name} {column_type}")
+            )
+
+
+def ensure_connector_sync_columns(engine: Engine) -> None:
+    """Upgrade local SQLite workspaces with v0.6 connector sync identity."""
+    document_columns = {column["name"] for column in inspect(engine).get_columns("documents")}
+    document_definitions = {
+        "connector_sync_id": "VARCHAR(40)",
+        "external_id": "VARCHAR(255)",
+        "connector_source": "VARCHAR(32)",
+        "content_hash": "VARCHAR(64)",
+    }
+    for column_name, column_type in document_definitions.items():
+        if column_name in document_columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"ALTER TABLE documents ADD COLUMN {column_name} {column_type}")
+            )
+
+    job_columns = {column["name"] for column in inspect(engine).get_columns("ingest_jobs")}
+    job_definitions = {
+        "source": "VARCHAR(16)",
+        "source_metadata": "JSON",
+    }
+    for column_name, column_type in job_definitions.items():
+        if column_name in job_columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"ALTER TABLE ingest_jobs ADD COLUMN {column_name} {column_type}")
+            )
+
+    document_indexes = {item["name"] for item in inspect(engine).get_indexes("documents")}
+    # Replace the legacy full unique (kb_id, sha256) with the upload-only partial one.
+    if "uq_documents_knowledge_base_sha256" in document_indexes:
+        with engine.begin() as connection:
+            connection.execute(text("DROP INDEX uq_documents_knowledge_base_sha256"))
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_knowledge_base_sha256 "
+                "ON documents (knowledge_base_id, sha256) WHERE connector_sync_id IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_connector_external "
+                "ON documents (connector_sync_id, external_id)"
+            )
+        )
+
+    from frontend.product.models import ConnectorSync, ConnectorSyncRun
+
+    ConnectorSync.__table__.create(bind=engine, checkfirst=True)
+    ConnectorSyncRun.__table__.create(bind=engine, checkfirst=True)
+
+
 def ensure_auth_ownership_schema(engine: Engine) -> None:
     """Make existing local SQLite workspaces claimable by the first administrator."""
     if not str(engine.url).startswith("sqlite"):
@@ -440,16 +511,11 @@ def ensure_workspace_schema(engine: Engine) -> None:
 
     Workspace.__table__.create(bind=engine, checkfirst=True)
     WorkspaceMember.__table__.create(bind=engine, checkfirst=True)
-    columns = {
-        column["name"] for column in inspect(engine).get_columns("knowledge_bases")
-    }
+    columns = {column["name"] for column in inspect(engine).get_columns("knowledge_bases")}
     if "workspace_id" not in columns:
         with engine.begin() as connection:
             connection.execute(
-                text(
-                    "ALTER TABLE knowledge_bases "
-                    "ADD COLUMN workspace_id VARCHAR(40)"
-                )
+                text("ALTER TABLE knowledge_bases ADD COLUMN workspace_id VARCHAR(40)")
             )
     from frontend.product.services.access import ensure_personal_workspaces
 
@@ -466,6 +532,8 @@ def init_database() -> None:
         ensure_knowledge_base_index_columns(ENGINE)
         ensure_citation_locator_columns(ENGINE)
         ensure_ingest_lifecycle_columns(ENGINE)
+        ensure_ingest_pipeline_columns(ENGINE)
+        ensure_connector_sync_columns(ENGINE)
         ensure_auth_ownership_schema(ENGINE)
         ensure_trust_layer_columns(ENGINE)
         ensure_document_temporal_columns(ENGINE)

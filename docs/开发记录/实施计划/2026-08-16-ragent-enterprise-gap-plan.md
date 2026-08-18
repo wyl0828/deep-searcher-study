@@ -1,7 +1,8 @@
 # 对标 Ragent 的企业级缺口优化计划（阶段计划）
 
 > 日期：2026-08-16
-> 状态：P0 已验证（2026-08-16）；P1-4.1 操作审计已实现；P1-4.2 用户反馈待实施
+> 状态：P0 已验证（2026-08-16）；P1-4.1 操作审计、P1-4.2 用户反馈、P2 企业文档能力和 P3
+> 本地目录连接器纵切均已实现（2026-08-17）；P4 运营大盘待实施。
 > 给后续会话：本文件是"本项目后续整体优化计划"的唯一权威入口。新会话先读本文件，
 > 再按阶段执行；每阶段完成后把验证记录补进 `docs/开发记录/验证记录/` 并更新本文件状态。
 > 所有"参考 ragent"均指向本地源码 `D:\code\reference\ragent`（参考提交 `020e5c3`），
@@ -129,7 +130,7 @@ Provenance）、知识健康、版本化金标评测、文档级 ACL** 上深度
 - 验证：`frontend/tests/test_product_api.py` 新增 4 个审计 e2e 全过；全量 pytest 1064 通过；前端 typecheck/build/单测 35 通过；Alembic 空库升级至 `20260817_0020` 成功。
   详见 `docs/开发记录/验证记录/2026-08-16-operation-audit-verification.md`。
 
-### 4.2 用户反馈闭环
+### 4.2 用户反馈闭环（✅ 已实现 2026-08-17）
 
 **参考 ragent**：
 - `rag/.../rag/service/impl/MessageFeedbackServiceImpl.java`：`submitFeedbackAsync` 校验
@@ -151,11 +152,32 @@ Provenance）、知识健康、版本化金标评测、文档级 ACL** 上深度
 **验收**：点 👍/👎 落库且幂等；健康报告含反馈样本；`tests/test_knowledge_health.py` 扩展
 反馈用例通过。
 
+**实现记录（2026-08-17）**：
+- 新表 `message_feedback`（`models.py::MessageFeedback`，字段对齐 MessageFeedbackDO 去 conversationId，
+  `(user_id, message_id)` 唯一 + `ck_message_feedback_vote` Check 约束，NULL=取消）+ 迁移
+  `20260817_0021_message_feedback.py`。
+- `frontend/product/services/feedback.py`：`_upsert_feedback`（`begin_nested()` SAVEPOINT 并发幂等，
+  提交与取消共用）、`submit_message_feedback` / `cancel_message_feedback` / `get_feedback_map`
+  （等价 MessageFeedbackServiceImpl.submitFeedback / cancelFeedbackAsync / getUserVotes）。
+- API：`POST`/`DELETE /api/conversations/{conversation_id}/messages/{message_id}/feedback`（`_feedback_target`
+  错误语义 404/404/400 固定，先校验 conversation 再查 message 不泄露存在性）；`conversation_detail`
+  每条助手消息附带 feedback 状态。
+- 健康：`compute_retrieval_health` 新增 `negative_feedback_rate`（按 distinct sampled message_id，
+  分母与分子严格同一 sample），rate>0.2 追加 informational `NEGATIVE_FEEDBACK` 诊断 + 建议，
+  **score 公式保持 formula 1.1 不变**（强断言 `flagged["score"] == baseline["score"]`）。
+- 前端：`AssistantMessage` 👍/👎 接线（POST 提交/覆盖、DELETE 取消、`useEffect` 同步服务器状态）；
+  `product-api.ts` 新增 `submitMessageFeedback`/`cancelMessageFeedback`。
+- 顺带修复既有问题：健康采样 `status == "completed"` 与生产终态 `"succeeded"` 不一致（生产健康样本
+  恒为空）；`e2e_workspace_server.py` seed 未适配 v0.5 `workspace_id` NOT NULL。
+- 验证：全量 pytest 1074 通过；前端 vitest 40 通过 + typecheck/build/bundle 绿；
+  `scripts/quality_gate.py` 全 18 步 PASS。
+  详见 `docs/开发记录/验证记录/2026-08-17-message-feedback-verification.md`。
+
 ---
 
 ## 5. P2 企业文档能力（1-2 周）
 
-### 5.1 多格式解析与分块
+### 5.1 多格式解析与分块（✅ 已实现 2026-08-17）
 
 **参考 ragent**：
 - `rag/.../core/parser/excel/ExcelDocumentParser.java`：`OPT_SOURCE_FILE/OPT_HEADER_ROWS`
@@ -179,7 +201,28 @@ Provenance）、知识健康、版本化金标评测、文档级 ACL** 上深度
 
 **验收**：上传 xlsx/pptx/图片能进 KB 且可检索；表格不被拦腰截断；全量 pytest + 前端绿。
 
-### 5.2 入库可编排（对齐 IngestionEngine，不做完整 DAG）
+**实现记录（2026-08-17）**：
+- LoaderRegistry（对齐 ParserRegistry）：序列注册（重复认领启动失败，可真实检测）、
+  REQUIRED_EXTENSIONS 自检全覆盖、未知扩展名显式报错、可选依赖 loader 惰性实例化；
+  默认矩阵 pdf→PDFLoader / xlsx→ExcelLoader / pptx→PptxLoader / png·jpg·jpeg→ImageLoader /
+  txt·md→TextLoader / json→JsonFileLoader / docx·html·htm·adoc·asciidoc→DoclingLoader /
+  doc·xls·ppt·rtf·csv·svg·odt·epub→UnstructuredLoader。
+- mime_type.py（对齐 MimeTypeDetector）：容器/signature 族校验覆盖全集（PDF/PNG/JPEG 签名、
+  OOXML ZIP+Content_Types、OLE CFB 仅验容器、RTF、ODT/EPUB mimetype 条目、SVG/HTML/文本族），
+  扩展名为最终路由，MIME 仅做上传真实性校验。
+- Excel/PPTX/Image 三个 loader（对齐 ExcelDocumentParser/ExcelTableNormalizer/block-aware）：
+  双 workbook 公式回退、合并单元格 matrix 展开、隐藏 sheet 跳过、slide 级多 block、图片仅 OCR。
+- splitter.py：Chunk.vector_text（embedding-only）；split_docs_to_chunks API 不变，
+  内部 kind 分发 + code extraction 先于 _section_documents；TableAwareSplitter/CodeBlockSplitter
+  对齐 TableChunker/CodeChunker。
+- embedding/base.py 唯一改动点：texts = [getattr(chunk, "vector_text", None) or chunk.text ...]；
+  vector_text 不泄漏到 payload/identity/manifest（测试锁死）。
+- frontend：stage_upload（白名单+MIME 校验）、inspect_document_pages（pdf=页数/xlsx=可见 sheet/
+  pptx=slide/图片=1）。
+- 验证：全量 pytest 1107 passed；scripts/quality_gate.py 全 18 步 PASS。
+  详见 docs/开发记录/验证记录/2026-08-17-multiformat-parsing-verification.md。
+
+### 5.2 入库可编排（对齐 IngestionEngine，不做完整 DAG）（✅ 已实现 2026-08-17）
 
 **参考 ragent**：
 - `rag/.../ingestion/engine/IngestionEngine.java`：`nodeMap` + `ConditionEvaluator` +
@@ -201,9 +244,26 @@ Provenance）、知识健康、版本化金标评测、文档级 ACL** 上深度
 **验收**：入库链路按配置执行节点、单步可重试、跳过某步不影响其余；旧配置（无
 pipeline_steps）兼容默认链路。
 
+**实现记录（2026-08-17）**：
+- frontend/product/services/ingestion_pipeline.py：NodeResult（ok/skip/fail/terminate）、
+  NodeConfig（node_id/node_type/settings/enabled/next_node_id）、IngestionContext、
+  validate_pipeline（非空/唯一 id/已注册类型/settings 对象/唯一 start/next 存在/无环/全可达/
+  恰一 Index 且 terminal 且不可禁用）、execute_chain/execute_node（异常统一归一化为 NodeResult.fail，
+  failure 保留 node_id/node_type/code/message/retryable）。
+- 节点：ParseNode（LoaderRegistry 路由校验）、ChunkNode（chunk_size 含 -1 整文档哨兵 + overlap 校验）、
+  EmbedNode（batch_size 校验）、IndexNode（唯一一次 load-files + 置 manifest，绝不直接改 job/document 终态）；
+  enabled=false 仅跳过本地校验，后端原子调用按默认执行。
+- models.py::IngestJob 加 pipeline_steps（JSON）+ pipeline_version；迁移 20260817_0022；
+  db.py::ensure_ingest_pipeline_columns（SQLite 旧库补列）。
+- documents.py：_pipeline_config_for_document（复用最近 job 配置）；create/process/finish/retry 接线——
+  process_* 统一经 execute_chain + _finalize_ingest 调一次 _finish_ingest_job；terminate 无 manifest 不视为成功；
+  failure_detail 保留节点级诊断；_load_document_into_backend 增 request_params 扩展点（端点契约确认前不透传）。
+- 验证：全量 pytest 1122 passed；scripts/quality_gate.py 全 18 步 PASS（alembic 升级至 0022）。
+  详见 docs/开发记录/验证记录/2026-08-17-ingestion-pipeline-verification.md。
+
 ---
 
-## 6. P3 v0.6 本地目录连接器 + 定时刷新（2-3 周）
+## 6. P3 v0.6 本地目录连接器 + 定时刷新（2-3 周）（✅ 已实现 2026-08-17）
 
 ### 参考 ragent
 - 源类型抽象：`rag/.../rag/core/retrieval/channel/SourceType.java` 枚举
@@ -237,9 +297,26 @@ pipeline_steps）兼容默认链路。
 **验收**：本地目录四条同步（initial/incremental/delete/permission）各有一条集成测试 +
 API e2e；调度幂等（锁丢失不重复处理）；完成即 v0.6 纵切闭环。
 
+**实现记录（2026-08-17）**：
+- frontend/product/connectors/：Connector 协议（list_items/fetch_item/detect_changes/
+  fetch_permissions）+ LocalDirectoryConnector（root.resolve()+相对路径防逃逸、symlink 默认不 follow、
+  mtime+size 候选筛选、sha256 最终判定）+ create_connector 注册表。
+- 身份模型：Document.connector_sync_id/external_id/connector_source/content_hash +
+  UNIQUE(connector_sync_id, external_id) + 上传去重改 partial unique（connector_sync_id IS NULL）；
+  IngestJob.source=connector + source_metadata（external_id/content_hash/replace_document_id）；
+  cursor 属 ConnectorSync；迁移 20260817_0023。
+- services/connector_sync.py：SyncLease（CAS acquire/renew/release）、validate_cron（5-field）/
+  compute_next_run（Asia/Shanghai、UTC 存储）、claim_due_sync、process_due_sync（changes→enqueue→
+  delete→permissions→run 状态机，lease-loss 逐阶段中止，next_run_at 成功才推进）。
+- ACL 走 additive-only（add_kb_member/set_kb_member_role + AuditContext）；SyncRun 与 IngestJob 状态解耦；
+  documents.py 旧 job content_hash 版本校验（DOCUMENT_STALE 丢弃）。
+- worker.py 增加 connector sync 轮询；routes.py 最小 API（创建/列表/trigger/runs）。
+- 验证：全量 pytest 1131 passed；scripts/quality_gate.py 全 18 步 PASS（alembic 升级至 0023）。
+  详见 docs/开发记录/验证记录/2026-08-17-connector-sync-verification.md。
+
 ---
 
-## 7. P4 运营管理后台（1-2 周）
+## 7. P4 运营管理后台（1-2 周）（✅ 已实现 2026-08-18）
 
 ### 参考 ragent
 - `rag/.../admin/controller/DashboardController.java` + `admin/service/DashboardService/
@@ -259,9 +336,22 @@ API e2e；调度幂等（锁丢失不重复处理）；完成即 v0.6 纵切闭�
 
 **验收**：admin 可见大盘且数字与 DB 一致；viewer/非管理员 403。
 
+**实现记录（2026-08-18）**：
+- frontend/product/services/dashboard.py：overview（统一 KpiVO {value,delta,delta_pct}，
+  24h delta、base==0→null；health_distribution 含 unknown、batch 取每 KB 最新快照无 N+1）+
+  trends（documents/messages/feedback 三系列，固定日历窗 days=7/30、空日补零、同日合并、UTC 分桶）。
+- API：GET /api/admin/dashboard/overview、GET /api/admin/dashboard/trends?days=7|30（require_admin；
+  非法 days 固定 422）。feedback 趋势 = 当前有效负反馈按首次创建日分布。
+- 前端：product-api.ts 类型+getDashboardOverview/getDashboardTrends；App.tsx /admin 概览页
+  （KPI 卡 + 健康分布 bar 含 unknown + 三系列趋势，days 切换），/admin/audit 旁导航链接。
+- 验证：全量 pytest 1142 passed；ruff/前端 typecheck+build/迁移绿；quality_gate 17/18 步 PASS，
+  git-diff-check 被用户 output/pdf PDF 变更误报（astextplain 文本化二进制，非 P4 引入）。
+- 顺带完成评估数据基准刷新（output/pdf 学习资料更新关联的 workspace_v2.json + 3 eval report 的 sha256）。
+  详见 docs/开发记录/验证记录/2026-08-18-operations-dashboard-verification.md。
+
 ---
 
-## 8. P5 流量治理（按需，不做不算缺口）
+## 8. P5 流量治理（按需，不做不算缺口）（✅ 已实现 2026-08-18）
 
 ### 参考 ragent
 - `rag/.../rag/service/ratelimit/FairDistributedRateLimiter.java`（494 行）：Redisson
@@ -285,6 +375,6 @@ API e2e；调度幂等（锁丢失不重复处理）；完成即 v0.6 纵切闭�
    禁止跳过参考直接写。
 2. 每阶段完成：跑 `scripts/quality_gate.py` 全量门禁（Python/前端/迁移/门禁），
    写 `docs/开发记录/验证记录/2026-XX-...md`，并把本文件该阶段状态改为"已实现"。
-3. 新增迁移必须走 Alembic 编号递增（当前 `20260816_0019`）。
+3. 新增迁移必须走 Alembic 编号递增（当前 head 为 `20260817_0023`）。
 4. 若 ragent 某能力在参考提交中未闭环（如 agent 模块只有 pom），不自行补强。
 5. 服务器相关操作默认目标 `root@47.96.40.156`（公网 IP 已更新，旧 118.178.234.18 已失效）。

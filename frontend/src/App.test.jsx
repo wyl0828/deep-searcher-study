@@ -36,6 +36,8 @@ const productApi = vi.hoisted(() => ({
   deleteConversation: vi.fn(),
   sendMessage: vi.fn(),
   streamMessage: vi.fn(),
+  submitMessageFeedback: vi.fn(),
+  cancelMessageFeedback: vi.fn(),
 }));
 
 const consoleApi = vi.hoisted(() => ({
@@ -1399,5 +1401,133 @@ it("索引不兼容时引导用户返回知识库处理", async () => {
 
   await waitFor(() => {
     expect(window.location.pathname).toBe(`/knowledge/${knowledgeBase.id}`);
+  });
+});
+
+it("点赞提交反馈到后端并再次点击取消", async () => {
+  const user = userEvent.setup();
+  productApi.submitMessageFeedback.mockResolvedValue({
+    feedback: { vote: 1, cancelled: false },
+  });
+  productApi.cancelMessageFeedback.mockResolvedValue(undefined);
+  window.history.pushState({}, "", "/chat/conv_1");
+  productApi.getConversation.mockResolvedValue({
+    id: "conv_1",
+    title: "反馈对话",
+    knowledge_base: knowledgeBase,
+    messages: [
+      {
+        id: "msg_user",
+        role: "user",
+        content: "这个问题重要吗？",
+        status: "succeeded",
+        answer_state: null,
+        created_at: knowledgeBase.created_at,
+        citations: [],
+      },
+      {
+        id: "msg_assistant",
+        role: "assistant",
+        content: "重要。",
+        status: "succeeded",
+        answer_state: "grounded",
+        created_at: knowledgeBase.created_at,
+        citations: [],
+      },
+    ],
+    created_at: knowledgeBase.created_at,
+    updated_at: knowledgeBase.updated_at,
+  });
+
+  render(<App />);
+
+  const helpful = await screen.findByRole("button", { name: "有帮助" });
+  await user.click(helpful);
+  expect(productApi.submitMessageFeedback).toHaveBeenCalledWith(
+    "conv_1",
+    "msg_assistant",
+    { vote: 1 },
+  );
+  await waitFor(() => {
+    expect(helpful).toHaveAttribute("aria-pressed", "true");
+  });
+
+  // Clicking the already-selected button cancels via DELETE.
+  await user.click(helpful);
+  expect(productApi.cancelMessageFeedback).toHaveBeenCalledWith(
+    "conv_1",
+    "msg_assistant",
+  );
+  await waitFor(() => {
+    expect(helpful).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+it("切换已选中的没帮助按钮提交 -1 反馈", async () => {
+  const user = userEvent.setup();
+  window.history.pushState({}, "", "/chat/conv_1");
+  productApi.getConversation.mockResolvedValue({
+    id: "conv_1",
+    title: "反馈对话",
+    knowledge_base: knowledgeBase,
+    messages: [
+      {
+        id: "msg_assistant",
+        role: "assistant",
+        content: "不重要。",
+        status: "succeeded",
+        answer_state: "grounded",
+        created_at: knowledgeBase.created_at,
+        citations: [],
+      },
+    ],
+    created_at: knowledgeBase.created_at,
+    updated_at: knowledgeBase.updated_at,
+  });
+
+  render(<App />);
+
+  const unhelpful = await screen.findByRole("button", { name: "没帮助" });
+  await user.click(unhelpful);
+  expect(productApi.submitMessageFeedback).toHaveBeenCalledWith(
+    "conv_1",
+    "msg_assistant",
+    { vote: -1 },
+  );
+  await waitFor(() => {
+    expect(unhelpful).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+it("重新加载后从 message.feedback 恢复点赞状态", async () => {
+  const user = userEvent.setup();
+  window.history.pushState({}, "", "/chat/conv_1");
+  productApi.getConversation.mockResolvedValue({
+    id: "conv_1",
+    title: "反馈恢复对话",
+    knowledge_base: knowledgeBase,
+    messages: [
+      {
+        id: "msg_assistant",
+        role: "assistant",
+        content: "有用。",
+        status: "succeeded",
+        answer_state: "grounded",
+        feedback: { vote: -1, cancelled: false },
+        created_at: knowledgeBase.created_at,
+        citations: [],
+      },
+    ],
+    created_at: knowledgeBase.created_at,
+    updated_at: knowledgeBase.updated_at,
+  });
+
+  render(<App />);
+
+  const helpful = await screen.findByRole("button", { name: "有帮助" });
+  const unhelpful = screen.getByRole("button", { name: "没帮助" });
+  await waitFor(() => {
+    expect(unhelpful).toHaveAttribute("aria-pressed", "true");
+    expect(helpful).toHaveAttribute("aria-pressed", "false");
   });
 });

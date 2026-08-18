@@ -18,12 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from deepsearcher.loader.file_loader.mime_type import normalize_extension
 from frontend.product.auth import require_admin
 from frontend.product.backend import backend_request_headers
 from frontend.product.db import SessionLocal, init_database, worker_is_ready
 from frontend.product.errors import ProductError
 from frontend.product.routes import router as product_router
-from frontend.product.services.documents import inspect_pdf_pages, stage_pdf_upload
+from frontend.product.services.documents import inspect_document_pages, stage_upload
 
 FRONTEND_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = FRONTEND_ROOT.parent
@@ -521,8 +522,11 @@ async def ingest(
 
     staged = None
     try:
-        staged = await stage_pdf_upload(file)
-        await inspect_pdf_pages(staged.path)
+        staged = await stage_upload(file)
+        await inspect_document_pages(
+            staged.path,
+            normalize_extension(staged.display_name),
+        )
         async with httpx.AsyncClient(
             timeout=180.0,
             trust_env=False,

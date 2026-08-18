@@ -19,6 +19,11 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from deepsearcher.loader.file_loader.mime_type import (
+    EXTENSION_FAMILY,
+    normalize_extension,
+    validate_upload,
+)
 from deepsearcher.versioning import normalize_version_family
 from frontend.product.backend import backend_request_headers
 from frontend.product.db import DATA_DIR, SessionLocal
@@ -26,6 +31,13 @@ from frontend.product.errors import ProductError
 from frontend.product.messaging import MessageDispatchError, dispatch_ingest_transaction
 from frontend.product.models import Document, IngestJob, KnowledgeBase, utcnow
 from frontend.product.repositories import create_ingest_job
+from frontend.product.services.ingestion_pipeline import (
+    STATUS_FAILED,
+    IngestionContext,
+    NodeFailure,
+    default_pipeline_steps,
+    execute_chain,
+)
 from frontend.product.storage import LocalObjectStorage, StorageError, get_object_storage
 
 BACKEND_URL = os.environ.get("DEEPSEARCHER_API_URL", "http://127.0.0.1:8500").rstrip("/")
@@ -70,6 +82,35 @@ class StagedUpload:
     display_name: str
     size_bytes: int
     sha256: str
+
+
+def _pipeline_config_for_document(
+    session: Session,
+    document: Document,
+) -> tuple[list[dict], str]:
+    """Reuse the latest job's pipeline config, else the default four-node chain."""
+    previous = session.scalar(
+        select(IngestJob)
+        .where(IngestJob.document_id == document.id)
+        .order_by(IngestJob.attempt.desc(), IngestJob.id.desc())
+        .limit(1)
+    )
+    if previous is not None and previous.pipeline_steps:
+        return list(previous.pipeline_steps), previous.pipeline_version or "1"
+    return default_pipeline_steps(), "1"
+
+
+def _connector_request_params(source_metadata: dict | None) -> dict:
+    """Translate connector job metadata into load-files request overrides.
+
+    Connector documents identify the replacement target by their stable
+    Document.id (not the content sha256 used by uploads).
+    """
+    params: dict = {}
+    replace_document_id = (source_metadata or {}).get("replace_document_id")
+    if replace_document_id:
+        params["replace_document_id"] = replace_document_id
+    return params
 
 
 def document_storage(document: Document):
@@ -156,14 +197,17 @@ def _safe_display_name(display_name: str) -> str:
     return filename[:255]
 
 
-def validate_pdf_metadata(display_name: str, content_type: str | None) -> str:
+def validate_document_metadata(display_name: str, content_type: str | None) -> str:
     safe_display_name = _safe_display_name(display_name)
     if not safe_display_name:
-        raise ProductError("DOCUMENT_NAME_INVALID", "PDF 文件名不能为空。")
-    if not safe_display_name.lower().endswith(".pdf"):
-        raise ProductError("DOCUMENT_UNSUPPORTED_TYPE", "目前仅支持上传 PDF 文件。")
-    if content_type not in {None, "", "application/pdf", "application/octet-stream"}:
-        raise ProductError("DOCUMENT_UNSUPPORTED_TYPE", "目前仅支持上传 PDF 文件。")
+        raise ProductError("DOCUMENT_NAME_INVALID", "文件名不能为空。")
+    extension = normalize_extension(safe_display_name)
+    if not extension or extension not in EXTENSION_FAMILY:
+        raise ProductError(
+            "DOCUMENT_UNSUPPORTED_TYPE",
+            f"不支持的文件类型: .{extension or 'unknown'}",
+            status_code=415,
+        )
     return safe_display_name
 
 
@@ -208,8 +252,8 @@ def _dispatch_ingest_or_mark_failed(
         ) from exc
 
 
-async def stage_pdf_upload(file: UploadFile) -> StagedUpload:
-    display_name = validate_pdf_metadata(file.filename or "document.pdf", file.content_type)
+async def stage_upload(file: UploadFile) -> StagedUpload:
+    display_name = validate_document_metadata(file.filename or "document.pdf", file.content_type)
     staging_dir = UPLOAD_DIR / ".staging"
     _make_private_directory(staging_dir)
     staging_path = staging_dir / f"{secrets.token_hex(24)}.part"
@@ -227,7 +271,7 @@ async def stage_pdf_upload(file: UploadFile) -> StagedUpload:
                 if size_bytes > MAX_PDF_BYTES:
                     raise ProductError(
                         "DOCUMENT_TOO_LARGE",
-                        f"PDF 文件不能超过 {MAX_PDF_BYTES // (1024 * 1024)} MiB。",
+                        f"文件不能超过 {MAX_PDF_BYTES // (1024 * 1024)} MiB。",
                         status_code=413,
                     )
                 if len(prefix) < 5:
@@ -237,9 +281,11 @@ async def stage_pdf_upload(file: UploadFile) -> StagedUpload:
             destination.flush()
             os.fsync(destination.fileno())
         if size_bytes == 0:
-            raise ProductError("DOCUMENT_EMPTY", "PDF 文件不能为空。")
-        if bytes(prefix) != b"%PDF-":
-            raise ProductError("DOCUMENT_INVALID_PDF", "所选文件不是有效的 PDF。")
+            raise ProductError("DOCUMENT_EMPTY", "文件不能为空。")
+        try:
+            validate_upload(staging_path, display_name)
+        except ValueError as exc:
+            raise ProductError("DOCUMENT_INVALID_CONTENT", str(exc), status_code=415) from exc
         return StagedUpload(
             path=staging_path,
             display_name=display_name,
@@ -332,6 +378,41 @@ def _enforce_storage_quota(
         )
 
 
+def _inspect_xlsx_sheets(path: Path) -> int:
+    """Visible worksheet count, using the same rule as ExcelLoader."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    # Staging files carry a .part suffix; openpyxl validates by extension, so
+    # feed the bytes through a file-like object instead.
+    workbook = load_workbook(BytesIO(path.read_bytes()), read_only=True, data_only=True)
+    try:
+        return sum(
+            1 for sheet in workbook.worksheets if sheet.sheet_state not in {"hidden", "veryHidden"}
+        )
+    finally:
+        workbook.close()
+
+
+def _inspect_pptx_slides(path: Path) -> int:
+    from pptx import Presentation
+
+    return len(Presentation(str(path)).slides)
+
+
+async def inspect_document_pages(path: Path, extension: str) -> int:
+    """Page-count semantics per format: pdf=pages, xlsx=visible sheets,
+    pptx=slides, everything else (images and plain/office text) = 1."""
+    if extension == "pdf":
+        return await inspect_pdf_pages(path)
+    if extension == "xlsx":
+        return _inspect_xlsx_sheets(path)
+    if extension == "pptx":
+        return _inspect_pptx_slides(path)
+    return 1
+
+
 async def create_document_from_upload(
     session: Session,
     *,
@@ -348,11 +429,14 @@ async def create_document_from_upload(
         superseded_at=superseded_at,
     )
     normalized_version_family = validate_document_version_family(version_family)
-    staged = await stage_pdf_upload(file)
+    staged = await stage_upload(file)
     stored_key: str | None = None
     storage = get_object_storage(local_root=UPLOAD_DIR)
     try:
-        page_count = await inspect_pdf_pages(staged.path)
+        page_count = await inspect_document_pages(
+            staged.path,
+            normalize_extension(staged.display_name),
+        )
         _enforce_storage_quota(
             session,
             knowledge_base=knowledge_base,
@@ -401,7 +485,10 @@ async def create_document_from_upload(
         document.storage_key = stored_key
         # Keep the legacy field populated while callers migrate to storage_key.
         document.storage_path = stored_key
-        job = create_ingest_job(session, document)
+        steps, pipeline_version = _pipeline_config_for_document(session, document)
+        job = create_ingest_job(
+            session, document, pipeline_steps=steps, pipeline_version=pipeline_version
+        )
         job.max_retries = INGEST_MAX_RETRIES
         session.commit()
         session.refresh(document)
@@ -559,6 +646,7 @@ async def _load_document_into_backend(
     *,
     document: Document,
     knowledge_base: KnowledgeBase,
+    request_params: dict | None = None,
 ) -> dict:
     try:
         with document_storage(document).materialize(document_object_key(document)) as source_path:
@@ -567,15 +655,18 @@ async def _load_document_into_backend(
                 trust_env=False,
                 headers=backend_request_headers(),
             ) as client:
+                payload = {
+                    "paths": str(source_path),
+                    "collection_name": knowledge_base.collection_name,
+                    "batch_size": EMBEDDING_BATCH_SIZE,
+                    "replace_document_id": document.sha256,
+                    "document_metadata": document_governance_payload(document),
+                }
+                if request_params:
+                    payload.update(request_params)
                 response = await client.post(
                     f"{BACKEND_URL}/load-files/",
-                    json={
-                        "paths": str(source_path),
-                        "collection_name": knowledge_base.collection_name,
-                        "batch_size": EMBEDDING_BATCH_SIZE,
-                        "replace_document_id": document.sha256,
-                        "document_metadata": document_governance_payload(document),
-                    },
+                    json=payload,
                 )
     except FileNotFoundError as exc:
         raise IngestProcessingError("DOCUMENT_CONTENT_MISSING", retryable=False) from exc
@@ -616,6 +707,7 @@ def _finish_ingest_job(
     worker_id: str,
     manifest: dict | None = None,
     failure: IngestProcessingError | None = None,
+    failure_detail: dict | None = None,
 ) -> None:
     with SessionLocal() as session:
         job = session.get(IngestJob, job_id)
@@ -628,6 +720,12 @@ def _finish_ingest_job(
         if knowledge_base is None:
             return
         now = utcnow()
+        detail_text = None
+        if failure_detail:
+            try:
+                detail_text = json.dumps(failure_detail, ensure_ascii=False)[:280]
+            except (TypeError, ValueError):
+                detail_text = None
         job.lease_owner = None
         job.lease_expires_at = None
         if failure is None and manifest is not None:
@@ -655,20 +753,57 @@ def _finish_ingest_job(
             job.status = "queued"
             job.available_at = now + timedelta(seconds=delay)
             job.error_code = failure.code
-            job.error_message = "文档处理暂时失败，任务已进入重试队列。"
+            job.error_message = detail_text or "文档处理暂时失败，任务已进入重试队列。"
             job.finished_at = None
         else:
             document.status = "failed"
             document.error_code = (
                 failure.code if failure is not None else "DOCUMENT_PROCESSING_FAILED"
             )
-            document.error_message = "文档处理失败，请确认文件和问答服务状态后重试。"
+            document.error_message = detail_text or "文档处理失败，请确认文件和问答服务状态后重试。"
             job.status = "dead_letter"
             job.error_code = document.error_code
             job.error_message = document.error_message
             job.finished_at = now
         knowledge_base.updated_at = now
         session.commit()
+
+
+def _finalize_ingest(
+    context: IngestionContext,
+    *,
+    job_id: str,
+    worker_id: str,
+) -> None:
+    """Single owner of _finish_ingest_job after a pipeline run (P2-B).
+
+    Nodes never mutate job/document final state; lifecycle success requires
+    context.manifest to have been produced.
+    """
+    if context.manifest is not None:
+        _finish_ingest_job(job_id=job_id, worker_id=worker_id, manifest=context.manifest)
+        return
+    if context.failure is not None:
+        _finish_ingest_job(
+            job_id=job_id,
+            worker_id=worker_id,
+            failure=IngestProcessingError(
+                context.failure.code,
+                retryable=context.failure.retryable,
+            ),
+            failure_detail=context.failure.to_dict(),
+        )
+        return
+    # Terminated (or completed) without a manifest is NOT a successful ingestion.
+    _finish_ingest_job(
+        job_id=job_id,
+        worker_id=worker_id,
+        failure=IngestProcessingError("DOCUMENT_PROCESSING_INCOMPLETE", retryable=False),
+        failure_detail={
+            "code": "DOCUMENT_PROCESSING_INCOMPLETE",
+            "message": "流水线未产生入库结果",
+        },
+    )
 
 
 async def process_claimed_ingest_job(job_id: str, *, worker_id: str) -> None:
@@ -682,26 +817,39 @@ async def process_claimed_ingest_job(job_id: str, *, worker_id: str) -> None:
         knowledge_base = session.get(KnowledgeBase, document.knowledge_base_id)
         if knowledge_base is None:
             return
+        steps = list(job.pipeline_steps) if job.pipeline_steps else None
+        source_metadata = dict(job.source_metadata or {})
+        expected_hash = source_metadata.get("content_hash")
+        if expected_hash and document.content_hash != expected_hash:
+            # A stale enqueued job (the source was updated/deleted since) must not
+            # re-index old bytes; drop it without touching the current document.
+            job.status = "dead_letter"
+            job.error_code = "DOCUMENT_STALE"
+            job.error_message = "源文档版本已更新，旧入库任务已丢弃。"
+            job.finished_at = utcnow()
+            session.commit()
+            return
         session.expunge(document)
         session.expunge(knowledge_base)
+    context = IngestionContext(
+        job=job,
+        document=document,
+        knowledge_base=knowledge_base,
+        steps=steps or default_pipeline_steps(),
+        request_params=_connector_request_params(source_metadata),
+    )
     try:
-        manifest = await _load_document_into_backend(
-            document=document,
-            knowledge_base=knowledge_base,
+        await execute_chain(context)
+    except Exception as exc:
+        context.status = STATUS_FAILED
+        context.failure = context.failure or NodeFailure(
+            node_id="chain",
+            node_type="pipeline",
+            code="PIPELINE_UNEXPECTED",
+            message=str(exc),
+            retryable=True,
         )
-    except IngestProcessingError as exc:
-        _finish_ingest_job(job_id=job_id, worker_id=worker_id, failure=exc)
-    except Exception:
-        _finish_ingest_job(
-            job_id=job_id,
-            worker_id=worker_id,
-            failure=IngestProcessingError(
-                "DOCUMENT_PROCESSING_UNEXPECTED",
-                retryable=True,
-            ),
-        )
-    else:
-        _finish_ingest_job(job_id=job_id, worker_id=worker_id, manifest=manifest)
+    _finalize_ingest(context, job_id=job_id, worker_id=worker_id)
 
 
 async def process_rocketmq_ingest_job(
@@ -742,21 +890,45 @@ async def process_rocketmq_ingest_job(
         job.started_at = now
         max_retries = job.max_retries
         session.commit()
+        steps = list(job.pipeline_steps) if job.pipeline_steps else None
+        source_metadata = dict(job.source_metadata or {})
+        expected_hash = source_metadata.get("content_hash")
+        if expected_hash and document.content_hash != expected_hash:
+            job.status = "dead_letter"
+            job.error_code = "DOCUMENT_STALE"
+            job.error_message = "源文档版本已更新，旧入库任务已丢弃。"
+            job.finished_at = utcnow()
+            session.commit()
+            return True
         session.expunge(document)
         session.expunge(knowledge_base)
+    context = IngestionContext(
+        job=job,
+        document=document,
+        knowledge_base=knowledge_base,
+        steps=steps or default_pipeline_steps(),
+        request_params=_connector_request_params(source_metadata),
+    )
     try:
-        manifest = await _load_document_into_backend(
-            document=document,
-            knowledge_base=knowledge_base,
+        await execute_chain(context)
+    except Exception as exc:
+        context.status = STATUS_FAILED
+        context.failure = context.failure or NodeFailure(
+            node_id="chain",
+            node_type="pipeline",
+            code="PIPELINE_UNEXPECTED",
+            message=str(exc),
+            retryable=True,
         )
-    except IngestProcessingError as exc:
-        failure = exc
-    except Exception:
-        failure = IngestProcessingError("DOCUMENT_PROCESSING_UNEXPECTED", retryable=True)
-    else:
-        _finish_ingest_job(job_id=job_id, worker_id=worker_id, manifest=manifest)
+
+    if context.manifest is not None:
+        _finish_ingest_job(job_id=job_id, worker_id=worker_id, manifest=context.manifest)
         return True
 
+    failure = IngestProcessingError(
+        context.failure.code if context.failure is not None else "DOCUMENT_PROCESSING_INCOMPLETE",
+        retryable=context.failure.retryable if context.failure is not None else False,
+    )
     if failure.retryable and delivery_attempt < max_retries:
         with SessionLocal() as session:
             current_job = session.get(IngestJob, job_id)
@@ -775,7 +947,12 @@ async def process_rocketmq_ingest_job(
                 session.commit()
         return False
 
-    _finish_ingest_job(job_id=job_id, worker_id=worker_id, failure=failure)
+    _finish_ingest_job(
+        job_id=job_id,
+        worker_id=worker_id,
+        failure=failure,
+        failure_detail=context.failure.to_dict() if context.failure is not None else None,
+    )
     return True
 
 
@@ -802,7 +979,13 @@ def retry_document(session: Session, document: Document) -> IngestJob:
     document.status = "queued"
     document.error_code = None
     document.error_message = None
-    job = create_ingest_job(session, document)
+    steps, pipeline_version = _pipeline_config_for_document(session, document)
+    job = create_ingest_job(
+        session,
+        document,
+        pipeline_steps=steps,
+        pipeline_version=pipeline_version,
+    )
     job.max_retries = INGEST_MAX_RETRIES
     session.commit()
     session.refresh(job)
@@ -846,7 +1029,10 @@ def update_document_temporal_metadata(
         document.status = "queued"
         document.error_code = None
         document.error_message = None
-        job = create_ingest_job(session, document)
+        steps, pipeline_version = _pipeline_config_for_document(session, document)
+        job = create_ingest_job(
+            session, document, pipeline_steps=steps, pipeline_version=pipeline_version
+        )
         job.max_retries = INGEST_MAX_RETRIES
     document.knowledge_base.updated_at = utcnow()
     session.commit()
@@ -905,7 +1091,10 @@ def update_document_governance_metadata(
         document.status = "queued"
         document.error_code = None
         document.error_message = None
-        job = create_ingest_job(session, document)
+        steps, pipeline_version = _pipeline_config_for_document(session, document)
+        job = create_ingest_job(
+            session, document, pipeline_steps=steps, pipeline_version=pipeline_version
+        )
         job.max_retries = INGEST_MAX_RETRIES
     document.knowledge_base.updated_at = utcnow()
     session.commit()

@@ -125,7 +125,7 @@ provide_settings:
     #   model: "BAAI/bge-large-zh-v1.5"
 
   file_loader:
-    provider: "PDFLoader"
+    provider: "LoaderRegistry"
     config: {}
 
 #    provider: "JsonFileLoader"

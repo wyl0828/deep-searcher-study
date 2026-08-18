@@ -3,7 +3,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   type QueryStageEvent,
   ProductApiError,
+  cancelMessageFeedback,
   streamMessage,
+  submitMessageFeedback,
 } from "./product-api";
 
 const encoder = new TextEncoder();
@@ -103,4 +105,40 @@ it("把流式错误转换成稳定的 ProductApiError", async () => {
     requestId: "request-error-1",
     message: "向量检索服务暂时不可用，请稍后重试。",
   } satisfies Partial<ProductApiError>);
+});
+
+it("提交消息反馈调用 POST 并返回反馈状态", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ feedback: { vote: 1, cancelled: false } }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const result = await submitMessageFeedback("conversation-1", "message-1", {
+    vote: 1,
+  });
+
+  expect(result).toEqual({ feedback: { vote: 1, cancelled: false } });
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/conversations/conversation-1/messages/message-1/feedback",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ vote: 1 }),
+    }),
+  );
+});
+
+it("取消消息反馈调用 DELETE", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({}),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await cancelMessageFeedback("conversation-1", "message-1");
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/conversations/conversation-1/messages/message-1/feedback",
+    expect.objectContaining({ method: "DELETE" }),
+  );
 });

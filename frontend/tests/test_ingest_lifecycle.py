@@ -82,7 +82,7 @@ def test_streaming_limit_stops_oversized_upload_and_removes_staging_file(
     monkeypatch.setattr(documents, "MAX_PDF_BYTES", 8)
 
     with pytest.raises(ProductError) as exc_info:
-        asyncio.run(documents.stage_pdf_upload(upload_file(b"%PDF-123456789")))
+        asyncio.run(documents.stage_upload(upload_file(b"%PDF-123456789")))
 
     assert exc_info.value.code == "DOCUMENT_TOO_LARGE"
     assert not list(upload_root.joinpath(".staging").glob("*.part"))
@@ -108,7 +108,7 @@ def test_upload_reader_is_consumed_in_fixed_size_chunks(tmp_path, monkeypatch):
             return chunk
 
     upload = TrackingUpload()
-    staged = asyncio.run(documents.stage_pdf_upload(upload))
+    staged = asyncio.run(documents.stage_upload(upload))
     try:
         assert staged.size_bytes == len(payload)
         assert upload.requested_sizes == [

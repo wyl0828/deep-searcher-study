@@ -12,12 +12,14 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     event,
     select,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -259,6 +261,10 @@ class KnowledgeBase(TimestampMixin, Base):
 
     owner: Mapped[User] = relationship(back_populates="knowledge_bases")
     workspace: Mapped[Workspace] = relationship(back_populates="knowledge_bases")
+    connector_syncs: Mapped[list["ConnectorSync"]] = relationship(
+        back_populates="knowledge_base",
+        cascade="all, delete-orphan",
+    )
     documents: Mapped[list["Document"]] = relationship(
         back_populates="knowledge_base", cascade="all, delete-orphan"
     )
@@ -273,10 +279,21 @@ class KnowledgeBase(TimestampMixin, Base):
 class Document(TimestampMixin, Base):
     __tablename__ = "documents"
     __table_args__ = (
-        UniqueConstraint(
+        # Upload deduplication is per (knowledge_base_id, sha256) for uploads only;
+        # connector-managed documents are identified by (connector_sync_id, external_id)
+        # and may share content (sha256) across different source files.
+        Index(
+            "uq_documents_knowledge_base_sha256",
             "knowledge_base_id",
             "sha256",
-            name="uq_documents_knowledge_base_sha256",
+            unique=True,
+            sqlite_where=text("connector_sync_id IS NULL"),
+            postgresql_where=text("connector_sync_id IS NULL"),
+        ),
+        UniqueConstraint(
+            "connector_sync_id",
+            "external_id",
+            name="uq_documents_connector_external",
         ),
     )
 
@@ -303,6 +320,10 @@ class Document(TimestampMixin, Base):
     temporal_metadata_source: Mapped[str | None] = mapped_column(String(32))
     version_family: Mapped[str | None] = mapped_column(String(128), index=True)
     version_family_source: Mapped[str | None] = mapped_column(String(32))
+    connector_sync_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    connector_source: Mapped[str | None] = mapped_column(String(32), index=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
 
     knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="documents")
     jobs: Mapped[list["IngestJob"]] = relationship(
@@ -332,6 +353,10 @@ class IngestJob(TimestampMixin, Base):
     error_message: Mapped[str | None] = mapped_column(String(300))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pipeline_steps: Mapped[list[dict] | None] = mapped_column(JSON)
+    pipeline_version: Mapped[str | None] = mapped_column(String(16))
+    source: Mapped[str | None] = mapped_column(String(16))
+    source_metadata: Mapped[dict | None] = mapped_column(JSON)
 
     document: Mapped[Document] = relationship(back_populates="jobs")
 
@@ -426,6 +451,10 @@ class Message(TimestampMixin, Base):
         back_populates="message",
         cascade="all, delete-orphan",
         order_by="AnswerClaim.index",
+    )
+    feedback_records: Mapped[list["MessageFeedback"]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
     )
 
 
@@ -589,3 +618,99 @@ class OperationAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
     )
+
+
+class MessageFeedback(TimestampMixin, Base):
+    """User vote on one assistant message (P1-4.2, aligned with ragent MessageFeedbackDO).
+
+    One row per (user_id, message_id). vote is NULL when the feedback was
+    cancelled. The conversation is reached through message -> conversation, so
+    no denormalized conversation_id is stored.
+    """
+
+    __tablename__ = "message_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "message_id",
+            name="uq_message_feedback_user_message",
+        ),
+        CheckConstraint(
+            "vote IS NULL OR vote IN (-1, 1)",
+            name="ck_message_feedback_vote",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("fb"))
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    vote: Mapped[int | None] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(String(300))
+    comment: Mapped[str | None] = mapped_column(Text)
+    cancelled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    message: Mapped[Message] = relationship(back_populates="feedback_records")
+
+
+class ConnectorSync(TimestampMixin, Base):
+    """Source sync schedule + DB lease (aligned with KnowledgeDocumentScheduleDO)."""
+
+    __tablename__ = "connector_syncs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("cs"))
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False)
+    cron: Mapped[str] = mapped_column(String(64), nullable=False)
+    cursor: Mapped[dict | None] = mapped_column(JSON)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    lock_owner: Mapped[str | None] = mapped_column(String(80))
+    lock_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="connector_syncs")
+    runs: Mapped[list["ConnectorSyncRun"]] = relationship(
+        back_populates="sync",
+        cascade="all, delete-orphan",
+    )
+
+
+class ConnectorSyncRun(TimestampMixin, Base):
+    """One sync execution record (aligned with KnowledgeDocumentScheduleExecDO).
+
+    status=success means the source scan and enqueue of incremental ingest jobs
+    were submitted; it does NOT mean every IngestJob finished indexing.
+    """
+
+    __tablename__ = "connector_sync_runs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("csr"))
+    sync_id: Mapped[str] = mapped_column(
+        ForeignKey("connector_syncs.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="running", nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    added: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    deleted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    enqueue_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(300))
+
+    sync: Mapped[ConnectorSync] = relationship(back_populates="runs")

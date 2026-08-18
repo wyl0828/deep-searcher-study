@@ -27,6 +27,8 @@ from frontend.product.db import get_session
 from frontend.product.errors import ProductError
 from frontend.product.models import (
     LEGACY_OWNER_ID,
+    ConnectorSync,
+    ConnectorSyncRun,
     Conversation,
     Document,
     IngestJob,
@@ -34,6 +36,7 @@ from frontend.product.models import (
     Message,
     User,
     Workspace,
+    utcnow,
 )
 from frontend.product.repositories import (
     create_knowledge_base,
@@ -44,6 +47,7 @@ from frontend.product.repositories import (
 from frontend.product.schemas import (
     AuthLogin,
     AuthSetup,
+    ConnectorSyncCreate,
     ConversationCreate,
     DocumentGovernanceUpdate,
     DocumentTemporalUpdate,
@@ -55,6 +59,7 @@ from frontend.product.schemas import (
     MemberGroupCreate,
     MemberGroupRoleUpdate,
     MessageCreate,
+    MessageFeedbackCreate,
     MessageResponse,
     UserCreate,
     WorkspaceCreate,
@@ -87,13 +92,28 @@ from frontend.product.services.access import (
     workspace_response,
 )
 from frontend.product.services.audit import page_audit_logs, record_operation
+from frontend.product.services.connector_sync import (
+    compute_next_run,
+    validate_cron,
+)
 from frontend.product.services.conversations import stream_message_events, submit_message
+from frontend.product.services.dashboard import (
+    overview as dashboard_overview,
+)
+from frontend.product.services.dashboard import (
+    trends as dashboard_trends,
+)
 from frontend.product.services.documents import (
     create_document_from_upload,
     delete_document,
     retry_document,
     update_document_governance_metadata,
     update_document_temporal_metadata,
+)
+from frontend.product.services.feedback import (
+    cancel_message_feedback,
+    get_feedback_map,
+    submit_message_feedback,
 )
 from frontend.product.services.knowledge_bases import (
     delete_knowledge_base,
@@ -401,8 +421,10 @@ def ingest_job_response(job: IngestJob) -> dict:
     }
 
 
-def message_response(message: Message) -> dict:
-    return MessageResponse.model_validate(message).model_dump(mode="json")
+def message_response(message: Message, feedback: dict | None = None) -> dict:
+    data = MessageResponse.model_validate(message).model_dump(mode="json")
+    data["feedback"] = feedback
+    return data
 
 
 def _sse_message(envelope: dict) -> str:
@@ -1190,11 +1212,19 @@ def conversation_detail(
         conversation.knowledge_base_id,
         "read",
     )
+    feedback_map = get_feedback_map(
+        session,
+        user_id=user.id,
+        message_ids=[message.id for message in conversation.messages],
+    )
     return {
         "id": conversation.id,
         "title": conversation.title,
         "knowledge_base": knowledge_base_detail(session, conversation.knowledge_base),
-        "messages": [message_response(message) for message in conversation.messages],
+        "messages": [
+            message_response(message, feedback_map.get(message.id))
+            for message in conversation.messages
+        ],
         "created_at": conversation.created_at,
         "updated_at": conversation.updated_at,
     }
@@ -1299,3 +1329,236 @@ async def stream_message(
             "X-Trace-Retention": "transient",
         },
     )
+
+
+def _feedback_target(
+    session: Session,
+    *,
+    conversation_id: str,
+    message_id: str,
+    user: User,
+) -> Message:
+    """Resolve and validate the feedback target (loadAssistantMessage equivalent).
+
+    Error semantics are fixed: an unknown or foreign conversation is a 404, an
+    unknown message inside the conversation is a 404 (conversation is resolved
+    first so message existence is never probed across conversations), and only
+    assistant messages are feedback targets (400).
+    """
+    conversation = get_conversation(session, conversation_id, user.id)
+    if conversation is None:
+        raise ProductError(
+            "CONVERSATION_NOT_FOUND",
+            "没有找到这个对话。",
+            status_code=404,
+        )
+    require_accessible_knowledge_base(
+        session,
+        user,
+        conversation.knowledge_base_id,
+        "read",
+    )
+    message = next(
+        (candidate for candidate in conversation.messages if candidate.id == message_id),
+        None,
+    )
+    if message is None:
+        raise ProductError(
+            "MESSAGE_NOT_FOUND",
+            "没有找到这条消息。",
+            status_code=404,
+        )
+    if message.role != "assistant":
+        raise ProductError(
+            "INVALID_FEEDBACK_TARGET",
+            "仅支持对助手消息反馈。",
+            status_code=400,
+        )
+    return message
+
+
+@router.post("/conversations/{conversation_id}/messages/{message_id}/feedback")
+def submit_message_feedback_route(
+    conversation_id: str,
+    message_id: str,
+    payload: MessageFeedbackCreate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    message = _feedback_target(
+        session,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        user=user,
+    )
+    feedback = submit_message_feedback(
+        session,
+        user_id=user.id,
+        message_id=message.id,
+        vote=payload.vote,
+        reason=payload.reason,
+        comment=payload.comment,
+    )
+    session.commit()
+    return {
+        "feedback": {
+            "vote": feedback.vote,
+            "cancelled": feedback.cancelled,
+        }
+    }
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}/feedback",
+    status_code=204,
+)
+def cancel_message_feedback_route(
+    conversation_id: str,
+    message_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    message = _feedback_target(
+        session,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        user=user,
+    )
+    cancel_message_feedback(session, user_id=user.id, message_id=message.id)
+    session.commit()
+    return Response(status_code=204)
+
+
+# ---- v0.6 connector sync API ----
+
+
+@router.post("/knowledge-bases/{knowledge_base_id}/connector-syncs", status_code=201)
+def create_connector_sync_route(
+    knowledge_base_id: str,
+    payload: ConnectorSyncCreate,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
+    validate_cron(payload.cron)
+    sync = ConnectorSync(
+        knowledge_base_id=knowledge_base_id,
+        source_type=payload.source_type,
+        config=payload.config,
+        cron=payload.cron,
+        status="active",
+        next_run_at=compute_next_run(payload.cron, utcnow()),
+    )
+    session.add(sync)
+    session.commit()
+    session.refresh(sync)
+    return {
+        "id": sync.id,
+        "source_type": sync.source_type,
+        "cron": sync.cron,
+        "status": sync.status,
+        "next_run_at": sync.next_run_at,
+    }
+
+
+@router.get("/knowledge-bases/{knowledge_base_id}/connector-syncs")
+def list_connector_syncs_route(
+    knowledge_base_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
+    items = session.scalars(
+        select(ConnectorSync).where(ConnectorSync.knowledge_base_id == knowledge_base_id)
+    ).all()
+    return {
+        "items": [
+            {
+                "id": sync.id,
+                "source_type": sync.source_type,
+                "cron": sync.cron,
+                "status": sync.status,
+                "next_run_at": sync.next_run_at,
+            }
+            for sync in items
+        ],
+    }
+
+
+@router.post("/knowledge-bases/{knowledge_base_id}/connector-syncs/{sync_id}/trigger")
+def trigger_connector_sync_route(
+    knowledge_base_id: str,
+    sync_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "write")
+    sync = session.get(ConnectorSync, sync_id)
+    if sync is None or sync.knowledge_base_id != knowledge_base_id:
+        raise ProductError("CONNECTOR_SYNC_NOT_FOUND", "没有找到这个连接器同步。", status_code=404)
+    sync.next_run_at = utcnow()
+    session.commit()
+    return {"triggered": True, "id": sync.id}
+
+
+@router.get("/knowledge-bases/{knowledge_base_id}/connector-syncs/{sync_id}/runs")
+def connector_sync_runs_route(
+    knowledge_base_id: str,
+    sync_id: str,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    require_accessible_knowledge_base(session, user, knowledge_base_id, "read")
+    sync = session.get(ConnectorSync, sync_id)
+    if sync is None or sync.knowledge_base_id != knowledge_base_id:
+        raise ProductError("CONNECTOR_SYNC_NOT_FOUND", "没有找到这个连接器同步。", status_code=404)
+    runs = session.scalars(
+        select(ConnectorSyncRun)
+        .where(ConnectorSyncRun.sync_id == sync_id)
+        .order_by(ConnectorSyncRun.created_at.desc())
+        .limit(50)
+    ).all()
+    return {
+        "items": [
+            {
+                "id": run.id,
+                "status": run.status,
+                "scheduled_for": run.scheduled_for,
+                "started_at": run.started_at,
+                "finished_at": run.finished_at,
+                "added": run.added,
+                "updated": run.updated,
+                "deleted": run.deleted,
+                "skipped": run.skipped,
+                "enqueue_failed": run.enqueue_failed,
+                "error_message": run.error_message,
+            }
+            for run in runs
+        ],
+    }
+
+
+# ---- P4 admin dashboard ----
+
+
+@router.get("/admin/dashboard/overview")
+def admin_dashboard_overview_route(
+    _admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    return dashboard_overview(session)
+
+
+@router.get("/admin/dashboard/trends")
+def admin_dashboard_trends_route(
+    days: int = Query(7),
+    _admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    if days not in (7, 30):
+        raise ProductError(
+            "DASHBOARD_INVALID_DAYS",
+            "days 必须是 7 或 30。",
+            status_code=422,
+        )
+    return dashboard_trends(session, days=days)

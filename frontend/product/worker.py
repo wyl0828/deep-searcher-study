@@ -19,6 +19,10 @@ from frontend.product.db import (  # noqa: E402
     record_worker_heartbeat,
     recover_interrupted_work,
 )
+from frontend.product.services.connector_sync import (  # noqa: E402
+    claim_due_sync,
+    process_due_sync,
+)
 from frontend.product.services.documents import (  # noqa: E402
     claim_next_ingest_job,
     process_claimed_ingest_job,
@@ -89,6 +93,21 @@ async def run_worker(*, once: bool = False) -> None:
                     )
                 else:
                     logger.info("ingest_job_finished job_id=%s", job_id)
+                if once:
+                    return
+                continue
+            with SessionLocal() as session:
+                sync_id = claim_due_sync(session, worker_id=worker_id)
+            if sync_id is not None:
+                logger.info("connector_sync_started sync_id=%s", sync_id)
+                try:
+                    await process_due_sync(sync_id, worker_id=worker_id)
+                except Exception as exc:
+                    logger.error(
+                        "connector_sync_unhandled_error sync_id=%s exception_type=%s",
+                        sync_id,
+                        type(exc).__name__,
+                    )
                 if once:
                     return
                 continue

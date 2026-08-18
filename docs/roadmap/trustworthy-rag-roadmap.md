@@ -241,16 +241,18 @@ Retriever、Rerank、Cache、Trace 和 Agent Tool 均不得接触未授权证据
 | --- | --- | --- |
 | P0 收尾验证（多实例故障切换六场景 + Chat 双 Provider fallback） | ✅ 已验证 2026-08-16 | `../开发记录/验证记录/2026-08-16-failover-verification.md` |
 | P1-4.1 操作审计（BizChangeLog 等价：OperationAuditLog + /api/admin/audit-logs） | ✅ 已实现 2026-08-16 | `../开发记录/验证记录/2026-08-16-operation-audit-verification.md` |
-| P1-4.2 用户反馈闭环（MessageFeedback 点赞/点踩） | ⬜ 待实施 | — |
-| P2 企业文档能力（多格式解析/分块 + 可编排入库） | ⬜ 待实施 | — |
-| P3 v0.6 连接器（本地目录 + 定时刷新） | ⬜ 待实施 | — |
-| P4 运营大盘（Dashboard） | ⬜ 待实施 | — |
-| P5 流量治理（按需，Redis 公平排队） | ⬜ 按需启动 | — |
+| P1-4.2 用户反馈闭环（MessageFeedback 点赞/点踩） | ✅ 已实现 2026-08-17 | `../开发记录/验证记录/2026-08-17-message-feedback-verification.md` |
+| P2 企业文档能力（多格式解析/分块 + 可编排入库） | ✅ 已实现 2026-08-17 | `../开发记录/验证记录/2026-08-17-multiformat-parsing-verification.md`、`../开发记录/验证记录/2026-08-17-ingestion-pipeline-verification.md` |
+| P3 v0.6 连接器（本地目录 + 定时刷新） | ✅ 首个连接器纵切已实现 2026-08-17 | `../开发记录/验证记录/2026-08-17-connector-sync-verification.md` |
+| P4 运营大盘（Dashboard） | ✅ 已实现 2026-08-18 | ../开发记录/验证记录/2026-08-18-operations-dashboard-verification.md |
+| P5 流量治理（Redis 公平排队限流） | ✅ 已实现 2026-08-18（按需启动） | ../开发记录/验证记录/2026-08-18-distributed-ratelimit-verification.md |
 
 ## v0.6 Enterprise Connect
 
-只优先实现两个完整连接器：本地目录/SMB/NAS，以及一个企业协作数据源。每个连接器必须
-同时完成 Initial Sync、Incremental Sync、Delete Sync 和 Permission Sync。
+本地目录/SMB 挂载已完成第一个完整连接器纵切：Initial、Incremental、Delete 和 Permission
+Sync 都由 `LocalDirectoryConnector` + DB 租约 + cron 调度编排，源扫描成功与后续入库完成状态分开记录。
+权限同步当前只做 additive-only（不会自动撤销），URL/企业协作数据源连接器尚未开始；在补齐这些边界前，
+不将 v0.6 表述为多源连接器平台。
 
 ## v1.0 Enterprise Ready
 

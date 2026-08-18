@@ -140,8 +140,16 @@
   记录见 `docs/开发记录/验证记录/2026-08-16-failover-verification.md`。
 - 已由 `4d0cf90` 关闭：空环境/重复部署/失败中断恢复（verify-deploy）、备份恢复（backup/restore-check）、
   4 小时观察（0 告警 12/12 healthy）。
-- 待办：P1-4.2 用户反馈闭环（MessageFeedback）尚未实施；产品 API 尚未将 LLM fallback 的
-  model/fallback_reason 透出到消息/SSE/Trace。
+- 已由 P1-4.2（2026-08-17）关闭：MessageFeedback 支持 POST 幂等提交/覆盖与 DELETE 取消，
+  `(user_id, message_id)` 唯一；负面反馈以 sampled message 的 distinct 分母进入知识健康诊断，
+  不改变 formula 1.1 分数。记录见 `docs/开发记录/验证记录/2026-08-17-message-feedback-verification.md`。
+- 已由 P2（2026-08-17）关闭：受控上传、LoaderRegistry、多格式解析与结构化表格/代码分块，以及
+  可验证的线性入库节点已实现。记录见 `docs/开发记录/验证记录/2026-08-17-multiformat-parsing-verification.md`
+  与 `docs/开发记录/验证记录/2026-08-17-ingestion-pipeline-verification.md`。
+- 已由 P3（2026-08-17）完成首个连接器纵切：本地目录/SMB 挂载的 initial/incremental/delete/permission
+  同步、5 字段 cron 与 DB 租约调度均已覆盖；仍不包含 URL/协作数据源、ACL 撤销同步或连接器管理前端。
+  记录见 `docs/开发记录/验证记录/2026-08-17-connector-sync-verification.md`。
+- 待办：产品 API 尚未将 LLM fallback 的 `model`/`fallback_reason` 透出到消息/SSE/Trace。
 
 ## v0.5.0 Team Trust（2026-08-16）
 
@@ -200,3 +208,16 @@
 - 验证：`frontend/tests/test_product_api.py` 审计 e2e 4 项；全量 pytest 1064 passed、11 skipped；
   前端 typecheck/build/35 项通过；Alembic 空库升级至 `20260817_0020` 成功。
   记录见 `docs/开发记录/验证记录/2026-08-16-operation-audit-verification.md`。
+
+## P1-4.2 到 P3：企业能力推进（2026-08-17）
+
+| 能力 | 当前状态 | 已验证范围 | 未覆盖边界 |
+|---|---|---|---|
+| 用户反馈闭环 | 通过 | 助手消息 👍/👎 幂等落库、取消、所有权/消息类型错误语义、健康诊断的 `negative_feedback_rate` | 不含 MQ、反馈原因/备注 UI、管理侧汇总 |
+| 多格式解析与分块 | 通过 | Excel、PPTX、图片 OCR；MIME/容器校验；表格与代码原子块；`vector_text` 仅用于 embedding | 不含视觉模型 OCR、可选 Docling/Unstructured 依赖的全环境实测 |
+| 可编排入库 | 通过 | Parse/Chunk/Embed/Index 线性节点、配置校验、跳过、失败节点诊断、旧配置回退 | 不含完整 DAG、端点契约确认前不透传任意请求参数 |
+| 本地目录连接器 | 通过（首个纵切） | initial/incremental/delete/permission、内容哈希幂等、cron、DB 租约、运行记录 | 不含 URL/协作源、ACL 撤销同步、连接器管理前端 |
+
+详细验收材料：`docs/开发记录/验证记录/2026-08-17-message-feedback-verification.md`、
+`2026-08-17-multiformat-parsing-verification.md`、`2026-08-17-ingestion-pipeline-verification.md`、
+`2026-08-17-connector-sync-verification.md`。

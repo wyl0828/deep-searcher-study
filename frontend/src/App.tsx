@@ -63,6 +63,7 @@ import { useModalFocus } from "./useModalFocus";
 import {
   type Citation,
   type CitationSpan,
+  type DashboardKpi,
   type DocumentGovernanceInput,
   type GroupMemberItem,
   type KnowledgeBase,
@@ -79,6 +80,7 @@ import {
   addKnowledgeBaseMember,
   addWorkspaceGroupMember,
   addWorkspaceMember,
+  cancelMessageFeedback,
   createConversation,
   createKnowledgeBase,
   createKnowledgeHealthSnapshot,
@@ -89,6 +91,8 @@ import {
   deleteDocument,
   deleteKnowledgeBase,
   deleteWorkspaceGroup,
+  getDashboardOverview,
+  getDashboardTrends,
   getConversation,
   getAuthStatus,
   getKnowledgeBase,
@@ -116,6 +120,7 @@ import {
   setCurrentKnowledgeBase,
   setupWorkspace,
   streamMessage,
+  submitMessageFeedback,
   uploadDocument,
   updateDocumentGovernanceMetadata,
   updateKnowledgeBaseMemberRole,
@@ -1244,10 +1249,16 @@ function WorkspaceLayout({
             </NavLink>
           ) : null}
           {user.role === "admin" ? (
-            <NavLink className="admin-users-link" to="/admin/audit">
-              <ClipboardDocumentIcon aria-hidden="true" />
-              操作审计
-            </NavLink>
+            <>
+              <NavLink className="admin-users-link" to="/admin/audit">
+                <ClipboardDocumentIcon aria-hidden="true" />
+                操作审计
+              </NavLink>
+              <NavLink className="admin-users-link" to="/admin">
+                <Cog6ToothIcon aria-hidden="true" />
+                运营概览
+              </NavLink>
+            </>
           ) : null}
           <button
             className="mobile-logout"
@@ -1798,6 +1809,7 @@ function CitationDrawer({
 }
 
 function AssistantMessage({
+  conversationId,
   message,
   onCitation,
   onRegenerate,
@@ -1805,6 +1817,7 @@ function AssistantMessage({
   regenerating,
   queryDisabled,
 }: {
+  conversationId: string;
   message: Message;
   onCitation: (
     citation: Citation,
@@ -1816,8 +1829,52 @@ function AssistantMessage({
   regenerating: boolean;
   queryDisabled: boolean;
 }) {
+  const queryCache = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const [feedback, setFeedback] = useState<"helpful" | "unhelpful" | null>(null);
+  const [feedback, setFeedback] = useState<"helpful" | "unhelpful" | null>(
+    message.feedback && !message.feedback.cancelled
+      ? message.feedback.vote === 1
+        ? "helpful"
+        : "unhelpful"
+      : null,
+  );
+  const [feedbackPending, setFeedbackPending] = useState(false);
+
+  // Keep the selected vote in sync with the server state: message.feedback is
+  // refreshed by the conversation query after every submit/cancel, and useState
+  // only reads its initial value once.
+  useEffect(() => {
+    setFeedback(
+      message.feedback && !message.feedback.cancelled
+        ? message.feedback.vote === 1
+          ? "helpful"
+          : "unhelpful"
+        : null,
+    );
+  }, [message.id, message.feedback?.vote, message.feedback?.cancelled]);
+
+  const applyFeedback = async (vote: "helpful" | "unhelpful") => {
+    if (feedbackPending) return;
+    setFeedbackPending(true);
+    try {
+      if (feedback === vote) {
+        await cancelMessageFeedback(conversationId, message.id);
+        setFeedback(null);
+      } else {
+        await submitMessageFeedback(conversationId, message.id, {
+          vote: vote === "helpful" ? 1 : -1,
+        });
+        setFeedback(vote);
+      }
+      await queryCache.invalidateQueries({
+        queryKey: ["conversation", conversationId],
+      });
+    } catch {
+      // Silent failure: keep the previous selection instead of blocking.
+    } finally {
+      setFeedbackPending(false);
+    }
+  };
   const displayedContent = displayAnswerContent(message.content);
   const trustInputClaims = message.trust_details?.input.claims || [];
   const contradictedClaimCount = trustInputClaims.filter(
@@ -2305,11 +2362,8 @@ function AssistantMessage({
                 type="button"
                 className={feedback === "helpful" ? "selected" : ""}
                 aria-pressed={feedback === "helpful"}
-                onClick={() =>
-                  setFeedback((current) =>
-                    current === "helpful" ? null : "helpful",
-                  )
-                }
+                disabled={feedbackPending}
+                onClick={() => applyFeedback("helpful")}
               >
                 <HandThumbUpIcon aria-hidden="true" />
                 有帮助
@@ -2318,11 +2372,8 @@ function AssistantMessage({
                 type="button"
                 className={feedback === "unhelpful" ? "selected" : ""}
                 aria-pressed={feedback === "unhelpful"}
-                onClick={() =>
-                  setFeedback((current) =>
-                    current === "unhelpful" ? null : "unhelpful",
-                  )
-                }
+                disabled={feedbackPending}
+                onClick={() => applyFeedback("unhelpful")}
               >
                 <HandThumbDownIcon aria-hidden="true" />
                 没帮助
@@ -2526,6 +2577,7 @@ function ChatPage() {
             ) : (
               <AssistantMessage
                 key={message.id}
+                conversationId={conversationId}
                 message={message}
                 queryPending={mutation.isPending}
                 regenerating={
@@ -3943,6 +3995,115 @@ function AdminUsersPage() {
   );
 }
 
+function AdminDashboardPage() {
+  const overview = useQuery({
+    queryKey: ["admin-dashboard-overview"],
+    queryFn: getDashboardOverview,
+  });
+  const [days, setDays] = useState<number>(7);
+  const trends = useQuery({
+    queryKey: ["admin-dashboard-trends", days],
+    queryFn: () => getDashboardTrends(days),
+  });
+
+  const kpis = overview.data?.kpis;
+  const distribution = overview.data?.health_distribution;
+  const total = distribution
+    ? distribution.healthy +
+      distribution.warning +
+      distribution.critical +
+      distribution.partial +
+      distribution.unknown
+    : 0;
+  const series = trends.data?.series || [];
+  const maxValue = Math.max(
+    1,
+    ...series.flatMap((item) => item.data.map((point) => point.value)),
+  );
+
+  const renderKpi = (label: string, kpi?: DashboardKpi) => (
+    <div className="dashboard-kpi" key={label}>
+      <span className="dashboard-kpi-label">{label}</span>
+      <strong>{kpi?.value ?? 0}</strong>
+      {kpi?.delta != null ? (
+        <span className="dashboard-kpi-delta">+{kpi.delta} / 24h</span>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <section className="admin-page">
+      <div className="admin-card">
+        <h2>运营概览</h2>
+        {overview.isError ? <p>运营数据加载失败</p> : null}
+        <div className="dashboard-kpis">
+          {kpis ? (
+            <>
+              {renderKpi("用户", kpis.users)}
+              {renderKpi("知识库", kpis.knowledge_bases)}
+              {renderKpi("文档", kpis.documents)}
+              {renderKpi("会话", kpis.conversations)}
+              {renderKpi("消息", kpis.messages)}
+              {renderKpi("负反馈", kpis.feedback)}
+              {renderKpi("连接器", kpis.connector_syncs)}
+              {renderKpi("审计", kpis.audit_logs)}
+            </>
+          ) : null}
+        </div>
+
+        {distribution ? (
+          <div className="dashboard-health">
+            <h3>健康分布（{total} 个知识库）</h3>
+            {(
+              [
+                ["healthy", "健康", distribution.healthy],
+                ["warning", "预警", distribution.warning],
+                ["critical", "严重", distribution.critical],
+                ["partial", "部分", distribution.partial],
+                ["unknown", "未知", distribution.unknown],
+              ] as const
+            ).map(([key, label, value]) => (
+              <div className="dashboard-health-row" key={key}>
+                <span>{label}</span>
+                <div className="dashboard-heat-track">
+                  <div
+                    className={"dashboard-heat-fill " + key}
+                    style={{ width: (total ? (value / total) * 100 : 0) + "%" }}
+                  />
+                </div>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="dashboard-trend">
+          <h3>趋势
+            <button type="button" onClick={() => setDays(7)}>7 天</button>
+            <button type="button" onClick={() => setDays(30)}>30 天</button>
+          </h3>
+          {series.map((item) => (
+            <div className="dashboard-series" key={item.name}>
+              <h4>{item.name}</h4>
+              <div className="dashboard-series-track">
+                {item.data.map((point) => (
+                  <div
+                    className="dashboard-series-col"
+                    key={point.ts}
+                    style={{ height: (point.value / maxValue) * 100 + "%" }}
+                    title={point.ts + ":" + point.value}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
 function AdminAuditPage() {
   const pageSize = 20;
   const [page, setPage] = useState(1);
@@ -4153,6 +4314,9 @@ function ProductRouter({
         ) : null}
         {user.role === "admin" ? (
           <Route path="admin/audit" element={<AdminAuditPage />} />
+        ) : null}
+        {user.role === "admin" ? (
+          <Route path="admin" element={<AdminDashboardPage />} />
         ) : null}
       </Route>
       {user.role === "admin" ? (

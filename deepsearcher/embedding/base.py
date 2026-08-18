@@ -56,7 +56,10 @@ class BaseEmbedding:
         Returns:
             The input list of Chunk objects, updated with embeddings.
         """
-        texts = [chunk.text for chunk in chunks]
+        # vector_text is the embedding-only representation (e.g. key-value table
+        # rows); it never reaches the vector payload / citation / identity, which
+        # keep using chunk.text. getattr keeps duck-typed chunk mocks working.
+        texts = [getattr(chunk, "vector_text", None) or chunk.text for chunk in chunks]
         batch_texts = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
         embeddings = []
         for batch_text in tqdm(batch_texts, desc="Embedding chunks"):

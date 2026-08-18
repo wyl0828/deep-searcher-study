@@ -5,7 +5,7 @@
   "dataset": {
     "id": "deepsearcher-workspace-v2",
     "version": "2.2.0",
-    "sha256": "4ea1d7cd1b3ca1136be2cd32362a7a9066d5a73d3ffd1eacdb747ec2e65e6c0d",
+    "sha256": "254bc588448fe75b4fa663fe2fd9215fe97d2dd8d9aef21f54cda2e52203459d",
     "sources": [
       {
         "document": "WhatisMilvus.pdf",

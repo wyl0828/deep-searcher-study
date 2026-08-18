@@ -36,8 +36,9 @@ def test_legacy_ingest_accepts_streamed_multipart_pdf(tmp_path, monkeypatch):
             sha256="a" * 64,
         )
 
-    async def inspect(path):
+    async def inspect(path, extension):
         assert path == staged_path
+        assert extension == "pdf"
         return 1
 
     class Response:
@@ -58,8 +59,8 @@ def test_legacy_ingest_accepts_streamed_multipart_pdf(tmp_path, monkeypatch):
             captured["json"] = json
             return Response()
 
-    monkeypatch.setattr("frontend.server.stage_pdf_upload", stage)
-    monkeypatch.setattr("frontend.server.inspect_pdf_pages", inspect)
+    monkeypatch.setattr("frontend.server.stage_upload", stage)
+    monkeypatch.setattr("frontend.server.inspect_document_pages", inspect)
     monkeypatch.setattr("frontend.server.httpx.AsyncClient", Client)
 
     response = TestClient(app).post(

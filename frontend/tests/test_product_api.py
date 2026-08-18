@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import hashlib
+import io
 import json
 from contextlib import contextmanager
 from datetime import date
@@ -22,6 +24,7 @@ from frontend.product.models import (
     Document,
     KnowledgeBase,
     Message,
+    MessageFeedback,
     User,
 )
 from frontend.product.repositories import get_conversation
@@ -688,7 +691,7 @@ def test_product_errors_use_safe_structured_shape(tmp_path):
     }
 
 
-def test_document_upload_rejects_non_pdf(tmp_path):
+def test_document_upload_rejects_unknown_extension(tmp_path):
     with product_client(tmp_path) as client:
         knowledge_base = client.post(
             "/api/knowledge-bases",
@@ -696,11 +699,86 @@ def test_document_upload_rejects_non_pdf(tmp_path):
         ).json()
         response = client.post(
             f"/api/knowledge-bases/{knowledge_base['id']}/documents",
-            files={"file": ("note.txt", b"plain text", "text/plain")},
+            files={"file": ("note.xyz", b"whatever", "application/octet-stream")},
         )
 
-    assert response.status_code == 400
+    assert response.status_code == 415
     assert response.json()["error"]["code"] == "DOCUMENT_UNSUPPORTED_TYPE"
+
+
+def test_document_upload_rejects_container_mismatch(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "资料库", "description": ""},
+        ).json()
+        response = client.post(
+            f"/api/knowledge-bases/{knowledge_base['id']}/documents",
+            files={"file": ("notes.md", b"\x00\x01\x02\x03binary", "text/plain")},
+        )
+
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "DOCUMENT_INVALID_CONTENT"
+
+
+def test_document_upload_accepts_xlsx_pptx_and_image(tmp_path):
+    from openpyxl import Workbook
+    from pptx import Presentation
+
+    workbook = Workbook()
+    for sheet_name in ("收入", "费用"):
+        sheet = workbook.create_sheet(sheet_name)
+        sheet.append(["项目", "金额"])
+        sheet.append(["A", 100])
+    workbook.remove(workbook["Sheet"])
+    xlsx_buffer = io.BytesIO()
+    workbook.save(xlsx_buffer)
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "季度汇报"
+    pptx_buffer = io.BytesIO()
+    presentation.save(pptx_buffer)
+
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "多格式库", "description": ""},
+        ).json()
+        kb_id = knowledge_base["id"]
+
+        xlsx = client.post(
+            f"/api/knowledge-bases/{kb_id}/documents",
+            files={
+                "file": (
+                    "table.xlsx",
+                    xlsx_buffer.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        assert xlsx.status_code == 202
+        assert xlsx.json()["document"]["page_count"] == 2  # visible sheets
+
+        pptx = client.post(
+            f"/api/knowledge-bases/{kb_id}/documents",
+            files={
+                "file": (
+                    "deck.pptx",
+                    pptx_buffer.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
+        )
+        assert pptx.status_code == 202
+        assert pptx.json()["document"]["page_count"] == 1  # slides
+
+        png = client.post(
+            f"/api/knowledge-bases/{kb_id}/documents",
+            files={"file": ("image.png", PNG_BYTES, "image/png")},
+        )
+        assert png.status_code == 202
+        assert png.json()["document"]["page_count"] == 1
 
 
 def test_document_upload_persists_explicit_business_dates(tmp_path, monkeypatch):
@@ -2479,3 +2557,229 @@ def test_audit_logs_pagination_and_filter(tmp_path):
 
         none = client.get("/api/admin/audit-logs", params={"operation_type": "NOPE"}).json()
         assert none["total"] == 0
+
+
+# ---- P1-4.2 message feedback (ragent MessageFeedback equivalent) ----
+
+
+def _make_feedback_context(client, name_suffix: str = ""):
+    """Create a knowledge base, conversation and one completed assistant message."""
+    knowledge_base = client.post(
+        "/api/knowledge-bases",
+        json={"name": f"反馈知识库{name_suffix}", "description": ""},
+    ).json()
+    conversation = client.post(
+        "/api/conversations",
+        json={"knowledge_base_id": knowledge_base["id"]},
+    ).json()
+    with client.product_session_factory() as session:
+        assistant = Message(
+            conversation_id=conversation["id"],
+            role="assistant",
+            content="回答内容",
+            status="succeeded",
+            answer_state="fully_grounded",
+        )
+        session.add(assistant)
+        session.commit()
+        message_id = assistant.id
+    return knowledge_base, conversation, message_id
+
+
+def test_message_feedback_submit_overwrite_cancel_and_restore(tmp_path):
+    with product_client(tmp_path) as client:
+        _, conversation, message_id = _make_feedback_context(client)
+        feedback_url = f"/api/conversations/{conversation['id']}/messages/{message_id}/feedback"
+
+        submitted = client.post(feedback_url, json={"vote": 1})
+        assert submitted.status_code == 200
+        assert submitted.json()["feedback"] == {"vote": 1, "cancelled": False}
+        with client.product_session_factory() as session:
+            rows = session.scalars(select(MessageFeedback)).all()
+            assert len(rows) == 1
+            assert rows[0].vote == 1
+            assert rows[0].cancelled is False
+
+        overwritten = client.post(
+            feedback_url,
+            json={"vote": -1, "reason": "回答不完整"},
+        )
+        assert overwritten.status_code == 200
+        assert overwritten.json()["feedback"] == {"vote": -1, "cancelled": False}
+        with client.product_session_factory() as session:
+            rows = session.scalars(select(MessageFeedback)).all()
+            assert len(rows) == 1  # idempotent overwrite, not a second row
+            assert rows[0].vote == -1
+            assert rows[0].reason == "回答不完整"
+
+        detail = client.get(f"/api/conversations/{conversation['id']}").json()
+        assistant = next(message for message in detail["messages"] if message["id"] == message_id)
+        assert assistant["feedback"] == {"vote": -1, "cancelled": False}
+
+        cancelled = client.delete(feedback_url)
+        assert cancelled.status_code == 204
+        with client.product_session_factory() as session:
+            rows = session.scalars(select(MessageFeedback)).all()
+            assert len(rows) == 1
+            assert rows[0].vote is None
+            assert rows[0].cancelled is True
+            assert rows[0].reason is None
+
+        restored = client.post(feedback_url, json={"vote": 1})
+        assert restored.status_code == 200
+        assert restored.json()["feedback"] == {"vote": 1, "cancelled": False}
+
+
+def test_message_feedback_cancel_is_idempotent_without_prior_vote(tmp_path):
+    with product_client(tmp_path) as client:
+        _, conversation, message_id = _make_feedback_context(client)
+        feedback_url = f"/api/conversations/{conversation['id']}/messages/{message_id}/feedback"
+
+        assert client.delete(feedback_url).status_code == 204
+        assert client.delete(feedback_url).status_code == 204
+        with client.product_session_factory() as session:
+            rows = session.scalars(select(MessageFeedback)).all()
+            assert len(rows) == 1
+            assert rows[0].cancelled is True
+            assert rows[0].vote is None
+
+
+def test_message_feedback_target_and_ownership_errors(tmp_path):
+    with product_client(tmp_path) as client:
+        _, conversation_a, message_a = _make_feedback_context(client, name_suffix="-A")
+        _, conversation_b, message_b = _make_feedback_context(client, name_suffix="-B")
+        url_a = f"/api/conversations/{conversation_a['id']}/messages/{message_a}/feedback"
+
+        # Message from another conversation -> 404 without leaking existence.
+        wrong = client.post(
+            f"/api/conversations/{conversation_a['id']}/messages/{message_b}/feedback",
+            json={"vote": 1},
+        )
+        assert wrong.status_code == 404
+
+        # Missing message id inside a real conversation -> 404.
+        missing = client.post(
+            f"/api/conversations/{conversation_a['id']}/messages/nope_123/feedback",
+            json={"vote": 1},
+        )
+        assert missing.status_code == 404
+
+        # Missing conversation -> 404.
+        ghost = client.post(
+            "/api/conversations/ghost_conv/messages/x/feedback",
+            json={"vote": 1},
+        )
+        assert ghost.status_code == 404
+
+        # User messages are not feedback targets -> 400.
+        with client.product_session_factory() as session:
+            user_message = Message(
+                conversation_id=conversation_a["id"],
+                role="user",
+                content="提问",
+                status="succeeded",
+            )
+            session.add(user_message)
+            session.commit()
+            user_message_id = user_message.id
+        user_target = client.post(
+            f"/api/conversations/{conversation_a['id']}/messages/{user_message_id}/feedback",
+            json={"vote": 1},
+        )
+        assert user_target.status_code == 400
+
+        # Invalid votes rejected by the schema -> 422.
+        for bad_vote in (0, 2):
+            assert client.post(url_a, json={"vote": bad_vote}).status_code == 422
+
+        # A conversation owned by another user -> 404.
+        with client.product_session_factory() as session:
+            stranger = User(
+                username="stranger",
+                display_name="陌生人",
+                password_hash="x" * 60,
+                role="member",
+            )
+            session.add(stranger)
+            session.commit()
+            stranger_id = stranger.id
+        with client.product_session_factory() as session:
+            stranger = session.scalar(select(User).where(User.id == stranger_id))
+        app.dependency_overrides[require_user] = lambda: stranger
+        try:
+            foreign = client.post(url_a, json={"vote": 1})
+            assert foreign.status_code == 404
+        finally:
+            app.dependency_overrides.pop(require_user, None)
+
+
+def test_message_feedback_negative_rate_enters_health_snapshot(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base, conversation, message_id = _make_feedback_context(client)
+        with client.product_session_factory() as session:
+            for _ in range(3):
+                session.add(
+                    Message(
+                        conversation_id=conversation["id"],
+                        role="assistant",
+                        content="补充回答",
+                        status="succeeded",
+                        answer_state="fully_grounded",
+                    )
+                )
+            session.commit()
+
+        negative = client.post(
+            f"/api/conversations/{conversation['id']}/messages/{message_id}/feedback",
+            json={"vote": -1},
+        )
+        assert negative.status_code == 200
+
+        snapshot = client.post(f"/api/knowledge-bases/{knowledge_base['id']}/health/snapshot")
+        assert snapshot.status_code == 201
+        retrieval = snapshot.json()["snapshot"]["metrics"]["retrieval"]
+        assert retrieval["message_sample_count"] == 4
+        assert retrieval["negative_feedback_rate"] == 0.25
+
+
+# ---- P4 admin dashboard ----
+
+
+def test_admin_dashboard_overview_admin_ok_and_viewer_forbidden(tmp_path):
+    with product_client(tmp_path) as client:
+        assert client.get("/api/admin/dashboard/overview").status_code == 200
+        assert client.get("/api/admin/dashboard/trends?days=7").status_code == 200
+
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "dash-viewer",
+                "password": "password1234",
+                "display_name": "查看者",
+                "role": "member",
+            },
+        )
+        with client.product_session_factory() as session:
+            viewer = session.scalar(select(User).where(User.username == "dash-viewer"))
+        app.dependency_overrides[require_user] = lambda: viewer
+        try:
+            assert client.get("/api/admin/dashboard/overview").status_code == 403
+            assert client.get("/api/admin/dashboard/trends?days=7").status_code == 403
+        finally:
+            app.dependency_overrides.pop(require_user, None)
+
+
+def test_admin_dashboard_trends_days_validation(tmp_path):
+    with product_client(tmp_path) as client:
+        assert client.get("/api/admin/dashboard/trends?days=7").status_code == 200
+        assert client.get("/api/admin/dashboard/trends?days=30").status_code == 200
+        for bad in (6, 14, 31):
+            assert (
+                client.get(f"/api/admin/dashboard/trends?days={bad}").status_code == 422
+            )
+
+
+# A minimal valid 1x1 transparent PNG (image upload without OCR).
+PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)

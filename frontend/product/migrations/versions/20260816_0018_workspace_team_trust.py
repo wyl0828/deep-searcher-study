@@ -36,9 +36,7 @@ def _backfill_workspaces(bind) -> None:
 
     session = Session(bind=bind, expire_on_commit=False)
     try:
-        users = session.scalars(
-            select(User).where(User.id != LEGACY_OWNER_ID)
-        ).all()
+        users = session.scalars(select(User).where(User.id != LEGACY_OWNER_ID)).all()
         admin = session.scalars(
             select(User)
             .where(
@@ -175,9 +173,7 @@ def upgrade() -> None:
         )
     else:
         with op.batch_alter_table("knowledge_bases") as batch_op:
-            batch_op.add_column(
-                sa.Column("workspace_id", sa.String(length=40), nullable=True)
-            )
+            batch_op.add_column(sa.Column("workspace_id", sa.String(length=40), nullable=True))
     op.create_index(
         "ix_knowledge_bases_workspace_id",
         "knowledge_bases",

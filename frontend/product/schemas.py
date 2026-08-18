@@ -81,6 +81,18 @@ class MessageCreate(BaseModel):
     use_web_search: bool = False
 
 
+class MessageFeedbackCreate(BaseModel):
+    vote: Literal[1, -1]
+    reason: str | None = Field(default=None, max_length=300)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ConnectorSyncCreate(BaseModel):
+    source_type: Literal["local_directory"] = "local_directory"
+    config: dict = Field(default_factory=dict)
+    cron: str = Field(min_length=5, max_length=64)
+
+
 class DocumentTemporalUpdate(BaseModel):
     published_at: date | None = None
     effective_at: date | None = None
@@ -181,5 +193,6 @@ class MessageResponse(ProductModel):
     provenance_digest: str | None = None
     trust_details: dict | None = None
     created_at: datetime
+    feedback: dict | None = None
     citations: list[CitationResponse] = Field(default_factory=list)
     claims: list[AnswerClaimResponse] = Field(default_factory=list)

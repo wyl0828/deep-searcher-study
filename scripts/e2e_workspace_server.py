@@ -29,6 +29,8 @@ def _seed_workspace() -> None:
         KnowledgeBase,
         Message,
         User,
+        Workspace,
+        WorkspaceMember,
     )
 
     Base.metadata.create_all(ENGINE)
@@ -40,8 +42,27 @@ def _seed_workspace() -> None:
             password_hash=hash_password("e2e-secure-password"),
             role="admin",
         )
+        session.add(user)
+        session.flush()
+        workspace = Workspace(
+            id="ws_e2e",
+            name="E2E 工作区",
+            description="E2E 自动验收",
+            owner_id=user.id,
+        )
+        session.add(workspace)
+        session.flush()
+        session.add(
+            WorkspaceMember(
+                workspace_id=workspace.id,
+                user_id=user.id,
+                role="owner",
+            )
+        )
         knowledge_base = KnowledgeBase(
             id="kb_e2e_grounding",
+            owner_id=user.id,
+            workspace_id=workspace.id,
             name="E2E 证据工作台",
             description="自动验证原答案、代码块、Claim 与引用抽屉",
             collection_name="e2e_grounding_collection",

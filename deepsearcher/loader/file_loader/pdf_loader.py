@@ -11,6 +11,7 @@ from typing import Any, Callable, List
 from langchain_core.documents import Document
 
 from deepsearcher.loader.file_loader.base import BaseLoader
+from deepsearcher.loader.file_loader.ocr import create_ocr_engine
 
 PDF_PARSER_VERSION = "pdfplumber-layout-v2+rapidocr-v3"
 
@@ -375,18 +376,8 @@ class PDFLoader(BaseLoader):
         self._ocr_engine = None
 
     def _get_ocr_engine(self):
-        if self._ocr_engine is not None:
-            return self._ocr_engine
-        if self._ocr_engine_factory is not None:
-            self._ocr_engine = self._ocr_engine_factory()
-            return self._ocr_engine
-        try:
-            from rapidocr import RapidOCR
-        except ImportError as exc:
-            raise RuntimeError(
-                "OCR is required for image-only PDF pages. Install rapidocr and onnxruntime."
-            ) from exc
-        self._ocr_engine = RapidOCR()
+        if self._ocr_engine is None:
+            self._ocr_engine = create_ocr_engine(self._ocr_engine_factory)
         return self._ocr_engine
 
     def _ocr_lines(self, page) -> tuple[list[_LayoutLine], float | None]:

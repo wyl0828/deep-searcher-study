@@ -558,6 +558,7 @@ export type Message = {
     limitations: string[];
   } | null;
   created_at: string;
+  feedback?: { vote: 1 | -1; cancelled: boolean } | null;
   citations: Citation[];
   claims: AnswerClaim[];
 };
@@ -1057,6 +1058,30 @@ export function sendMessage(
   });
 }
 
+export function submitMessageFeedback(
+  conversationId: string,
+  messageId: string,
+  input: { vote: 1 | -1; reason?: string; comment?: string },
+): Promise<{ feedback: { vote: 1 | -1; cancelled: boolean } }> {
+  return requestJson(
+    `/api/conversations/${conversationId}/messages/${messageId}/feedback`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function cancelMessageFeedback(
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  return requestJson(
+    `/api/conversations/${conversationId}/messages/${messageId}/feedback`,
+    { method: "DELETE" },
+  );
+}
+
 type MessageResult = {
   user_message: Message;
   assistant_message: Message;
@@ -1215,6 +1240,48 @@ export function runKnowledgeHealthActions(
     method: "POST",
     body: JSON.stringify({ actions }),
   });
+}
+
+export type DashboardKpi = {
+  value: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+};
+
+export type DashboardOverview = {
+  updated_at: string;
+  kpis: {
+    users: DashboardKpi;
+    knowledge_bases: DashboardKpi;
+    documents: DashboardKpi & { ready?: number | null; failed?: number | null };
+    conversations: DashboardKpi;
+    messages: DashboardKpi;
+    feedback: DashboardKpi;
+    connector_syncs: DashboardKpi;
+    audit_logs: DashboardKpi;
+  };
+  health_distribution: {
+    healthy: number;
+    warning: number;
+    critical: number;
+    partial: number;
+    unknown: number;
+  };
+};
+
+export type DashboardTrends = {
+  metric: string;
+  window: string;
+  granularity: string;
+  series: { name: string; data: { ts: string; value: number }[] }[];
+};
+
+export function getDashboardOverview(): Promise<DashboardOverview> {
+  return requestJson("/api/admin/dashboard/overview");
+}
+
+export function getDashboardTrends(days: number): Promise<DashboardTrends> {
+  return requestJson("/api/admin/dashboard/trends?days=" + days);
 }
 
 export async function listAuditLogs(input: {

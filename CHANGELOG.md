@@ -61,8 +61,28 @@
 - 操作审计埋点覆盖 ACL 变更（工作区成员/角色、KB 覆盖、成员组）10 个服务函数，以及用户创建、
   知识库删除、健康建议执行；admin-only API `GET /api/admin/audit-logs`（分页 + 过滤，等价
   BizChangeLogController）与前端 `/admin/audit` 审计页。
+- P1-4.2 用户反馈闭环：新增 `message_feedback` 与 Alembic `20260817_0021`；助手消息支持 👍/👎
+  幂等提交、覆盖和取消，读取会话时返回当前用户反馈。负面反馈按实际采样消息去重后进入知识健康诊断与
+  建议，明确不改变 Knowledge Health formula 1.1 的分数。
+- P2 企业文档能力：新增 LoaderRegistry 与 MIME/容器真实性校验；受控上传支持 Excel、PPTX 和图片 OCR，
+  并保留表格/代码结构。`Chunk.vector_text` 仅用于 embedding，避免优化检索文本泄漏到展示、Citation 或
+  Manifest。新增线性入库节点 Parse/Chunk/Embed/Index，校验配置、记录节点级失败并兼容旧配置。
+- P3 v0.6 的首个连接器纵切：新增 LocalDirectoryConnector（含 SMB 挂载）、ConnectorSync/Run 和
+  Alembic `20260817_0023`；以 sha256 内容版本、5 字段 cron 和 DB 租约完成 initial/incremental/delete/
+  permission 同步。同步成功只表示扫描和入队成功，不等价于文档已经完成索引；权限同步为 additive-only。
+- P4 运营管理大盘：新增 admin 概览 API（统一 KpiVO、知识健康分布含 unknown、固定日历窗 UTC 补零
+  趋势、非法 days 固定 422 与 require_admin 权限）；前端新增 /admin 运营概览页（KPI 卡 + 健康分布 +
+  趋势），对齐 ragent AdminController/DashboardKpiVO，不引入新的认证语义。
+- P5 流量治理（按需启动）：新增 deepsearcher/llm/redis_semaphore.py 分布式公平排队限流（Redis 信号量 +
+  ZSet 队列 + Lua 原子认领/释放/清僵尸），接入 RoutingLLM 每次调用；默认关闭，不改变单实例既有行为。
 
 ### 验证
+- P4 验证：运营大盘实现记录时全量 pytest 为 1142 passed、11 skipped，前端 typecheck/build+单测通过，
+  quality_gate 17/18 步 PASS（git-diff-check 被用户 output/pdf 学习资料的 PDF 变更误报，非本批引入）；
+  详见 docs/开发记录/验证记录/2026-08-18-operations-dashboard-verification.md。
+- P5 验证：分布式限流实现记录时全量 pytest 为 1149 passed、11 skipped，Redis 信号量 + ZSet 排队 +
+  Lua 原子认领单测与 RoutingLLM 接入回归通过，默认关闭不改变单实例行为；
+  详见 docs/开发记录/验证记录/2026-08-18-distributed-ratelimit-verification.md。
 
 - 新增 tests/test_knowledge_health.py 12 项：空库、全可用、失败/缺索引、样本不足、拒答扣分、
   声明扣分、快照持久化与 delta 对比；Python 全量 911 passed、6 skipped。
@@ -94,6 +114,16 @@
 - P1-4.1 操作审计回归：`frontend/tests/test_product_api.py` 新增 4 项审计 e2e（before/after 快照、
   操作者上下文、非 admin 403、分页过滤），全量 pytest 1064 passed、11 skipped；前端 typecheck/
   build/35 项测试通过；Alembic 空库升级至 `20260817_0020` 成功。
+- P1-4.2 验证：反馈/健康/API 用例完成后，记录时全量 pytest 为 1074 passed、11 skipped；前端 vitest
+  40 passed，typecheck、build、bundle、Alembic `20260817_0021` 与 18 步质量门禁通过。详见
+  `docs/开发记录/验证记录/2026-08-17-message-feedback-verification.md`。
+- P2 验证：多格式解析/分块记录时全量 pytest 为 1107 passed、11 skipped；可编排入库记录时为
+  1122 passed、11 skipped；两次均完成 18 步质量门禁。详见
+  `docs/开发记录/验证记录/2026-08-17-multiformat-parsing-verification.md` 与
+  `docs/开发记录/验证记录/2026-08-17-ingestion-pipeline-verification.md`。
+- P3 验证：本地目录连接器记录时全量 pytest 为 1131 passed、11 skipped，Alembic 空库升级至
+  `20260817_0023`，18 步质量门禁通过。范围和未覆盖边界见
+  `docs/开发记录/验证记录/2026-08-17-connector-sync-verification.md`。
 
 ## [v0.3.0] - 2026-08-16
 

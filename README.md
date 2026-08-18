@@ -16,19 +16,22 @@ DeepSearcher Study 是基于 [zilliztech/deep-searcher](https://github.com/zilli
 - **Trust Layer**：将引用结构、确定性一致性、时效性、风险约束、可选语义蕴含和回答策略拆分为可版本化契约；证据不足、明确冲突或时效不明时保守降级或拒答，而不是输出虚假的确定性。
 - **Evidence 与谱系**：回答中的 Claim 可定位到模型实际看到的证据片段；Trust Provenance 绑定运行时、模型、索引、证据快照和策略版本，同时排除问题正文、密钥和其他敏感原值。
 - **质量评测**：检索、回答和 Trust Layer 使用版本化金标集与机器可读报告；确定性规则、Citation Span、风险分类和谱系不变量进入快速质量门禁。
-- **可用产品路径**：中文学习工作台提供知识库、文档入库、带引用问答、流式进度和审计视图，并通过独立 Worker、迁移与端到端测试维护可恢复性。
+- **可用产品路径**：中文学习工作台提供知识库、受控多格式入库、带引用问答、流式进度和审计视图，并通过独立 Worker、迁移与端到端测试维护可恢复性。
 - **知识质量控制（v0.4 起步）**：知识库健康分不是黑盒数字；每次快照保存公式版本、数据/检索/可信三维得分、原始指标、扣分原因与建议动作，并支持快照历史对比，让“知识库质量为什么变化”可解释、可审计。
-- **企业就绪（P0/P1 起步）**：系统级操作审计（`OperationAuditLog` + admin-only
+- **企业能力纵切（P0-P3）**：系统级操作审计（`OperationAuditLog` + admin-only
   `GET /api/admin/audit-logs` + 前端 `/admin/audit` 页，对齐 ragent BizChangeLog）记录谁在何时改了
-  哪些权限与配置，含变更前后 JSON 快照与字段级 diff；多实例故障切换六场景与 Chat 双 Provider
-  fallback 已在服务器完成真实验证。
+  哪些权限与配置，含变更前后 JSON 快照与字段级 diff；回答 👍/👎 以幂等方式落库并进入健康诊断；
+  入库链路支持 Excel、PPTX、图片 OCR、表格/代码保护分块及可配置线性节点；本地目录/SMB 挂载连接器已
+  完成 initial、incremental、delete、permission 四条同步与 cron 刷新。多实例故障切换六场景与 Chat
+  双 Provider fallback 已在服务器完成真实验证。URL/协作数据源连接器和连接器 ACL 撤销同步仍未实施；运营大盘（P4 /admin 概览）与多实例公平限流（P5）
+  已上线，均见相应阶段验证记录。
 
 ## 维护证据与导航
 
 | 你可以核验什么 | 对应材料 |
 | --- | --- |
 | 当前开发线的功能变更、质量边界和已知限制 | [CHANGELOG.md](CHANGELOG.md) |
-| v0.3-v0.5 已实现能力、P0/P1 执行状态、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
+| v0.3-v0.6 已实现能力、P0-P3 执行状态、后续验收条件和版本路线 | [可信 RAG 路线图](docs/roadmap/trustworthy-rag-roadmap.md) |
 | 设计取舍与 fail-closed 边界 | [架构决策记录（ADR）](docs/adr/) |
 | 可运行的业务、引用、风险和谱系评测 | [evaluation/README.md](evaluation/README.md) |
 | 上游来源、许可与贡献原则 | [UPSTREAM.md](UPSTREAM.md) |
@@ -55,6 +58,10 @@ DeepSearcher Study 结合大语言模型与向量数据库，对私有资料执�
 - **版本化知识治理**：文档的发布日期、生效日期、失效日期和版本系列贯穿入库、检索、Citation 与索引 Manifest。
 - **可复现评测**：业务检索/回答基线与 Trust 金标集分开维护；快速门禁验证契约和回归，真实模型评测显式执行。
 - **可解释的知识健康**：知识库详情页展示数据/检索/可信三维健康分与指标明细、扣分原因和建议动作，可生成快照并与历史对比，空库与样本不足时给出明确提示而非猜测性分数。
+- **受控企业入库**：LoaderRegistry 按扩展名路由并以 MIME/容器校验上传真实性；Excel、PPTX 和图片 OCR
+  保留结构化块，表格/代码的向量文本与展示文本分离，线性入库节点可验证、跳过与诊断失败。
+- **持续同步（首个连接器）**：本地目录或 SMB 挂载可按 cron 扫描；文件内容以 sha256 去重，源路径身份与
+  内容版本分离，DB 租约避免多实例重复调度。权限同步目前是 additive-only，不会自动撤权。
 - **中文用户工作台**：通过本地 Milvus、持久化入库 Worker、带引用的流式问答和审计视图，提供完整的本地体验。
 
 ---

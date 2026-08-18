@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, Iterator, Sequence
@@ -102,6 +103,8 @@ class RoutingLLM(BaseLLM):
         recovery_seconds: float = 30.0,
         first_packet_timeout: float = 10.0,
         expose_thinking: bool = False,
+        limiter: Any | None = None,
+        rate_limit_timeout_ms: int = 30000,
     ):
         if not candidates:
             raise ValueError("RoutingLLM requires at least one candidate")
@@ -109,6 +112,8 @@ class RoutingLLM(BaseLLM):
         self.model = str(getattr(candidates[0], "model", candidates[0].__class__.__name__))
         self.first_packet_timeout = max(float(first_packet_timeout), 0.01)
         self.expose_thinking = bool(expose_thinking)
+        self._limiter = limiter
+        self._rate_limit_timeout_ms = max(int(rate_limit_timeout_ms), 1)
         self.breakers = {
             id(candidate): CircuitBreaker(
                 failure_threshold=failure_threshold,
@@ -121,76 +126,100 @@ class RoutingLLM(BaseLLM):
     def _identity(candidate: BaseLLM) -> str:
         return str(getattr(candidate, "model", candidate.__class__.__name__))
 
+    def _acquire_permit(self) -> str | None:
+        """Acquire a distributed permit when a limiter is configured (None = disabled)."""
+        if self._limiter is None:
+            return ""  # disabled: treat as granted, nothing to release
+        request_id = uuid.uuid4().hex
+        granted, _state = self._limiter.acquire(request_id, max_wait_ms=self._rate_limit_timeout_ms)
+        return request_id if granted else None
+
+    def _release_permit(self, request_id: str | None) -> None:
+        if request_id is not None and self._limiter is not None:
+            self._limiter.release(request_id)
+
     def chat(self, messages):
         return self.chat_with_options(messages)
 
     def chat_with_options(self, messages, options: ChatOptions | None = None) -> ChatResponse:
-        reasons: list[str] = []
-        for candidate in self.candidates:
-            breaker = self.breakers[id(candidate)]
-            permit = breaker.allow()
-            if permit is None:
-                reasons.append(f"{self._identity(candidate)}:circuit_open")
-                continue
-            try:
-                option_chat = getattr(candidate, "chat_with_options", None)
-                response = (
-                    option_chat(messages, options)
-                    if callable(option_chat)
-                    else _legacy_chat(candidate, messages)
-                )
-                if not str(response.content or "").strip():
-                    raise ValueError("empty_response")
-            except Exception as exc:
-                breaker.failure(permit)
-                reasons.append(f"{self._identity(candidate)}:{type(exc).__name__}")
-                continue
-            breaker.success(permit)
-            response.model = self._identity(candidate)
-            response.fallback_reason = ";".join(reasons) or None
-            return response
-        raise AllModelsFailed("all configured Chat candidates failed")
+        request_id = self._acquire_permit()
+        if request_id is None:
+            raise AllModelsFailed("rate limited (all LLM permits busy)")
+        try:
+            reasons: list[str] = []
+            for candidate in self.candidates:
+                breaker = self.breakers[id(candidate)]
+                permit = breaker.allow()
+                if permit is None:
+                    reasons.append(f"{self._identity(candidate)}:circuit_open")
+                    continue
+                try:
+                    option_chat = getattr(candidate, "chat_with_options", None)
+                    response = (
+                        option_chat(messages, options)
+                        if callable(option_chat)
+                        else _legacy_chat(candidate, messages)
+                    )
+                    if not str(response.content or "").strip():
+                        raise ValueError("empty_response")
+                except Exception as exc:
+                    breaker.failure(permit)
+                    reasons.append(f"{self._identity(candidate)}:{type(exc).__name__}")
+                    continue
+                breaker.success(permit)
+                response.model = self._identity(candidate)
+                response.fallback_reason = ";".join(reasons) or None
+                return response
+            raise AllModelsFailed("all configured Chat candidates failed")
+        finally:
+            self._release_permit(request_id)
 
     def stream_with_options(
         self,
         messages,
         options: ChatOptions | None = None,
     ) -> Iterator[StreamEvent]:
-        reasons: list[str] = []
-        for candidate in self.candidates:
-            breaker = self.breakers[id(candidate)]
-            permit = breaker.allow()
-            if permit is None:
-                reasons.append(f"{self._identity(candidate)}:circuit_open")
-                continue
-            stream = None
-            try:
-                stream_call = getattr(candidate, "stream_with_options")
-                stream = iter(stream_call(messages, options))
-                first, buffered = self._probe_stream(stream)
-                if first is None:
-                    raise ValueError("empty_stream")
-            except Exception as exc:
-                breaker.failure(permit)
-                self._cancel_stream(stream)
-                reasons.append(f"{self._identity(candidate)}:{type(exc).__name__}")
-                continue
-            breaker.success(permit)
-            try:
-                yield StreamEvent(
-                    "selected_model",
-                    data={
-                        "model": self._identity(candidate),
-                        "fallback_reason": ";".join(reasons) or None,
-                    },
-                )
-                yield from buffered
-                yield from stream
-                return
-            finally:
-                breaker.release(permit)
-                self._cancel_stream(stream)
-        raise AllModelsFailed("all configured streaming Chat candidates failed")
+        request_id = self._acquire_permit()
+        if request_id is None:
+            raise AllModelsFailed("rate limited (all LLM permits busy)")
+        try:
+            reasons: list[str] = []
+            for candidate in self.candidates:
+                breaker = self.breakers[id(candidate)]
+                permit = breaker.allow()
+                if permit is None:
+                    reasons.append(f"{self._identity(candidate)}:circuit_open")
+                    continue
+                stream = None
+                try:
+                    stream_call = getattr(candidate, "stream_with_options")
+                    stream = iter(stream_call(messages, options))
+                    first, buffered = self._probe_stream(stream)
+                    if first is None:
+                        raise ValueError("empty_stream")
+                except Exception as exc:
+                    breaker.failure(permit)
+                    self._cancel_stream(stream)
+                    reasons.append(f"{self._identity(candidate)}:{type(exc).__name__}")
+                    continue
+                breaker.success(permit)
+                try:
+                    yield StreamEvent(
+                        "selected_model",
+                        data={
+                            "model": self._identity(candidate),
+                            "fallback_reason": ";".join(reasons) or None,
+                        },
+                    )
+                    yield from buffered
+                    yield from stream
+                    return
+                finally:
+                    breaker.release(permit)
+                    self._cancel_stream(stream)
+            raise AllModelsFailed("all configured streaming Chat candidates failed")
+        finally:
+            self._release_permit(request_id)
 
     def _probe_stream(
         self, stream: Iterator[StreamEvent]
