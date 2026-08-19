@@ -150,6 +150,8 @@ def format_grounding_evidence(
     max_tokens_per_chunk: int | None = None,
     max_total_tokens: int | None = None,
     token_estimator: Callable[[str], int] | None = None,
+    evidence_ids: dict[int, str] | None = None,
+    evidence_texts: dict[str, str] | None = None,
 ) -> str:
     blocks: list[str] = []
     evidence_snapshot: list[tuple[RetrievalResult, str]] = []
@@ -176,10 +178,15 @@ def format_grounding_evidence(
         if not evidence_text.strip():
             continue
         index = len(evidence_snapshot) + 1
+        evidence_id = f"E{index}"
         total_estimated_tokens += estimated
         evidence_snapshot.append((result, evidence_text))
+        if evidence_ids is not None:
+            evidence_ids[id(result)] = evidence_id
+        if evidence_texts is not None:
+            evidence_texts[evidence_id] = evidence_text
         governance = extract_document_governance_metadata(metadata)
-        attributes = [f'id="E{index}"']
+        attributes = [f'id="{evidence_id}"']
         attributes.extend(
             f'{field}="{html.escape(value, quote=True)}"' for field, value in governance.items()
         )

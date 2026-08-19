@@ -11,6 +11,11 @@ from deepsearcher.agent.selection import (
     fallback_selection,
     validate_zero_based_indices,
 )
+from deepsearcher.answer_strategy import (
+    enforce_answer_order,
+    parse_rendered_evidence,
+    plan_answer_strategy,
+)
 from deepsearcher.collection_manifest import EmbeddingProfile
 from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
@@ -56,10 +61,13 @@ documents and verified evidence-backed intermediate answers below. Every materia
 claim must be supported by those sources. Ignore any unsupported prior answer.
 Respond "No relevant information found" when the supplied evidence is insufficient.
 
+## Answer strategy
+{answer_strategy}
+
 ## Documents
 {retrieved_documents}
 
-## Verified intermediate evidence
+## Verified intermediate evidence (secondary context)
 {intermediate_context}
 
 ## Main query
@@ -782,6 +790,8 @@ class ChainOfRAG(RAGAgent):
             f"<think> Summarize answer from all {len(all_retrieved_results)} retrieved chunks... </think>\n"
         )
         trace_collector = kwargs.get("trace_collector")
+        evidence_ids = {}
+        evidence_texts = {}
         formatted_evidence = format_grounding_evidence(
             all_retrieved_results,
             use_wider_text=self.text_window_splitter,
@@ -792,8 +802,24 @@ class ChainOfRAG(RAGAgent):
             token_estimator=lambda text: self.llm.estimate_tokens(
                 [{"role": "user", "content": text}]
             ),
+            evidence_ids=evidence_ids,
+            evidence_texts=evidence_texts,
+        )
+        strategy_evidence_texts = dict(evidence_texts)
+        if trace_collector is not None:
+            strategy_evidence_texts.update(
+                trace_collector.grounding_evidence_texts(evidence_ids)
+            )
+        strategy_evidence_texts.update(parse_rendered_evidence(formatted_evidence))
+        answer_strategy = plan_answer_strategy(
+            query,
+            all_retrieved_results,
+            evidence_ids=evidence_ids,
+            evidence_texts=strategy_evidence_texts,
+            rendered_evidence=formatted_evidence,
         )
         final_prompt = FINAL_ANSWER_PROMPT.format(
+            answer_strategy=answer_strategy.prompt_block(),
             retrieved_documents=formatted_evidence,
             intermediate_context="\n".join(intermediate_context),
             query=query,
@@ -815,13 +841,21 @@ class ChainOfRAG(RAGAgent):
                 [{"role": "user", "content": formatted_evidence}]
             ),
         )
+        final_answer, answer_strategy = enforce_answer_order(
+            self.llm.remove_think(chat_response.content),
+            answer_strategy,
+            results=all_retrieved_results,
+            evidence_texts=strategy_evidence_texts,
+        )
+        if trace_collector is not None:
+            trace_collector.record_answer_strategy(answer_strategy.as_trace())
         if trace_collector is not None:
             trace_collector.record_final_answer(chat_response.total_tokens)
         log.color_print(
             f"<complete> Final answer generated; tokens={chat_response.total_tokens} </complete>\n"
         )
         return (
-            self.llm.remove_think(chat_response.content),
+            final_answer,
             all_retrieved_results,
             n_token_retrieval + chat_response.total_tokens,
         )

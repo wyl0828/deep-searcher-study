@@ -6,7 +6,7 @@ import math
 import re
 import threading
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 from uuid import uuid4
 
 from deepsearcher.freshness import classify_query_freshness
@@ -71,7 +71,7 @@ def redact_sensitive_text(value: Any, *, max_length: int) -> Optional[str]:
 class TraceCollector:
     """Collect explicit Agent events without parsing logs or exposing hidden reasoning."""
 
-    VERSION = 7
+    VERSION = 8
     EVENT_VERSION = 1
     MAX_VISIBLE_DOCUMENTS = 5
     MAX_DOCUMENT_TEXT = 600
@@ -144,6 +144,7 @@ class TraceCollector:
         self._final_grounding: Dict[str, Any] | None = None
         self._trust_report: Dict[str, Any] | None = None
         self._policy_final_answer: str | None = None
+        self._answer_strategy: Dict[str, Any] | None = None
         self._entailment_checker = entailment_checker
         self._provenance = sanitize_trust_provenance(provenance)
         self._provenance_resolver = provenance_resolver
@@ -373,6 +374,20 @@ class TraceCollector:
         self.raise_if_cancelled()
         self.final_answer_tokens = int(token_usage or 0)
 
+    def record_answer_strategy(self, strategy: Dict[str, Any] | None) -> None:
+        self.raise_if_cancelled()
+        safe_strategy = self._safe_answer_strategy(strategy)
+        if safe_strategy is None:
+            return
+        self._answer_strategy = safe_strategy
+        for stage in ("answer_strategy.query_classification", "answer_strategy.context_partition"):
+            self._selection_events.append(
+                {
+                    "stage": stage,
+                    "decision": dict(safe_strategy),
+                }
+            )
+
     def record_llm_call(
         self,
         *,
@@ -532,6 +547,15 @@ class TraceCollector:
                     self.temporal_context,
                 )
 
+    def grounding_evidence_texts(self, evidence_ids: Mapping[int, str]) -> Dict[str, str]:
+        """Return the exact final-answer evidence text keyed by public Evidence ID."""
+
+        return {
+            evidence_ids[result_id]: text
+            for result_id, text in self._grounding_evidence_text.items()
+            if result_id in evidence_ids
+        }
+
     def finalize_answer(
         self,
         answer: str,
@@ -657,6 +681,8 @@ class TraceCollector:
                 "total_tokens": int(total_tokens or 0),
             },
         }
+        if self._answer_strategy is not None:
+            trace["answer_strategy"] = dict(self._answer_strategy)
         if self.trust_tokens:
             trace["summary"]["trust_tokens"] = self.trust_tokens
         if answer is not None:
@@ -899,4 +925,36 @@ class TraceCollector:
                 safe[f"{key}_count"] = len(value)
             elif value is not None:
                 safe[f"{key}_count"] = 1
+        return safe or None
+
+    @classmethod
+    def _safe_answer_strategy(cls, strategy: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not isinstance(strategy, dict):
+            return None
+        safe: Dict[str, Any] = {}
+        for key in ("version", "query_class", "decision", "intermediate_context_role", "output_gate"):
+            value = strategy.get(key)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", value):
+                safe[key] = value
+        subject = strategy.get("subject_anchor")
+        if isinstance(subject, str) and 0 < len(subject) <= 128:
+            safe["subject_anchor"] = redact_sensitive_text(subject, max_length=128)
+        for key in ("primary_evidence_ids", "supporting_evidence_ids"):
+            value = strategy.get(key)
+            if isinstance(value, list):
+                safe[key] = [
+                    item.upper()
+                    for item in value
+                    if isinstance(item, str) and re.fullmatch(r"E[1-9]\d{0,2}", item, re.IGNORECASE)
+                ][:20]
+            else:
+                safe[key] = []
+        fallback_used = strategy.get("fallback_used")
+        if isinstance(fallback_used, bool):
+            safe["fallback_used"] = fallback_used
+        fallback_reason = strategy.get("fallback_reason")
+        if isinstance(fallback_reason, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", fallback_reason):
+            safe["fallback_reason"] = fallback_reason
+        else:
+            safe["fallback_reason"] = None
         return safe or None

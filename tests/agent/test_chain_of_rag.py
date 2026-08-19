@@ -499,6 +499,40 @@ class TestChainOfRAG(BaseAgentTest):
         self.assertEqual(results, retrieved_results)
         self.assertEqual(tokens, 30)  # 20 from retrieve + 10 from LLM
 
+    def test_query_uses_rendered_evidence_for_definition_strategy(self):
+        definition = "DeepSearcher 是一个基于 RAG 的文档问答项目。"
+        evidence = RetrievalResult(
+            embedding=[0.1] * 8,
+            text="文档清洗后会切分成片段并写入 Milvus。",
+            reference="test_reference",
+            metadata={"wider_text": definition},
+        )
+        collector = TraceCollector("DeepSearcher是什么")
+        self.chain_of_rag.retrieve = MagicMock(
+            return_value=(
+                [evidence],
+                20,
+                {"intermediate_context": ["流程答案 [S1E1]"]},
+            )
+        )
+        self.llm.chat = MagicMock(
+            return_value=ChatResponse(
+                content="文档清洗后会切分成片段并写入 Milvus。[E1]",
+                total_tokens=10,
+            )
+        )
+
+        answer, results, tokens = self.chain_of_rag.query(
+            "DeepSearcher是什么",
+            trace_collector=collector,
+        )
+        trace = collector.build(total_tokens=tokens, final_results=results, answer=answer)
+
+        assert answer == f"{definition} [E1]"
+        assert trace["answer_strategy"]["decision"] == "definition_first"
+        assert trace["answer_strategy"]["primary_evidence_ids"] == ["E1"]
+        assert trace["answer_strategy"]["output_gate"] == "canonical_definition"
+
     def test_format_retrieved_results(self):
         """Test the _format_retrieved_results method."""
         retrieved_results = [

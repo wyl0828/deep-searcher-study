@@ -1177,7 +1177,7 @@ def test_trace_finalization_applies_policy_and_records_input_output_states():
     trace = collector.build(total_tokens=1, final_results=[evidence], answer=final_answer)
 
     assert final_answer == "Milvus 是向量数据库。[E1]"
-    assert trace["version"] == 7
+    assert trace["version"] == 8
     assert trace["grounding"]["state"] == "fully_grounded"
     assert trace["trust"]["input"]["trust_status"] == "partially_grounded"
     assert trace["trust"]["output"]["trust_status"] == "fully_grounded"

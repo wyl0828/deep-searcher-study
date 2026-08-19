@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "dataset_id": "answer_order_v1",
+  "strategy_version": "definition-first.v1",
+  "cases": [
+    {
+      "id": "deepsearcher-definition-compact",
+      "query": "DeepSearcher是什么",
+      "definition_anchor": "DeepSearcher 是一个基于 RAG 的文档问答项目",
+      "supporting_anchor": "文档清洗后会切分成片段并转为向量写入 Milvus"
+    },
+    {
+      "id": "deepsearcher-definition-spaced",
+      "query": "DeepSearcher 是什么",
+      "definition_anchor": "DeepSearcher 是一个基于 RAG 的文档问答项目",
+      "supporting_anchor": "文档清洗后会切分成片段并转为向量写入 Milvus"
+    },
+    {
+      "id": "deepsearcher-definition-casefold",
+      "query": "deepsearcher是什么",
+      "definition_anchor": "DeepSearcher 是一个基于 RAG 的文档问答项目",
+      "supporting_anchor": "文档清洗后会切分成片段并转为向量写入 Milvus"
+    },
+    {
+      "id": "deepsearcher-definition-prefix",
+      "query": "什么是DeepSearcher",
+      "definition_anchor": "DeepSearcher 是一个基于 RAG 的文档问答项目",
+      "supporting_anchor": "文档清洗后会切分成片段并转为向量写入 Milvus"
+    }
+  ]
+}
