@@ -49,3 +49,12 @@ Trace 定位：第 3 页 definition 已进入检索证据，但 support filter �
 - 三级 LLM 凭据绑定、Provider 容灾与恢复已验证通过。
 - 当前剩余问题属于检索证据选择/答案排序，不属于 Provider 路由。
 - 下一批只针对 definition evidence selection 做 P0 回归：先固定 Gold case 与 trace 断言，再评估 support filter 或候选排序修复；不先调整 Trust threshold、Prompt 或 evidence admission。
+
+## P0 后续实验结论
+
+2026-08-19 对定义类答案做了两种临时实验，均未作为产品改动保留：
+
+- 仅在中间答案和最终答案提示中增加“概念问题先给定义”：真实结果仍可能优先输出流程，不能形成确定性收益。
+- 定义类问题最终答案移除 ChainOfRAG 中间答案：一次请求出现“证据不足”，另一次请求又恢复为流程答案，说明会破坏现有 Trust 输入/输出稳定性。
+
+两种实验均已回滚，服务器恢复到本地 Git 基线。当前结论是：definition 已进入召回结果和 support evidence，剩余问题是最终答案组织契约，不应继续用临时正则、字符串前缀或未版本化 Prompt 叠加修补。下一步应单独定义并版本化“概念解释先给定义”的完整答案策略，再配套确定性 Gold/Trust 回归后实施。
