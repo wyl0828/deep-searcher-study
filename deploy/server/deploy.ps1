@@ -27,7 +27,7 @@
 .PARAMETER Group
     start/stop/logs 使用的分组。
 .PARAMETER ProviderEnvFile
-    本地 Provider 环境文件（含 DEEPSEEK_API_KEY/OPENAI_API_KEY），prepare 时合并到服务器 .env.server。
+    本地 Provider 环境文件（含 legacy 或 candidate-level Provider 变量），prepare 时合并到服务器 .env.server。
 .PARAMETER Commit
     package 使用的提交，默认 HEAD。
 #>
@@ -135,7 +135,13 @@ switch ($Action) {
             }
             $provider = @{}
             if ($ProviderEnvFile -and (Test-Path -LiteralPath $ProviderEnvFile)) {
-                $canonical = @("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL")
+                $canonical = @(
+                    "DEEPSEEK_OFFICIAL_API_KEY", "DEEPSEEK_OFFICIAL_BASE_URL",
+                    "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL",
+                    "BAILIAN_API_KEY", "BAILIAN_BASE_URL",
+                    "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
+                    "OPENAI_API_KEY", "OPENAI_BASE_URL"
+                )
                 Get-Content -LiteralPath $ProviderEnvFile | ForEach-Object {
                     $t = $_.Trim()
                     if ($t -and -not $t.StartsWith("#") -and $t.Contains("=")) {
@@ -143,6 +149,18 @@ switch ($Action) {
                         foreach ($canon in $canonical) {
                             if ($n.Trim() -ieq $canon) { $provider[$canon] = $v.Trim() }
                         }
+                    }
+                }
+                $compatibilityAliases = @{
+                    "DEEPSEEK_OFFICIAL_API_KEY"  = "DEEPSEEK_API_KEY"
+                    "DEEPSEEK_OFFICIAL_BASE_URL" = "DEEPSEEK_BASE_URL"
+                    "BAILIAN_API_KEY"             = "OPENAI_API_KEY"
+                    "BAILIAN_BASE_URL"            = "OPENAI_BASE_URL"
+                }
+                foreach ($target in $compatibilityAliases.Keys) {
+                    $source = $compatibilityAliases[$target]
+                    if ((-not $provider.ContainsKey($target) -or -not $provider[$target]) -and $provider.ContainsKey($source)) {
+                        $provider[$target] = $provider[$source]
                     }
                 }
                 $rendered = foreach ($line in $rendered) {
@@ -170,7 +188,10 @@ switch ($Action) {
             "echo -n DEEPSEARCHER_ADMIN_TOKEN=; grep -E '^DEEPSEARCHER_ADMIN_TOKEN=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
             "echo -n DEEPSEARCHER_SESSION_SECRET=; grep -E '^DEEPSEARCHER_SESSION_SECRET=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
             "echo -n DEEPSEEK_API_KEY=; grep -E '^DEEPSEEK_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
-            "echo -n OPENAI_API_KEY=; grep -E '^OPENAI_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c"
+            "echo -n OPENAI_API_KEY=; grep -E '^OPENAI_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n DEEPSEEK_OFFICIAL_API_KEY=; grep -E '^DEEPSEEK_OFFICIAL_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n OPENCODE_GO_API_KEY=; grep -E '^OPENCODE_GO_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c;"
+            "echo -n BAILIAN_API_KEY=; grep -E '^BAILIAN_API_KEY=' $envFileRemote | head -1 | cut -d= -f2- | tr -d '[:space:]' | wc -c"
         ) -join " "
         Write-Host "ENV   密钥项（键=长度，不显示值）："
         (& ssh @SshArgs $summaryCmd) | ForEach-Object { Write-Host "      $_" }

@@ -54,13 +54,31 @@ function Import-ProviderEnvironment {
             $values[$name.Trim()] = $value.Trim()
         }
     }
+    $compatibilityAliases = @{
+        "DEEPSEEK_OFFICIAL_API_KEY"  = "DEEPSEEK_API_KEY"
+        "DEEPSEEK_OFFICIAL_BASE_URL" = "DEEPSEEK_BASE_URL"
+        "BAILIAN_API_KEY"             = "OPENAI_API_KEY"
+        "BAILIAN_BASE_URL"            = "OPENAI_BASE_URL"
+    }
+    foreach ($target in $compatibilityAliases.Keys) {
+        $source = $compatibilityAliases[$target]
+        if ((-not $values.ContainsKey($target) -or -not $values[$target]) -and $values.ContainsKey($source)) {
+            $values[$target] = $values[$source]
+        }
+    }
     foreach ($required in @("DEEPSEEK_API_KEY", "OPENAI_API_KEY")) {
         $value = [string]$values[$required]
         if (-not $value -or $value -match "^(your|change-this|replace|example|sk-xxxx|xxxx)") {
             throw "$required 未配置或仍是示例占位符，拒绝启动 app/full 模式。"
         }
     }
-    foreach ($name in @("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL")) {
+    foreach ($name in @(
+        "DEEPSEEK_OFFICIAL_API_KEY", "DEEPSEEK_OFFICIAL_BASE_URL",
+        "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL",
+        "BAILIAN_API_KEY", "BAILIAN_BASE_URL",
+        "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
+        "OPENAI_API_KEY", "OPENAI_BASE_URL"
+    )) {
         if ($values.ContainsKey($name) -and $values[$name]) {
             Set-Item -Path "Env:$name" -Value $values[$name]
         }
