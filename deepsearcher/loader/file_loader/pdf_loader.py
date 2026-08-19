@@ -32,6 +32,11 @@ def _clean_text(value: Any) -> str:
     return re.sub(r"[ \t]+", " ", text).strip()
 
 
+def _normalize_text(value: Any) -> str:
+    """Edge-noise identity: collapse whitespace, strip, lowercase (for latin)."""
+    return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+
 def _float(value: Any, fallback: float = 0.0) -> float:
     try:
         return float(value)
@@ -367,11 +372,19 @@ class PDFLoader(BaseLoader):
         ocr_resolution: int = 180,
         ocr_min_confidence: float = 0.45,
         ocr_engine_factory: Callable[[], Any] | None = None,
+        edge_band_ratio: float = 0.08,
+        edge_min_pages: int = 3,
+        edge_repeat_ratio: float = 0.2,
+        edge_max_len: int = 40,
     ):
         self.ocr_enabled = bool(ocr_enabled)
         self.ocr_min_chars = max(0, int(ocr_min_chars))
         self.ocr_resolution = max(72, min(400, int(ocr_resolution)))
         self.ocr_min_confidence = max(0.0, min(1.0, float(ocr_min_confidence)))
+        self.edge_band_ratio = max(0.01, min(0.3, float(edge_band_ratio)))
+        self.edge_min_pages = max(2, int(edge_min_pages))
+        self.edge_repeat_ratio = max(0.0, min(1.0, float(edge_repeat_ratio)))
+        self.edge_max_len = max(2, int(edge_max_len))
         self._ocr_engine_factory = ocr_engine_factory
         self._ocr_engine = None
 
@@ -460,6 +473,78 @@ class PDFLoader(BaseLoader):
             for index, line in enumerate(fallback_lines)
         ]
 
+    def _edge_noise_norms(self, file) -> tuple[set[str], set[str]]:
+        """Document-level: collect edge-band short text across distinct pages (no OCR).
+
+        A line counts as a header/footer candidate only when it sits in an edge band,
+        is short, and its normalized text repeats across a minimum number of distinct
+        pages AND a minimum fraction of the document. Header vs footer are collected
+        separately so a top-of-body sentence is never conflated with a bottom footer.
+        This is a conservative rule: it suppresses real page furniture without deleting
+        short text that legitimately appears in only a few body pages.
+        """
+        import pdfplumber
+
+        total_pages = len(file.pages)
+        edge_pages: dict[tuple[str, str], set[int]] = {}
+        for page_number, page in enumerate(file.pages, start=1):
+            try:
+                stat_lines = self._text_lines(page, [])
+            except Exception:
+                stat_lines = []
+            for line in stat_lines:
+                text = _clean_text(line.text)
+                if not text or len(text) > self.edge_max_len:
+                    continue
+                nb = _normalized_bbox(
+                    line.bbox,
+                    page_width=float(page.width),
+                    page_height=float(page.height),
+                )
+                # pdfplumber 坐标自底向上：顶部 y 大、底部 y 小。
+                if nb[3] > 1.0 - self.edge_band_ratio:
+                    band = "top"
+                elif nb[1] < self.edge_band_ratio:
+                    band = "bottom"
+                else:
+                    continue
+                key = (band, _normalize_text(text))
+                edge_pages.setdefault(key, set()).add(page_number)
+            page.close()
+        header_norms: set[str] = set()
+        footer_norms: set[str] = set()
+        for (band, norm), pages in edge_pages.items():
+            enough_pages = len(pages) >= self.edge_min_pages
+            enough_ratio = total_pages == 0 or len(pages) / total_pages >= self.edge_repeat_ratio
+            if enough_pages and enough_ratio:
+                if band == "top":
+                    header_norms.add(norm)
+                else:
+                    footer_norms.add(norm)
+        return header_norms, footer_norms
+
+    def _is_edge_noise(
+        self,
+        line,
+        *,
+        page_width: float,
+        page_height: float,
+        header_norms: set[str],
+        footer_norms: set[str],
+    ) -> bool:
+        text = _clean_text(line.text)
+        if not text or len(text) > self.edge_max_len:
+            return False
+        nb = _normalized_bbox(line.bbox, page_width=page_width, page_height=page_height)
+        # pdfplumber 坐标自底向上：顶部 y 大、底部 y 小。
+        if nb[3] > 1.0 - self.edge_band_ratio:
+            band, norms = "top", header_norms
+        elif nb[1] < self.edge_band_ratio:
+            band, norms = "bottom", footer_norms
+        else:
+            return False
+        return _normalize_text(text) in norms
+
     def _load_pdf(self, file_path: str) -> List[Document]:
         import pdfplumber
 
@@ -470,6 +555,7 @@ class PDFLoader(BaseLoader):
         heading_stack: list[str] = []
         with pdfplumber.open(file_path) as file:
             total_pages = len(file.pages)
+            header_norms, footer_norms = self._edge_noise_norms(file)
             for page_number, page in enumerate(file.pages, start=1):
                 plain_text = page.extract_text() or ""
                 use_ocr = (
@@ -489,8 +575,21 @@ class PDFLoader(BaseLoader):
                     lines,
                     float(page.width),
                 )
+                filtered_lines = []
+                suppressed_edges = 0
+                for line in ordered_lines:
+                    if self._is_edge_noise(
+                        line,
+                        page_width=float(page.width),
+                        page_height=float(page.height),
+                        header_norms=header_norms,
+                        footer_norms=footer_norms,
+                    ):
+                        suppressed_edges += 1
+                        continue
+                    filtered_lines.append(line)
                 content, line_spans, section_spans = _page_content_and_spans(
-                    ordered_lines,
+                    filtered_lines,
                     page_width=float(page.width),
                     page_height=float(page.height),
                     display_name=display_name,
@@ -514,6 +613,7 @@ class PDFLoader(BaseLoader):
                             "layout_type": layout_type,
                             "page_width": round(float(page.width), 3),
                             "page_height": round(float(page.height), 3),
+                            "edge_noise_suppressed": suppressed_edges,
                             "_line_spans": line_spans,
                             "_section_spans": section_spans,
                         },
