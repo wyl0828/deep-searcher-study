@@ -185,7 +185,7 @@ provide_settings:
       hybrid_ranker: "weighted_rrf"
       hybrid_dense_weight: 1.5
       hybrid_sparse_weight: 1.0
-      hybrid_candidate_multiplier: 1
+      hybrid_candidate_multiplier: 4
       hybrid_dense_anchor_count: 2
       hybrid_diversity_tolerance: 0.0
 

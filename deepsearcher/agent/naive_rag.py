@@ -159,13 +159,20 @@ class NaiveRAG(RAGAgent):
             query_plan = QueryPlan((query,), False, False, "disabled")
         result_groups = []
         top_k = int(kwargs.get("top_k", self.top_k))
+        # P0-3: 候选扩展必须在 search_data 第一次 top_k 截断之前发生。
+        # 用 vector_db 的 hybrid_candidate_multiplier 作为扩展系数，先拉更大候选池，
+        # 聚合后再以归一化文本去重并回落 final top_k。
+        candidate_multiplier = max(
+            int(getattr(self.vector_db, "hybrid_candidate_multiplier", 1) or 1), 1
+        )
+        search_top_k = max(top_k, top_k * candidate_multiplier)
         for planned_query in query_plan.queries:
             query_results = []
             for collection in selected_collections:
                 retrieval_res = self.vector_db.search_data(
                     collection=collection,
                     vector=self.embedding_model.embed_query(planned_query),
-                    top_k=top_k,
+                    top_k=search_top_k,
                     query_text=planned_query,
                 )
                 query_results.extend(retrieval_res)
@@ -176,7 +183,9 @@ class NaiveRAG(RAGAgent):
             anchor_count=QUERY_PLAN_ORIGINAL_ANCHORS if query_plan.decomposed else 0,
             per_group_anchor_count=QUERY_PLAN_TOPIC_ANCHORS if query_plan.decomposed else 0,
             cross_query_rrf_k=QUERY_PLAN_RRF_K if query_plan.decomposed else None,
-            identity_policy="source_chunk",
+            # P0-3: 按归一化文本去重（不同 chunk id / 页码的相同正文视为重复），
+            # first-occurrence-wins，去除重复页眉对 Top-K 的占位污染。
+            identity_policy="text",
         )
         if trace_collector is not None:
             trace_collector.record_documents_retrieved(all_retrieved_results)
