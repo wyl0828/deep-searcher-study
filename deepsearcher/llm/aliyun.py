@@ -1,4 +1,3 @@
-import os
 from typing import Dict, List
 
 from deepsearcher.llm.base import BaseLLM, ChatResponse
@@ -30,17 +29,14 @@ class Aliyun(BaseLLM):
         """
         from openai import OpenAI as OpenAI_
 
+        from deepsearcher.llm._credentials import resolve_api_key, resolve_base_url
+
         self.model = model
 
-        if "api_key" in kwargs:
-            api_key = kwargs.pop("api_key")
-        else:
-            api_key = os.getenv("DASHSCOPE_API_KEY")
-
-        if "base_url" in kwargs:
-            base_url = kwargs.pop("base_url")
-        else:
-            base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        api_key = resolve_api_key(kwargs, provider_env="DASHSCOPE_API_KEY")
+        base_url = resolve_base_url(
+            kwargs, default="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
 
         self.client = OpenAI_(api_key=api_key, base_url=base_url, **kwargs)
 

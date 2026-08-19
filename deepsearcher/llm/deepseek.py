@@ -1,4 +1,3 @@
-import os
 from typing import Dict, List
 
 from deepsearcher.llm.base import (
@@ -66,15 +65,13 @@ class DeepSeek(BaseLLM):
         """
         from openai import OpenAI as OpenAI_
 
+        from deepsearcher.llm._credentials import resolve_api_key, resolve_base_url
+
         self.model = model
-        if "api_key" in kwargs:
-            api_key = kwargs.pop("api_key")
-        else:
-            api_key = os.getenv("DEEPSEEK_API_KEY")
-        if "base_url" in kwargs:
-            base_url = kwargs.pop("base_url")
-        else:
-            base_url = os.getenv("DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
+        api_key = resolve_api_key(kwargs, provider_env="DEEPSEEK_API_KEY")
+        base_url = resolve_base_url(
+            kwargs, provider_env="DEEPSEEK_BASE_URL", default="https://api.deepseek.com"
+        )
         self.temperature = float(kwargs.pop("temperature", 0.0))
         self.client = OpenAI_(api_key=api_key, base_url=base_url, **kwargs)
 

@@ -1,4 +1,3 @@
-import os
 from typing import Dict, List
 
 from deepsearcher.llm.base import BaseLLM, ChatResponse
@@ -28,15 +27,11 @@ class OpenAI(BaseLLM):
         """
         from openai import OpenAI as OpenAI_
 
+        from deepsearcher.llm._credentials import resolve_api_key, resolve_base_url
+
         self.model = model
-        if "api_key" in kwargs:
-            api_key = kwargs.pop("api_key")
-        else:
-            api_key = os.getenv("OPENAI_API_KEY")
-        if "base_url" in kwargs:
-            base_url = kwargs.pop("base_url")
-        else:
-            base_url = os.getenv("OPENAI_BASE_URL")
+        api_key = resolve_api_key(kwargs, provider_env="OPENAI_API_KEY")
+        base_url = resolve_base_url(kwargs, provider_env="OPENAI_BASE_URL")
         self.client = OpenAI_(api_key=api_key, base_url=base_url, **kwargs)
 
     def chat(self, messages: List[Dict]) -> ChatResponse:

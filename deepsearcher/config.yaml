@@ -6,23 +6,27 @@ provide_settings:
       timeout: 30
       max_retries: 1
       temperature: 0
-# Ordered Chat fallback is opt-in. Keep the single-provider block above for
-# existing deployments; candidates use the same provider/config shape.
-#    candidates:
-#      - provider: "DeepSeek"
-#        config:
-#          model: "deepseek-v4-flash"
-#          timeout: 30
-#      - provider: "OpenAI"
-#        config:
-#          model: "fallback-model"
-#    routing:
-#      failure_threshold: 3
-#      recovery_seconds: 30
-#      first_packet_timeout: 10
-#      expose_thinking: false
-#      api_key: "sk-xxxx"  # Uncomment to override the `DEEPSEEK_API_KEY` set in the environment variable
-#      base_url: "https://api.deepseek.com"
+    candidates:
+      - provider: "DeepSeek"
+        config:
+          model: "deepseek-v4-flash"
+          api_key_env: "DEEPSEEK_OFFICIAL_API_KEY"
+          base_url_env: "DEEPSEEK_OFFICIAL_BASE_URL"
+      - provider: "DeepSeek"
+        config:
+          model: "deepseek-v4-flash"
+          api_key_env: "OPENCODE_GO_API_KEY"
+          base_url_env: "OPENCODE_GO_BASE_URL"
+      - provider: "Aliyun"
+        config:
+          model: "qwen3.7-plus"
+          api_key_env: "BAILIAN_API_KEY"
+          base_url_env: "BAILIAN_BASE_URL"
+    routing:
+      failure_threshold: 3
+      recovery_seconds: 30
+      first_packet_timeout: 30
+      expose_thinking: false
 
 #    provider: "SiliconFlow"
 #    config:
