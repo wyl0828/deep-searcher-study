@@ -221,13 +221,14 @@ def test_trends_buckets_same_day_and_start_inclusive(session):
     conversation = Conversation(owner_id=user.id, knowledge_base_id=current.id)
     session.add(conversation)
     session.flush()
-    start = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)  # today
+    today = datetime.now(timezone.utc).date()
+    start = datetime(today.year, today.month, today.day, 12, 0, 0, tzinfo=timezone.utc)
     session.add(Message(conversation_id=conversation.id, role="assistant", content="a", status="succeeded", created_at=start))
     session.add(Message(conversation_id=conversation.id, role="assistant", content="b", status="succeeded", created_at=start + timedelta(hours=2)))
     session.commit()
 
     message_series = next(s for s in trends(session, days=7)["series"] if s["name"] == "messages")
     last = message_series["data"][-1]
-    assert last["ts"] == "2026-08-18"
+    assert last["ts"] == today.isoformat()
     assert last["value"] == 2
     assert sum(point["value"] for point in message_series["data"]) == 2
