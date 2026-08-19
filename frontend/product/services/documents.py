@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from deepsearcher.loader.file_loader.mime_type import (
     EXTENSION_FAMILY,
+    detect_upload_extension,
     normalize_extension,
     validate_upload,
 )
@@ -481,7 +482,19 @@ async def create_document_from_upload(
         session.add(document)
         session.flush()
 
-        stored_key = storage.put_staged(staged.path, knowledge_base_id=knowledge_base.id)
+        # 按文件内容嗅探真实类型，落键用与之一致的扩展名：
+        # 真 PDF（即使命名异常）→ pdf；markdown 内容即使被命名为 .pdf → md。
+        # 避免把非 PDF 内容强制存成 .pdf，导致 core-api 用 PDFLoader 误解析。
+        detected_ext = (
+            detect_upload_extension(staged.path, staged.display_name)
+            or normalize_extension(staged.display_name)
+            or "pdf"
+        )
+        stored_key = storage.put_staged(
+            staged.path,
+            knowledge_base_id=knowledge_base.id,
+            extension=detected_ext,
+        )
         document.storage_key = stored_key
         # Keep the legacy field populated while callers migrate to storage_key.
         document.storage_path = stored_key

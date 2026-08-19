@@ -117,6 +117,39 @@ def validate_upload(source_path: Path, filename: str) -> str:
     return extension
 
 
+def detect_upload_extension(source_path: Path, filename: str) -> str:
+    """Sniff a file's real type by content and return a routable extension.
+
+    This is the loader-dispatch authority: it ignores a forged client extension.
+    A true PDF maps to pdf even when mis-named; markdown/text content never maps
+    to pdf (it falls back to md/txt so the TextLoader handles it). Office/OOXML
+    and other signature families map to their canonical extension. Unknown
+    content falls back to the filename extension when routable, else "pdf".
+    """
+    extension = normalize_extension(filename)
+    family = detect_container_family(source_path)
+    family_to_ext = {
+        "pdf": "pdf",
+        "png": "png",
+        "jpeg": "jpeg",
+        "rtf": "rtf",
+        "epub": "epub",
+        "odt": "odt",
+        "svg": "svg",
+        "html": "html",
+        "ooxml_spreadsheet": "xlsx",
+        "ooxml_word": "docx",
+        "ooxml_presentation": "pptx",
+    }
+    if family in family_to_ext:
+        return family_to_ext[family]
+    if family == "text":
+        return "md" if extension == "md" else "txt"
+    if family in ("cfb", "zip"):
+        return extension if extension in EXTENSION_FAMILY else "doc"
+    return extension if extension in EXTENSION_FAMILY else "pdf"
+
+
 def _match_signature(prefix: bytes) -> str | None:
     for family, signatures in _SIGNATURES.items():
         for signature in signatures:

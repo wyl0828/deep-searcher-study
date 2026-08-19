@@ -483,8 +483,6 @@ class PDFLoader(BaseLoader):
         This is a conservative rule: it suppresses real page furniture without deleting
         short text that legitimately appears in only a few body pages.
         """
-        import pdfplumber
-
         total_pages = len(file.pages)
         edge_pages: dict[tuple[str, str], set[int]] = {}
         for page_number, page in enumerate(file.pages, start=1):
@@ -538,9 +536,9 @@ class PDFLoader(BaseLoader):
         nb = _normalized_bbox(line.bbox, page_width=page_width, page_height=page_height)
         # pdfplumber 坐标自底向上：顶部 y 大、底部 y 小。
         if nb[3] > 1.0 - self.edge_band_ratio:
-            band, norms = "top", header_norms
+            norms = header_norms
         elif nb[1] < self.edge_band_ratio:
-            band, norms = "bottom", footer_norms
+            norms = footer_norms
         else:
             return False
         return _normalize_text(text) in norms

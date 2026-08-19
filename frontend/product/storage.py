@@ -45,14 +45,15 @@ class LocalObjectStorage:
             raise StorageError("local object path escapes the upload root")
         return candidate
 
-    def put_staged(self, source: Path, *, knowledge_base_id: str) -> str:
+    def put_staged(self, source: Path, *, knowledge_base_id: str, extension: str = "pdf") -> str:
         destination_dir = self.root / knowledge_base_id
         destination_dir.mkdir(parents=True, exist_ok=True)
         try:
             destination_dir.chmod(0o700)
         except OSError:
             pass
-        destination = destination_dir / f"{secrets.token_hex(24)}.pdf"
+        safe_extension = str(extension or "pdf").strip().lstrip(".") or "pdf"
+        destination = destination_dir / f"{secrets.token_hex(24)}.{safe_extension}"
         os.replace(source, destination)
         try:
             destination.chmod(0o600)
@@ -103,11 +104,12 @@ class S3ObjectStorage:
         )
 
     @staticmethod
-    def _key(knowledge_base_id: str) -> str:
-        return f"knowledge-bases/{knowledge_base_id}/{secrets.token_hex(24)}.pdf"
+    def _key(knowledge_base_id: str, extension: str = "pdf") -> str:
+        safe_extension = str(extension or "pdf").strip().lstrip(".") or "pdf"
+        return f"knowledge-bases/{knowledge_base_id}/{secrets.token_hex(24)}.{safe_extension}"
 
-    def put_staged(self, source: Path, *, knowledge_base_id: str) -> str:
-        key = self._key(knowledge_base_id)
+    def put_staged(self, source: Path, *, knowledge_base_id: str, extension: str = "pdf") -> str:
+        key = self._key(knowledge_base_id, extension)
         try:
             self.client.upload_file(str(source), self.bucket, key)
         except Exception as exc:
@@ -127,7 +129,8 @@ class S3ObjectStorage:
     @contextmanager
     def materialize(self, object_key: str) -> Iterator[Path]:
         temp_dir = Path(tempfile.mkdtemp(prefix="deepsearcher-object-"))
-        destination = temp_dir / "document.pdf"
+        extension = Path(object_key).suffix or ".pdf"
+        destination = temp_dir / ("document" + extension)
         try:
             try:
                 self.client.download_file(self.bucket, object_key, str(destination))
