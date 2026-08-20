@@ -38,26 +38,60 @@
     "role": "local_canonical",
     "node": "local",
     "prepare": "reset_owned_collection",
-    "purpose": "isolated_preflight",
+    "purpose": "pre_full_live",
     "status": "failed",
     "failure_classification": "application-runtime",
-    "output_dir": "tmp/quality-gate/2026-08-20-final-live-finalsha-rerun",
-    "report_git_commit": "bce1bcac094a4bc9949920768b9206ef506b1927"
+    "output_dir": "tmp/quality-gate/v1-final-live",
+    "report_git_commit": "65102d54efdc42310191c7e7ba52eb23698b8594"
+  },
+  "diagnostic": {
+    "classification": "EVALUATOR_PROVIDER_VARIANCE",
+    "historical_raw_response": "unavailable",
+    "environment_remediation_applied": true,
+    "mismatch_fields": [
+      "provider_alias",
+      "base_url_host"
+    ],
+    "evidence_dir": "tmp/quality-gate/diagnostic/20260820-v1-targeted",
+    "evaluator_batch_request_sha256": "4e01c97639248be98f7e25c270597f095729cf0167cb91a6917911342ac2db51",
+    "ambiguous_entity_request_sha256": "7e1e5ee70d903e95ef8e44dcf9b73266aadf1ef08c23ec8113358fd63f87ffb0",
+    "batch_case_count": 8,
+    "ambiguous_entity_batch_index": 7,
+    "provider_raw_response_available": true,
+    "provider_raw_response_sha256": "7c1a9954e38c192b1d42e5df1a7f3fc3d22bd0abb7d3fec648d45d566a6ce09d",
+    "raw_label": "entailed",
+    "parser_status": "entailed",
+    "endpoint_host": "api.deepseek.com",
+    "wrapper": {
+      "diagnostic_wrapper_active": false,
+      "diagnostic_hook_removed": true,
+      "diagnostic_module_removed": true,
+      "diagnostic_wrapper_code_removed": true,
+      "diagnostic_artifacts_retained": true,
+      "diagnostic_raw_response_retained": true
+    }
   },
   "local_quality": {
     "fast": "PASS",
-    "live": "FAILED",
+    "pre_full_live": "FAILED",
+    "full_fast": "NOT_EXECUTED",
+    "full_live": "NOT_EXECUTED",
     "full": "NOT_EXECUTED",
-    "full_reason": "blocked_by_live_failure",
+    "full_reason": "blocked_by_pre_full_live_failure",
     "canonical_quality_baseline": "NOT_PASSED",
-    "live_metrics": {
+    "pre_full_live_metrics": {
       "entailment_checks": 189,
       "repetitions": 3,
       "failed_runs": 0,
-      "stability": 0.9365,
-      "dangerous_false_entailed": 1,
+      "stability": 0.873,
+      "dangerous_false_entailed": 6,
       "selected_threshold": null,
-      "release_gate_passed": false
+      "release_gate_passed": false,
+      "ambiguous_entity": [
+        {"run": 1, "raw_status": "entailed", "confidence": 1.0},
+        {"run": 2, "raw_status": "entailed", "confidence": 1.0},
+        {"run": 3, "raw_status": "entailed", "confidence": 1.0}
+      ]
     }
   },
   "ecs": {
