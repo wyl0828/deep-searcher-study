@@ -807,9 +807,7 @@ class ChainOfRAG(RAGAgent):
         )
         strategy_evidence_texts = dict(evidence_texts)
         if trace_collector is not None:
-            strategy_evidence_texts.update(
-                trace_collector.grounding_evidence_texts(evidence_ids)
-            )
+            strategy_evidence_texts.update(trace_collector.grounding_evidence_texts(evidence_ids))
         strategy_evidence_texts.update(parse_rendered_evidence(formatted_evidence))
         answer_strategy = plan_answer_strategy(
             query,

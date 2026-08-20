@@ -693,14 +693,22 @@ NaiveRAG 作为路由解析失败时的默认 Agent。
 三份基线报告的一致性和阈值校验、MkDocs 构建以及 `git diff --check`。结果和逐阶段日志写入
 `tmp/quality-gate/latest/`。首次运行或 CI 使用 `-InstallDependencies`。
 
+在线评测可单独执行，使用本机 Milvus、Provider 和固定的 evaluator collection：
+
+```powershell
+.\scripts\run-quality-gate.ps1 -Mode Live -OutputDir tmp/quality-gate/live
+```
+
 需要真实重建评测 Collection 并重跑检索、多轮和回答报告时使用：
 
 ```powershell
 .\scripts\run-quality-gate.ps1 -Mode Full -OutputDir tmp/quality-gate/full
 ```
 
-完整档先通过快速档，再使用 `evaluation/quality_gate.json` 中的固定样本与门槛校验新报告；
-它需要本机 Milvus 和 `.env` 中的真实 Provider 配置。GitHub Actions 默认执行快速档，并上传
+完整档在本地先执行快速档，再执行同一套在线评测；它是项目唯一的 canonical quality baseline，
+需要本机 Milvus 和 `.env` 中的真实 Provider 配置。Live/Full 会在输出目录写入
+`evaluator-manifest.json`，记录应用提交、PDF corpus 提交、dataset/config SHA、评测 collection
+和执行节点。ECS 只能作为临时远程执行节点，不能替代本地 Full Gate。GitHub Actions 默认执行快速档，并上传
 14 天可下载的质量日志与 JSON 结果。
 
 Full Gate 的回答阶段显式使用 `max_iter=2`，与当前 DeepSearch/ChainOfRAG 默认成本口径一致。

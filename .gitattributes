@@ -1,0 +1,2 @@
+# Learning-material PDFs are binary build artifacts; keep them out of text diff checks.
+output/pdf/** binary

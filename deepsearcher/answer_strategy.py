@@ -89,8 +89,7 @@ def _contains_definition_relation(sentence: str, subject: str) -> bool:
     after_subject = normalized_sentence[subject_position + len(subject) :]
     relation_window = after_subject[:160]
     return any(
-        relation_window.startswith(_normalize(relation))
-        or _normalize(relation) in relation_window
+        relation_window.startswith(_normalize(relation)) or _normalize(relation) in relation_window
         for relation in _DEFINITION_RELATIONS
     ) or any(_normalize(hint) in relation_window for hint in _DEFINITION_CONTENT_HINTS)
 
@@ -109,8 +108,10 @@ def _definition_sentence(text: str, subject: str) -> str | None:
         if sentence and _contains_definition_relation(sentence, subject):
             return sentence
     normalized_text = _normalize(text)
-    if subject and subject in normalized_text and any(
-        _normalize(hint) in normalized_text for hint in _DEFINITION_CONTENT_HINTS
+    if (
+        subject
+        and subject in normalized_text
+        and any(_normalize(hint) in normalized_text for hint in _DEFINITION_CONTENT_HINTS)
     ):
         raw_match = re.search(re.escape(subject), str(text or ""), flags=re.IGNORECASE)
         if raw_match:
@@ -234,7 +235,11 @@ def plan_answer_strategy(
 
     def candidate_text(result: RetrievalResult) -> str:
         evidence_id = visible_ids.get(id(result))
-        return snapshot_texts.get(evidence_id, _evidence_text(result)) if evidence_id else _evidence_text(result)
+        return (
+            snapshot_texts.get(evidence_id, _evidence_text(result))
+            if evidence_id
+            else _evidence_text(result)
+        )
 
     if not is_definition:
         return AnswerStrategyPlan(
@@ -262,9 +267,7 @@ def plan_answer_strategy(
             break
     if not primary_results and snapshot_texts:
         result_by_evidence_id = {
-            visible_ids[id(result)]: result
-            for result in results
-            if id(result) in visible_ids
+            visible_ids[id(result)]: result for result in results if id(result) in visible_ids
         }
         for evidence_id, text in snapshot_texts.items():
             result = result_by_evidence_id.get(evidence_id)
@@ -275,9 +278,7 @@ def plan_answer_strategy(
     if not primary_results and rendered_evidence:
         rendered_snapshot = parse_rendered_evidence(rendered_evidence)
         result_by_evidence_id = {
-            visible_ids[id(result)]: result
-            for result in results
-            if id(result) in visible_ids
+            visible_ids[id(result)]: result for result in results if id(result) in visible_ids
         }
         for evidence_id, text in rendered_snapshot.items():
             result = result_by_evidence_id.get(evidence_id)
@@ -342,9 +343,7 @@ def enforce_answer_order(
 
     first_sentence = _first_material_sentence(answer)
     answer_prefix = _MARKDOWN_PREFIX.sub("", str(answer or "").lstrip()).strip()
-    first_markers = {
-        marker.upper() for marker in _EVIDENCE_MARKER.findall(first_sentence)
-    }
+    first_markers = {marker.upper() for marker in _EVIDENCE_MARKER.findall(first_sentence)}
     primary_texts = [
         evidence_texts[evidence_id]
         for evidence_id in plan.primary_evidence_ids
@@ -367,9 +366,7 @@ def enforce_answer_order(
             return f"{sentence} [{evidence_id}]", replace(
                 plan,
                 fallback_used=not first_is_definition,
-                fallback_reason=(
-                    None if first_is_definition else "definition_sentence_fallback"
-                ),
+                fallback_reason=(None if first_is_definition else "definition_sentence_fallback"),
                 output_gate="canonical_definition",
             )
     return answer, replace(plan, output_gate="definition_sentence_unavailable")

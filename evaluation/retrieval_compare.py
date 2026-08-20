@@ -36,6 +36,7 @@ from evaluation.benchmark import (
     verify_sources,
 )
 from evaluation.dataset import EvalDataset, load_dataset
+from evaluation.evaluator_manifest import assert_evaluator_collection
 from evaluation.metrics import (
     METRIC_VERSION,
     aggregate,
@@ -725,6 +726,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         collection = validate_evaluation_collection(args.collection)
         modes = parse_modes(args.modes)
+        if args.prepare or args.cleanup:
+            assert_evaluator_collection(collection)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     positive_values = (

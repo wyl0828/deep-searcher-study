@@ -19,11 +19,11 @@
 .PARAMETER Release
     版本目录名，例如 20260815-01，默认按当天日期 + 序号。
 .PARAMETER Server
-    SSH 目标，默认 root@47.96.40.156。
+    SSH 目标；未传入时从环境配置解析。
 .PARAMETER KeyPath
-    SSH 私钥，默认 D:\code\ecs_key.pem。
+    SSH 私钥；未传入时从环境配置解析。
 .PARAMETER RemoteRoot
-    服务器项目根，默认 /opt/deepsearcher-study。
+    服务器项目根；未传入时从环境配置解析。
 .PARAMETER Group
     start/stop/logs 使用的分组。
 .PARAMETER ProviderEnvFile
@@ -36,9 +36,9 @@ param(
     [ValidateSet("package", "upload", "prepare", "build", "deploy", "validate", "start", "stop", "down", "status", "logs")]
     [string]$Action = "status",
     [string]$Release = "",
-    [string]$Server = "root@47.96.40.156",
-    [string]$KeyPath = "D:\code\ecs_key.pem",
-    [string]$RemoteRoot = "/opt/deepsearcher-study",
+    [string]$Server = "",
+    [string]$KeyPath = "",
+    [string]$RemoteRoot = "",
     [ValidateSet("storage", "vector", "messaging", "app", "full")]
     [string]$Group = "full",
     [string]$ProviderEnvFile = "",
@@ -46,6 +46,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "config.ps1")
+$serverConfig = Resolve-DeepSearcherServerConfig -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot
+$Server = $serverConfig.Server
+$KeyPath = $serverConfig.KeyPath
+$RemoteRoot = $serverConfig.RemoteRoot
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 if (-not $Release) {
     $today = Get-Date -Format "yyyyMMdd"
@@ -92,8 +97,12 @@ switch ($Action) {
             if ($dirty.Count -gt 0) {
                 Write-Warning "工作树有未提交变更，部署包将只包含提交 $Commit 的内容：`n$($dirty -join "`n")"
             }
-            & git archive --format=tar.gz --output=$tarball $Commit
+            & git archive --format=tar.gz --output=$tarball $Commit -- . ':(exclude)output/pdf/**'
             if ($LASTEXITCODE -ne 0) { throw "git archive 失败" }
+            $archiveEntries = @(tar -tzf $tarball)
+            if ($archiveEntries | Where-Object { $_ -like "output/pdf/*" }) {
+                throw "部署包包含 output/pdf，运行时包必须排除评估 PDF"
+            }
         } finally {
             Pop-Location
         }
@@ -213,7 +222,7 @@ switch ($Action) {
         Invoke-Ssh "df -h / | tail -1"
     }
     "deploy" {
-        & $MyInvocation.MyCommand -Action package -Release $Release -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot
+        & $MyInvocation.MyCommand -Action package -Release $Release -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot -Commit $Commit
         & $MyInvocation.MyCommand -Action upload -Release $Release -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot
         & $MyInvocation.MyCommand -Action prepare -Release $Release -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot -ProviderEnvFile $ProviderEnvFile
         & $MyInvocation.MyCommand -Action build -Release $Release -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot

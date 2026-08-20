@@ -2,7 +2,7 @@
 # 用法：.\verify-failover.ps1 [-EnvFile <path>] [-BaseUrl <url>]
 # 前置：已部署 compose 全拓扑（migrate 完成、全部服务 healthy、已创建管理员账号）
 # 注意：六场景机器断言以 deploy/server/verify-failover.sh 为权威实现（已补全并在服务器
-# 47.96.40.156 执行 VERIFY-FAILOVER: PASS，记录见 docs/验证记录/2026-08-16-failover-verification.md）。
+# 历史节点执行 VERIFY-FAILOVER: PASS，记录见对应验证文档。
 # 本 PowerShell 版保留原骨架供 Windows/本地 compose 参考；正式验收请运行 .sh 并以其输出为准。
 param(
     [string]$EnvFile = "/opt/deepsearcher-study/.env.server",

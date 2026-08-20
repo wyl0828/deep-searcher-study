@@ -6,6 +6,7 @@ import pytest
 from deepsearcher.llm.base import ChatResponse
 from deepsearcher.vector_db.base import RetrievalResult
 from evaluation.dataset import load_dataset
+from evaluation.evaluator_manifest import assert_evaluator_collection
 from evaluation.retrieval_compare import (
     DecisionThresholds,
     evaluate_modes,
@@ -177,6 +178,12 @@ def test_collection_and_modes_are_restricted_to_safe_evaluation_scope():
         validate_evaluation_collection("kb_product")
     with pytest.raises(ValueError):
         parse_modes("dense,invalid")
+
+
+def test_prepare_is_restricted_to_the_owned_quality_collection():
+    assert assert_evaluator_collection("eval_workspace_v2") == "eval_workspace_v2"
+    with pytest.raises(ValueError, match="eval_workspace_v2"):
+        assert_evaluator_collection("eval_o06")
 
 
 def test_save_report_is_atomic_and_csv_has_retrieval_mode(tmp_path):

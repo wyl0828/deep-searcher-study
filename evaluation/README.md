@@ -18,8 +18,12 @@ python -m evaluation.retrieval_compare \
   --output evaluation/results/workspace-v2-retrieval
 ```
 
-`--prepare` 会保留评测 Collection 供 Agent 评测复用；所有实验完成后再按需追加
-`--cleanup` 清理。然后执行：
+`--prepare` 只允许精确使用质量评测自有的 `eval_workspace_v2`，每次执行都会先重建该
+collection，再导入当前数据集，避免重复运行残留旧分块。`--cleanup` 也只允许清理这个
+evaluator-owned collection，禁止模糊匹配或触碰个人知识库。然后执行：
+
+质量门禁的 Live/Full 输出目录还会生成 `evaluator-manifest.json`，记录应用提交、PDF corpus
+提交、dataset/config SHA、来源文件 SHA、collection 和执行节点。
 
 ```shell
 python -m evaluation.benchmark \

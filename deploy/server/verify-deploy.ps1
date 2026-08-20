@@ -10,12 +10,17 @@
 [CmdletBinding()]
 param(
     [string]$Release = "20260815-01",
-    [string]$Server = "root@47.96.40.156",
-    [string]$KeyPath = "D:\code\ecs_key.pem",
-    [string]$RemoteRoot = "/opt/deepsearcher-study"
+    [string]$Server = "",
+    [string]$KeyPath = "",
+    [string]$RemoteRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "config.ps1")
+$serverConfig = Resolve-DeepSearcherServerConfig -Server $Server -KeyPath $KeyPath -RemoteRoot $RemoteRoot
+$Server = $serverConfig.Server
+$KeyPath = $serverConfig.KeyPath
+$RemoteRoot = $serverConfig.RemoteRoot
 $sshArgs = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=15", $Server)
 $scpArgs = @("-i", $KeyPath, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=15")
 $remoteScript = "$RemoteRoot/scripts/verify-deploy-run.sh"

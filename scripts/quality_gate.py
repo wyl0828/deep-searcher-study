@@ -1,4 +1,4 @@
-"""Run the repository quality gate in fast or live mode."""
+"""Run the repository quality gate in fast, live, or full mode."""
 
 from __future__ import annotations
 
@@ -12,6 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Sequence
+
+from evaluation.evaluator_manifest import (
+    EVALUATOR_COLLECTION,
+    write_evaluator_manifest,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "tmp" / "quality-gate" / "latest"
@@ -31,6 +36,7 @@ class QualityGateRunner:
         self.output_dir = output_dir.resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.steps: list[dict] = []
+        self.evaluator_manifest_path: Path | None = None
 
     def run(
         self,
@@ -89,6 +95,11 @@ class QualityGateRunner:
             "passed": error is None,
             "error": error,
             "steps": self.steps,
+            "evaluator_manifest": (
+                str(self.evaluator_manifest_path)
+                if self.evaluator_manifest_path is not None
+                else None
+            ),
         }
         temporary = summary_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -259,6 +270,10 @@ def _run_fast_gate(
         ),
         echo_output=False,
     )
+    runner.run(
+        "deploy-config-ip-gate",
+        _uv_command("python", "scripts/check_deploy_config.py"),
+    )
     if not skip_docs:
         runner.run(
             "mkdocs-build",
@@ -268,7 +283,26 @@ def _run_fast_gate(
     runner.run("git-diff-check", [_executable("git"), "diff", "--check"])
 
 
-def _run_live_gate(runner: QualityGateRunner) -> None:
+def _run_live_gate(
+    runner: QualityGateRunner,
+    *,
+    install_dependencies: bool,
+    application_commit: str,
+    corpus_commit: str,
+    execution_role: str,
+    execution_node: str,
+) -> None:
+    if install_dependencies:
+        runner.run("uv-sync", [_executable("uv"), "sync", "--frozen", "--dev"])
+    runner.evaluator_manifest_path = write_evaluator_manifest(
+        runner.output_dir,
+        application_commit=application_commit,
+        corpus_commit=corpus_commit,
+        collection=EVALUATOR_COLLECTION,
+        execution_role=execution_role,
+        execution_node=execution_node,
+        mode="live",
+    )
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     live_config = manifest["full"]
     collection = str(live_config["collection"])
@@ -395,22 +429,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         if callable(reconfigure):
             reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("fast", "full"), default="fast")
+    parser.add_argument("--mode", choices=("fast", "live", "full"), default="fast")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--install-dependencies", action="store_true")
     parser.add_argument("--skip-docs", action="store_true")
+    parser.add_argument("--application-commit", default="")
+    parser.add_argument("--corpus-commit", default="")
+    parser.add_argument("--execution-role", default="")
+    parser.add_argument("--execution-node", default="")
     args = parser.parse_args(argv)
 
     runner = QualityGateRunner(args.output_dir)
     error: str | None = None
     try:
-        _run_fast_gate(
-            runner,
-            install_dependencies=args.install_dependencies,
-            skip_docs=args.skip_docs,
-        )
-        if args.mode == "full":
-            _run_live_gate(runner)
+        if args.mode in {"fast", "full"}:
+            _run_fast_gate(
+                runner,
+                install_dependencies=args.install_dependencies,
+                skip_docs=args.skip_docs,
+            )
+        if args.mode in {"live", "full"}:
+            _run_live_gate(
+                runner,
+                install_dependencies=args.install_dependencies and args.mode == "live",
+                application_commit=args.application_commit,
+                corpus_commit=args.corpus_commit,
+                execution_role=args.execution_role,
+                execution_node=args.execution_node,
+            )
     except Exception as exc:
         error = str(exc)
         print(f"\n[quality-gate] FAILED: {error}", file=sys.stderr)

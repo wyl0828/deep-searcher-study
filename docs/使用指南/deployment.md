@@ -38,8 +38,10 @@ docker compose --env-file env.compose.example -f compose.yaml -f compose.local.y
 ## 三、服务器部署
 
 完整步骤、分组验收、故障恢复与 Nginx 接入见 [服务器部署与验收](../部署/服务器部署与验收.md)。
-当前服务器目标 `root@47.96.40.156`（公网 IP 可能因 ECS 重启变化，详见该文档“运维要点”第 1 条）；
-服务器提供 `deploy/server/` 下的打包、上传、构建、分组启停、备份、恢复、观察与部署验证脚本。
+服务器目标不写入仓库脚本；请复制 `deploy/server/config.example.ps1` 为被 Git 忽略的
+`deploy/server/local.config.ps1`，或设置 `DEEPSEARCHER_SERVER`、`DEEPSEARCHER_SSH_KEY`、
+`DEEPSEARCHER_REMOTE_ROOT`。命令行参数优先级最高。服务器是可替换的临时执行节点，
+`deploy/server/` 提供打包、上传、构建、分组启停、备份、恢复、观察与部署验证脚本。
 
 > 注意：上游模板中的 `python main.py` / `docker run` 单容器方式仅适合快速体验上游功能，
 > 不包含本项目的 Trust Layer、用户工作台、双 API/双 Consumer、RocketMQ 事务入库与操作审计等能力。

@@ -932,7 +932,13 @@ class TraceCollector:
         if not isinstance(strategy, dict):
             return None
         safe: Dict[str, Any] = {}
-        for key in ("version", "query_class", "decision", "intermediate_context_role", "output_gate"):
+        for key in (
+            "version",
+            "query_class",
+            "decision",
+            "intermediate_context_role",
+            "output_gate",
+        ):
             value = strategy.get(key)
             if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", value):
                 safe[key] = value
@@ -953,7 +959,9 @@ class TraceCollector:
         if isinstance(fallback_used, bool):
             safe["fallback_used"] = fallback_used
         fallback_reason = strategy.get("fallback_reason")
-        if isinstance(fallback_reason, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", fallback_reason):
+        if isinstance(fallback_reason, str) and re.fullmatch(
+            r"[A-Za-z0-9._:-]{1,128}", fallback_reason
+        ):
             safe["fallback_reason"] = fallback_reason
         else:
             safe["fallback_reason"] = None
