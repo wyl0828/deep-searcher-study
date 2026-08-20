@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "application_commit": "cea1eaa0aa5b5ba04ccd5de756baa866a306bea7",
+  "corpus_commit": "a6b03b33557aad73e06531237aa83a05bdaa2e32",
+  "collection": "eval_workspace_v2",
+  "dataset": [
+    {
+      "path": "evaluation/datasets/workspace_v2.json",
+      "sha256": "254bc588448fe75b4fa663fe2fd9215fe97d2dd8d9aef21f54cda2e52203459d"
+    }
+  ],
+  "configs": [
+    {
+      "path": "evaluation/quality_gate.json",
+      "sha256": "a396fb629a29d56a9984fc3370695285cf6414ada2de03d1f169f2362c5ad048"
+    },
+    {
+      "path": "deepsearcher/config.yaml",
+      "sha256": "5ac4369a594a9f216043465740c4d4e9cd48981775c25b42d655057a45406dd6"
+    }
+  ],
+  "files": [
+    {
+      "path": "examples/data/WhatisMilvus.pdf",
+      "sha256": "00cac5d6ca84077ed81380becc06cde379be11db37fcef59ec4b041a4f39acc1"
+    },
+    {
+      "path": "output/pdf/DeepSearcher第一阶段学习讲义-手机阅读版.pdf",
+      "sha256": "c6f985b508a4894c4301b73e8d9bc51c37da6e3586bd0136ec2d713269be7837"
+    },
+    {
+      "path": "output/pdf/DeepSearcher第二阶段学习讲义-手机阅读版.pdf",
+      "sha256": "2f642de229fea9f813ed43e25067b87588f17485d1a13c329b7ed7f905bbf9ff"
+    }
+  ],
+  "execution": {
+    "mode": "live",
+    "role": "local_canonical",
+    "node": "local",
+    "prepare": "reset_owned_collection",
+    "status": "not_completed_on_final_sha",
+    "note": "A pre-rewrite Live attempt failed the entailment release gate; it was not relabeled to these final commit identities."
+  }
+}

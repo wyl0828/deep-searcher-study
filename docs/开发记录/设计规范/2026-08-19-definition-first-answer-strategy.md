@@ -1,16 +1,16 @@
 # Definition-first 答案策略 v1 设计与评审
 
-日期：2026-08-19
-状态：本地 v1 已实施并通过自动化回归；真实四问线上回归待安排
+日期：2026-08-20
+状态：本地 v1 与 Fast Gate 已验证；Live/Full 与真实四问仍未形成最终 canonical 通过记录
 范围：ChainOfRAG 最终答案的概念解释排序
-当前版本：本地 HEAD `8163000`；服务器 release `20260818-01`
+当前版本：应用 Commit A `cea1eaa`；PDF Commit B `a6b03b3`；临时 ECS release `20260820-01`
 
 ## 0. 实施状态（2026-08-19 刷新）
 
 - `definition-first.v1` 已落地到 `AnswerStrategy`、ChainOfRAG 最终答案链路、Trace 和答案顺序门。
-- 本地定向回归：相关 11 个测试文件 **181 passed**；Python 全量回归 **1169 passed, 11 skipped**。
-- 前端生产构建与 TypeScript 检查通过；当前本地工作区尚未将 `8163000` 部署到服务器。
-- 尚未完成：基于真实知识库的四个同义问题回归、服务器 release 部署后的线上验证；不在服务器现场修改业务代码。
+- 本地最终 Commit A/B 工作区 Fast Gate：**19/19 步通过**，Python **1175 passed, 11 skipped**，前端 40 项、E2E 2 项和迁移至 `0023` 均通过。
+- 一次 Live 尝试完成了 189 次真实 entailment 检查且请求失败数为 0，但本次 provider 结果 `stability=0.9365`、出现 1 个 dangerous false entailed，未选出 release threshold，因此 Live Gate 未通过。
+- 该 Live 尝试发生在最终 A/B 提交重建前，manifest 身份已标记为 superseded；为避免自动重试昂贵项，最终 SHA 的 Live/Full 未重复执行。真实四问和 ECS smoke 未执行。
 
 ## 1. 问题边界
 
@@ -188,8 +188,8 @@ AnswerStrategy.plan(query, final evidence snapshot)
 - 无定义证据的负例继续走既有安全路径，不允许由顺序门补写定义；
 - 真实四问 trace 中均能定位到策略版本、主要证据和最终 Trust 状态。
 
-本地验证顺序为：策略单测 → ChainOfRAG 定向测试 → Trust/Trace 定向测试 → 真实四问回归。
-截至本次刷新，前三项已通过；真实四问回归和服务器验证仍是下一步，不把自动化 Gold 通过误报为线上完成。
+本地验证顺序为：策略单测 → ChainOfRAG 定向测试 → Trust/Trace 定向测试 → Fast Gate → Live/Full → 真实四问。
+截至本次刷新，定向测试、Fast Gate 已通过；Live/Full 因 entailment release gate 未通过而未形成最终基线，真实四问仍未执行。
 服务器阶段只部署已验证提交，不在服务器上现场修改业务代码。
 
 ## 7. 评审结论
@@ -210,4 +210,4 @@ AnswerStrategy.plan(query, final evidence snapshot)
 - 不用未版本化的正则、字符串前缀或服务器临时补丁替代策略契约；
 - 不在没有定义证据时根据标题、流程或外部常识生成定义。
 
-结论：`definition-first.v1` 已完成本地实施，具备清晰触发条件、证据边界、输出后置保护、Trace 审计字段和 Gold 验收口径；实施过程中未调整 Trust 或检索参数。下一步只补真实四问回归和已验证提交的服务器验收。
+结论：`definition-first.v1` 已完成本地实施，具备清晰触发条件、证据边界、输出后置保护、Trace 审计字段和 Gold 验收口径；实施过程中未调整 Trust 或检索参数。当前待办仅是排查本次 entailment provider 结果波动后，按授权重新执行最终 SHA 的 Live/Full，再补真实四问和临时节点 smoke。

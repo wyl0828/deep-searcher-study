@@ -5,21 +5,21 @@
 > 供自用/演示/继续开发。**不引入**企业级重型发布链（immutable image tag、备份-回滚工程、CI/CD、监控告警、
 > 密钥体系迁移）——这些在进入真实使用后再启用。
 > 给后续会话：本文件是基于 `docs/开发记录/实施计划/2026-08-16-ragent-enterprise-gap-plan.md` 的“发布/对齐
-> 执行清单”。`b250613` 是 8 月 18 日的部署基线；本次刷新已核对当前本地与服务器的实际版本。
+> 执行清单”。本阶段不把 ECS 作为质量基线；本地 Local Full 是唯一 canonical 结果，ECS 仅为可替换的临时执行节点。
 
 ---
 
 ## 1. 背景与现状
 
-- 本地当前 HEAD 为 **`8163000`**（`feat(answer): enforce definition-first strategy`），比 `origin/study-baseline` 领先 9 个提交，尚未推送。
-- 当前本地质量结果：全量 pytest **1169 passed / 11 skipped**；前端 40 项测试、TypeScript 检查和生产构建通过。
-- 服务器 `118.178.234.18` 当前运行 **`20260818-01` release**；core-api、两个 product-api、两个 consumer 及依赖容器均为 healthy，三个回环健康接口均返回 HTTP 200。
-- 服务器已不再是 8/15 的旧 release，但本地最新 `8163000` 尚未部署；当前服务器版本与本地 HEAD 的精确 SHA 仍需在下一次发布时固化到 release manifest。
-- 域名 `deepsearcher.aimianshi.xyz` 尚未配置 DNS A 记录。
+- 应用 Commit A 为 **`cea1eaa0aa5b5ba04ccd5de756baa866a306bea7`**，PDF Commit B 为 **`a6b03b33557aad73e06531237aa83a05bdaa2e32`**，未 push。
+- 最终 SHA 的 Fast Gate **19/19 通过**：Python **1175 passed / 11 skipped**，前端 40 项、E2E 2 项、迁移 `0023` 通过。
+- 一次 pre-rewrite Live 尝试完成请求但因 entailment stability/release threshold 未通过；最终 SHA 的 Live/Full 未自动重跑。
+- 当前 ECS `118.178.234.18` 的旧 release `20260818-01` 仍 healthy；`20260820-01` 已上传解压，但构建卡在 `uv sync`，未启动新 release。
+- 不做 DNS/HTTPS；服务器地址只存在于被 Git 忽略的本地配置或环境变量。
 
 ## 2. 目标
 
-让服务器运行版本与一个已验证的本地 Git SHA 一致，可用完整能力：
+让临时执行节点能够运行一个已验证的本地 Git SHA，可用完整能力：
 反馈闭环（P1-4.2）、多格式解析分块（P2-A）、可编排入库（P2-B）、连接器同步（P3）、运营大盘（P4）、分布式限流（P5，默认关闭），
 以及修复后的 RocketMQ 消费链路与 `document-ingest` 心跳。
 
@@ -41,9 +41,9 @@
 9. 业务 E2E：登录 → 建 Workspace/KB → 上传文档（多格式）→ 检索/回答 → 👍/👎 反馈 → connector → `/admin` 运营大盘 → 权限检查。
 10. P1–P5 各一个可辨识 smoke case。
 
-### S4 对外访问（可选但推荐）
-11. DNS A 记录 `deepsearcher` → `118.178.234.18`（需解析商操作；自研阶段亦可先保留本机 hosts）。
-12. HTTPS：`80 → 301/443`（自研阶段可先 HTTP，对外稳定访问再上证书）。
+### S4 临时节点验证
+11. 只验证当前节点的基础服务、migration、Live/Full（按需）和 P0–P5 smoke。
+12. 不做 DNS、HTTPS 或公网发布；更换节点只更新本地忽略配置。
 
 ## 4. 本轮不做（进入真实使用后再启用）
 
@@ -57,15 +57,15 @@
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 0 | 本地固化（历史部署基线=`b250613`；当前 HEAD=`8163000`） | ✅ 2026-08-19 |
-| S1 | 源码对齐到服务器 release `20260818-01` | ✅ 已有运行镜像；尚未与当前 HEAD 建立 SHA 清单 |
-| S2 | 构建与启动 | ✅ `20260818-01` 容器 healthy，三个健康接口 HTTP 200 |
-| S3 | 验证（机器级 + 业务 E2E + P1–P5 smoke） | 部分完成：健康与 LLM 路由已验证；当前 HEAD 的完整 E2E 未重跑 |
-| S4 | DNS / HTTPS | 待办 |
-| — | 验证记录落盘 | 部分完成：已有分项记录；待补本次版本对齐汇总 |
+| 0 | 本地固化（Commit A/B） | ✅ 2026-08-20 |
+| S1 | runtime package 排除 PDF、动态节点配置、manifest | ✅ Commit A |
+| S2 | 本地 Fast Gate | ✅ 19/19；Python 1175 passed / 11 skipped |
+| S3 | 本地 Live/Full | ⚠️ Live provider evaluation 未通过；Full 未重复执行 |
+| S4 | 临时 ECS `20260820-01` | ⚠️ 已上传；构建在 uv 依赖同步阶段中止，旧 release 未受影响 |
+| — | Commit C 验证记录 | 待本次事实记录提交 |
 
 ## 6. 收敛目标
 
-> 一个 Git SHA → 一个镜像 → 一套确定配置 → 一个 migration head → 一份验证记录。
+> 本地 Git SHA → 本地 canonical 质量结果；临时 ECS 只提供兼容性结果和 smoke 事实。
 
-当前尚未完全收敛：服务器 `20260818-01` 已稳定运行，但本地 `8163000` 尚未部署，且服务器 release 仍需补充可追溯 SHA。下一步只做已验证提交的 release 固化、完整业务 E2E/P1–P5 smoke 复核，以及按需处理 DNS/HTTPS。
+当前 Commit A/B 与本地 Fast 已收口；Live/Full 和 ECS smoke 因分别遇到 provider evaluation gate 与 ECS 依赖构建问题尚未完成。后续只在明确授权后排查这两个事实，不扩展发布治理。
