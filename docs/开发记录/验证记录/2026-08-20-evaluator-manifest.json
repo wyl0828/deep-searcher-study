@@ -38,7 +38,39 @@
     "role": "local_canonical",
     "node": "local",
     "prepare": "reset_owned_collection",
-    "status": "not_completed_on_final_sha",
-    "note": "A pre-rewrite Live attempt failed the entailment release gate; it was not relabeled to these final commit identities."
+    "purpose": "isolated_preflight",
+    "status": "failed",
+    "failure_classification": "application-runtime",
+    "output_dir": "tmp/quality-gate/2026-08-20-final-live-finalsha-rerun",
+    "report_git_commit": "bce1bcac094a4bc9949920768b9206ef506b1927"
+  },
+  "local_quality": {
+    "fast": "PASS",
+    "live": "FAILED",
+    "full": "NOT_EXECUTED",
+    "full_reason": "blocked_by_live_failure",
+    "canonical_quality_baseline": "NOT_PASSED",
+    "live_metrics": {
+      "entailment_checks": 189,
+      "repetitions": 3,
+      "failed_runs": 0,
+      "stability": 0.9365,
+      "dangerous_false_entailed": 1,
+      "selected_threshold": null,
+      "release_gate_passed": false
+    }
+  },
+  "ecs": {
+    "release": "20260820-01",
+    "role": "temporary_remote_executor",
+    "node": "118.178.234.18",
+    "status": "build_failed",
+    "failure_classification": "infrastructure",
+    "runtime_started": false,
+    "live": "NOT_EXECUTED",
+    "definition_first": "NOT_EXECUTED",
+    "smoke": "NOT_EXECUTED",
+    "old_release_healthy": true,
+    "release_manifest": "not_present; verified by release content hashes and package exclusion check"
   }
 }
