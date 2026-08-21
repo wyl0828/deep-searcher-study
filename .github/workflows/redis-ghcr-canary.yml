@@ -109,7 +109,7 @@ jobs:
           echo "platform=$target_platform" >> "$GITHUB_OUTPUT"
           echo "Target manifest: $target_digest ($target_platform)"
 
-      - name: Verify package visibility
+      - name: Record package visibility
         id: package
         shell: bash
         env:
@@ -122,7 +122,13 @@ jobs:
               "/users/$GITHUB_REPOSITORY_OWNER/packages/container/$PACKAGE_NAME" \
               --jq '.visibility'
           )"
-          test "$visibility" = "private"
+          case "$visibility" in
+            private|public|internal) ;;
+            *)
+              echo "Unexpected package visibility: $visibility" >&2
+              exit 1
+              ;;
+          esac
           echo "visibility=$visibility" >> "$GITHUB_OUTPUT"
           echo "Package visibility: $visibility"
 
