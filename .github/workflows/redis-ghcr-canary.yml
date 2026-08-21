@@ -1,0 +1,146 @@
+name: Redis GHCR canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: redis-ghcr-canary
+  cancel-in-progress: false
+
+jobs:
+  mirror-redis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_IMAGE: docker.io/library/redis:7-alpine
+      TARGET_IMAGE: ghcr.io/wyl0828/deepsearcher-redis:7-alpine
+      PACKAGE_NAME: deepsearcher-redis
+
+    steps:
+      - name: Install skopeo
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v skopeo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y skopeo
+          fi
+          skopeo --version
+
+      - name: Resolve source linux/amd64 manifest
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_index="$RUNNER_TEMP/redis-source-index.json"
+          skopeo inspect --raw "docker://$SOURCE_IMAGE" > "$source_index"
+
+          if jq -e '.manifests | type == "array"' "$source_index" >/dev/null; then
+            source_digest="$(jq -r '
+              [.manifests[]
+                | select(
+                    .platform.os == "linux"
+                    and .platform.architecture == "amd64"
+                    and ((.platform.variant // "") == "")
+                  )
+              ][0].digest // empty
+            ' "$source_index")"
+          else
+            source_digest="sha256:$(sha256sum "$source_index" | awk '{print $1}')"
+          fi
+
+          if [[ ! "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Unable to resolve the source linux/amd64 manifest digest" >&2
+            exit 1
+          fi
+
+          echo "digest=$source_digest" >> "$GITHUB_OUTPUT"
+          echo "Source linux/amd64 manifest: $source_digest"
+
+      - name: Log in to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" |
+            skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Copy Redis linux/amd64 image to GHCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          skopeo copy \
+            --override-os linux \
+            --override-arch amd64 \
+            "docker://$SOURCE_IMAGE" \
+            "docker://$TARGET_IMAGE"
+
+      - name: Verify target manifest and platform
+        id: target
+        shell: bash
+        env:
+          SOURCE_AMD64_DIGEST: ${{ steps.source.outputs.digest }}
+        run: |
+          set -euo pipefail
+          target_digest="$(
+            skopeo inspect \
+              --override-os linux \
+              --override-arch amd64 \
+              --format '{{.Digest}}' \
+              "docker://$TARGET_IMAGE"
+          )"
+          target_platform="$(
+            skopeo inspect \
+              --override-os linux \
+              --override-arch amd64 \
+              --format '{{.Os}}/{{.Architecture}}' \
+              "docker://$TARGET_IMAGE"
+          )"
+
+          test "$target_platform" = "linux/amd64"
+          test "$target_digest" = "$SOURCE_AMD64_DIGEST"
+
+          echo "digest=$target_digest" >> "$GITHUB_OUTPUT"
+          echo "platform=$target_platform" >> "$GITHUB_OUTPUT"
+          echo "Target manifest: $target_digest ($target_platform)"
+
+      - name: Verify package visibility
+        id: package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          visibility="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/users/$GITHUB_REPOSITORY_OWNER/packages/container/$PACKAGE_NAME" \
+              --jq '.visibility'
+          )"
+          test "$visibility" = "private"
+          echo "visibility=$visibility" >> "$GITHUB_OUTPUT"
+          echo "Package visibility: $visibility"
+
+      - name: Write canary summary
+        shell: bash
+        env:
+          SOURCE_AMD64_DIGEST: ${{ steps.source.outputs.digest }}
+          TARGET_DIGEST: ${{ steps.target.outputs.digest }}
+          TARGET_PLATFORM: ${{ steps.target.outputs.platform }}
+          PACKAGE_VISIBILITY: ${{ steps.package.outputs.visibility }}
+        run: |
+          {
+            echo "## Redis GHCR canary"
+            echo
+            echo "- Source: \`$SOURCE_IMAGE\`"
+            echo "- Source linux/amd64 manifest: \`$SOURCE_AMD64_DIGEST\`"
+            echo "- Target: \`$TARGET_IMAGE\`"
+            echo "- Target manifest: \`$TARGET_DIGEST\`"
+            echo "- Target platform: \`$TARGET_PLATFORM\`"
+            echo "- Package visibility: \`$PACKAGE_VISIBILITY\`"
+          } >> "$GITHUB_STEP_SUMMARY"
