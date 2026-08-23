@@ -29,48 +29,15 @@ export type KnowledgeBase = {
   index_status: "verified" | "not_indexed";
   index_manifest: CollectionIndexManifest | null;
   index_previous_collection: string | null;
-  workspace_id: string | null;
-  workspace_name: string | null;
-  role: "owner" | "editor" | "viewer" | null;
+  is_company_wide: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export type Workspace = {
-  id: string;
-  name: string;
-  description: string;
-  owner_id: string;
-  role: "owner" | "editor" | "viewer";
-  member_count: number;
-  knowledge_base_count: number;
-  created_at: string;
-};
-
-export type WorkspaceMember = {
-  user_id: string;
-  username: string;
-  display_name: string;
-  role: "owner" | "editor" | "viewer";
-};
-
-export type KnowledgeBaseMember = {
-  user_id: string;
-  username: string;
-  display_name: string;
-  role: "editor" | "viewer";
-};
-
-export type MemberGroup = {
-  id: string;
-  name: string;
-  role: "editor" | "viewer";
-  member_count: number;
-};
-
-export type GroupMemberItem = {
-  user_id: string;
-  username: string;
+export type AdminKnowledgeBase = KnowledgeBase & {
+  health_status: "healthy" | "warning" | "critical" | "partial" | null;
+  health_score: number | null;
+  health_updated_at: string | null;
 };
 
 export type KnowledgeHealthComputed = {
@@ -190,7 +157,65 @@ export type ProductUser = {
   display_name: string;
   role: "admin" | "member";
   is_active: boolean;
+  department_id?: string | null;
+  department_name?: string | null;
+  last_activity_at?: string | null;
   created_at: string;
+  accessible_knowledge_base_count?: number;
+};
+
+export type Department = {
+  id: string;
+  name: string;
+  user_count: number;
+  knowledge_base_count: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type DepartmentList = {
+  items: Department[];
+  unassigned: {
+    id: null;
+    name: string;
+    user_count: number;
+    knowledge_base_count: number;
+  };
+};
+
+export type AdminUsersPage = {
+  items: ProductUser[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type KnowledgeAccessSummary = {
+  is_company_wide: boolean;
+  departments: Array<{ id: string; name: string }>;
+  direct_users: Array<{ id: string; username: string; display_name: string }>;
+  accessible_user_count: number;
+};
+
+export type InheritedKnowledgeAccess = {
+  knowledge_base_id: string;
+  knowledge_base_name: string;
+  sources: Array<"company_wide" | "department">;
+};
+
+export type PersonalExtraKnowledgeAccess = {
+  knowledge_base_id: string;
+  knowledge_base_name: string;
+};
+
+export type UserKnowledgeAccess = {
+  user_id: string;
+  is_admin: boolean;
+  inherited_access: InheritedKnowledgeAccess[];
+  personal_extra_access: PersonalExtraKnowledgeAccess[];
+  department_access_count: number;
+  company_wide_access_count: number;
+  effective_access_count: number;
 };
 
 export type AuthStatus = {
@@ -205,8 +230,8 @@ export type OperationAuditLog = {
   biz_id: string;
   operation_type: string;
   action_desc: string;
-  before_snapshot: Record<string, unknown> | null;
-  after_snapshot: Record<string, unknown> | null;
+  before_snapshot: unknown;
+  after_snapshot: unknown;
   change_diff:
     | Array<{ field: string; before: unknown; after: unknown }>
     | null;
@@ -244,6 +269,7 @@ export type ProductDocument = {
   version_family_source: "user_declared" | "connector" | "admin_verified" | null;
   created_at: string;
   updated_at: string;
+  processing?: IngestJob | null;
 };
 
 export type DocumentGovernanceInput = {
@@ -264,6 +290,101 @@ export type IngestJob = {
   started_at: string | null;
   finished_at: string | null;
   error: { code: string; message: string } | null;
+};
+
+export type AdminIngestJob = IngestJob & {
+  document: ProductDocument;
+  knowledge_base: {
+    id: string;
+    name: string;
+  };
+};
+
+export type AdminIngestJobPage = {
+  items: AdminIngestJob[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type AdminRunItem = {
+  question: string | null;
+  message: Message;
+  conversation: {
+    id: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
+  };
+  knowledge_base: {
+    id: string;
+    name: string;
+  } | null;
+  scope: QueryScopeSnapshot & {
+    knowledge_bases: Array<{ id: string; name: string }>;
+  };
+  answer_run: {
+    id: string;
+    status: "running" | "succeeded" | "failed" | "cancelled";
+    request_id: string | null;
+    started_at: string;
+    finished_at: string | null;
+    total_latency_ms: number | null;
+    provider: string | null;
+    model: string | null;
+    attempts: Array<Record<string, unknown>> | null;
+    stage_results: Array<Record<string, unknown>> | null;
+  } | null;
+  owner: {
+    id: string;
+    username: string;
+    display_name: string;
+  };
+  feedback: {
+    positive: number;
+    negative: number;
+    comment_count: number;
+  };
+  feedback_items: Array<{
+    vote: 1 | -1 | null;
+    reason: string | null;
+    comment: string | null;
+    created_at: string;
+  }>;
+};
+
+export type AdminRunPage = {
+  items: AdminRunItem[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type SystemHealthState = "ready" | "not_ready" | "unknown";
+
+export type SystemHealthService = {
+  state: SystemHealthState;
+  code?: string;
+  retryable?: boolean;
+};
+
+export type SystemDiagnostics = {
+  version: number;
+  service: string;
+  status: "ready" | "degraded" | "not_ready";
+  request_id: string | null;
+  services: {
+    fastapi: SystemHealthService;
+    milvus: SystemHealthService;
+    llm: SystemHealthService;
+    embedding: SystemHealthService;
+    ingest_worker: SystemHealthService;
+  };
+  config: {
+    llm_model: string;
+    embedding_model: string;
+    collection: string;
+  };
 };
 
 export type Citation = {
@@ -635,8 +756,9 @@ export type QueryStageEvent =
 
 export type ConversationSummary = {
   id: string;
-  knowledge_base_id: string;
-  knowledge_base_name: string;
+  knowledge_base_id: string | null;
+  knowledge_base_name: string | null;
+  scope_mode: "auto" | "fixed";
   title: string;
   created_at: string;
   updated_at: string;
@@ -645,10 +767,47 @@ export type ConversationSummary = {
 export type ConversationDetail = {
   id: string;
   title: string;
-  knowledge_base: KnowledgeBase;
+  scope_mode: "auto" | "fixed";
+  knowledge_base: KnowledgeBase | null;
   messages: Message[];
   created_at: string;
   updated_at: string;
+};
+
+export type QueryScopeState =
+  | "ready"
+  | "no_access"
+  | "no_documents"
+  | "processing"
+  | "failed"
+  | "needs_rebuild"
+  | "partial"
+  | "unavailable"
+  | "unknown";
+
+export type QueryScope = {
+  state: QueryScopeState;
+  askable: boolean;
+  accessible_knowledge_base_count: number | null;
+  usable_knowledge_base_count: number | null;
+  status_counts: {
+    usable: number | null;
+    no_documents: number | null;
+    processing: number | null;
+    failed: number | null;
+    needs_rebuild: number | null;
+    unknown: number | null;
+  };
+  primary_action: "contact_admin" | "refresh" | null;
+};
+
+export type QueryScopeSnapshot = {
+  schema_version: number;
+  mode: "auto" | "fixed";
+  knowledge_base_ids: string[];
+  collection_names: string[];
+  resolved_at: string | null;
+  status_counts: QueryScope["status_counts"];
 };
 
 type ProductErrorPayload = {
@@ -698,7 +857,11 @@ async function readResponse<T>(response: Response): Promise<T> {
   return payload;
 }
 
-async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+async function requestJson<T>(
+  url: string,
+  options: RequestInit = {},
+  acceptedStatuses: number[] = [],
+): Promise<T> {
   const response = await fetch(url, {
     ...options,
     credentials: "same-origin",
@@ -707,6 +870,13 @@ async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T
       ...(options.headers || {}),
     },
   });
+  if (!response.ok && acceptedStatuses.includes(response.status)) {
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new ProductApiError("服务返回了无法读取的诊断结果。", "INVALID_RESPONSE");
+    }
+  }
   return readResponse<T>(response);
 }
 
@@ -741,9 +911,22 @@ export function logoutWorkspace(): Promise<{ logged_out: boolean }> {
   return requestJson("/api/auth/logout", { method: "POST" });
 }
 
-export async function listUsers(): Promise<ProductUser[]> {
-  const response = await requestJson<{ items: ProductUser[] }>("/api/admin/users");
-  return response.items;
+export async function listAdminUsers(input: {
+  q?: string;
+  department_id?: string;
+  role?: "admin" | "member";
+  status?: "active" | "inactive";
+  page?: number;
+  page_size?: number;
+} = {}): Promise<AdminUsersPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  const query = params.toString();
+  return requestJson(`/api/admin/users${query ? `?${query}` : ""}`);
 }
 
 export async function createUser(input: {
@@ -751,12 +934,105 @@ export async function createUser(input: {
   password: string;
   display_name: string;
   role: "admin" | "member";
+  department_id?: string | null;
 }): Promise<ProductUser> {
   const response = await requestJson<{ user: ProductUser }>("/api/admin/users", {
     method: "POST",
     body: JSON.stringify(input),
   });
   return response.user;
+}
+
+export function updateUser(
+  id: string,
+  input: {
+    display_name?: string;
+    role?: "admin" | "member";
+    department_id?: string | null;
+    is_active?: boolean;
+  },
+): Promise<{ user: ProductUser }> {
+  return requestJson(`/api/admin/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function listAdminDepartments(): Promise<DepartmentList> {
+  return requestJson("/api/admin/departments");
+}
+
+export function createDepartment(name: string): Promise<{ department: Department }> {
+  return requestJson("/api/admin/departments", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function updateDepartment(
+  id: string,
+  name: string,
+): Promise<{ department: Department }> {
+  return requestJson(`/api/admin/departments/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function listDepartmentUsers(
+  departmentId: string | null,
+): Promise<{ department?: Department; items: ProductUser[] }> {
+  return requestJson(
+    departmentId
+      ? `/api/admin/departments/${departmentId}/users`
+      : "/api/admin/departments/unassigned/users",
+  );
+}
+
+export function getCompanyWideKnowledgeAccess(): Promise<{ knowledge_base_ids: string[] }> {
+  return requestJson("/api/admin/knowledge-access/company-wide");
+}
+
+export function setCompanyWideKnowledgeAccess(
+  knowledgeBaseIds: string[],
+): Promise<{ knowledge_base_ids: string[] }> {
+  return requestJson("/api/admin/knowledge-access/company-wide", {
+    method: "PUT",
+    body: JSON.stringify({ knowledge_base_ids: knowledgeBaseIds }),
+  });
+}
+
+export function getDepartmentKnowledgeAccess(
+  departmentId: string,
+): Promise<{ department_id: string; knowledge_base_ids: string[] }> {
+  return requestJson(`/api/admin/departments/${departmentId}/knowledge-access`);
+}
+
+export function setDepartmentKnowledgeAccess(
+  departmentId: string,
+  knowledgeBaseIds: string[],
+): Promise<{ department_id: string; knowledge_base_ids: string[] }> {
+  return requestJson(`/api/admin/departments/${departmentId}/knowledge-access`, {
+    method: "PUT",
+    body: JSON.stringify({ knowledge_base_ids: knowledgeBaseIds }),
+  });
+}
+
+export function getUserKnowledgeAccess(id: string): Promise<UserKnowledgeAccess> {
+  return requestJson(`/api/admin/users/${id}/knowledge-access`);
+}
+
+export function setUserKnowledgeAccess(
+  id: string,
+  knowledgeBaseIds: string[],
+): Promise<{
+  user_id: string;
+  personal_extra_access: PersonalExtraKnowledgeAccess[];
+}> {
+  return requestJson(`/api/admin/users/${id}/knowledge-access`, {
+    method: "PUT",
+    body: JSON.stringify({ knowledge_base_ids: knowledgeBaseIds }),
+  });
 }
 
 export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
@@ -766,171 +1042,40 @@ export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
   return response.items;
 }
 
+export async function listAdminKnowledgeBases(): Promise<AdminKnowledgeBase[]> {
+  const response = await requestJson<{ items: AdminKnowledgeBase[] }>(
+    "/api/admin/knowledge-bases",
+  );
+  return response.items;
+}
+
+export async function listAdminKnowledgeBaseDocuments(
+  id: string,
+): Promise<ProductDocument[]> {
+  const response = await requestJson<{ items: ProductDocument[] }>(
+    `/api/admin/knowledge-bases/${id}/documents`,
+  );
+  return response.items;
+}
+
+export function getAdminKnowledgeBaseAccessSummary(
+  id: string,
+): Promise<KnowledgeAccessSummary> {
+  return requestJson(`/api/admin/knowledge-bases/${id}/access-summary`);
+}
+
+export function getAdminKnowledgeHealth(id: string): Promise<KnowledgeHealthView> {
+  return requestJson(`/api/admin/knowledge-bases/${id}/health`);
+}
+
 export function createKnowledgeBase(input: {
   name: string;
   description: string;
-  workspace_id?: string;
 }): Promise<KnowledgeBase> {
   return requestJson("/api/knowledge-bases", {
     method: "POST",
     body: JSON.stringify(input),
   });
-}
-
-export function listWorkspaces(): Promise<{ items: Workspace[] }> {
-  return requestJson("/api/workspaces");
-}
-
-export function createWorkspace(input: {
-  name: string;
-  description: string;
-}): Promise<Workspace> {
-  return requestJson("/api/workspaces", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function listWorkspaceMembers(
-  id: string,
-): Promise<{ items: WorkspaceMember[] }> {
-  return requestJson(`/api/workspaces/${id}/members`);
-}
-
-export function addWorkspaceMember(
-  id: string,
-  input: { username: string; role: "editor" | "viewer" },
-): Promise<{ member: WorkspaceMember }> {
-  return requestJson(`/api/workspaces/${id}/members`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function updateWorkspaceMemberRole(
-  id: string,
-  userId: string,
-  role: "editor" | "viewer",
-): Promise<{ member: WorkspaceMember }> {
-  return requestJson(`/api/workspaces/${id}/members/${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ role }),
-  });
-}
-
-export function removeWorkspaceMember(
-  id: string,
-  userId: string,
-): Promise<void> {
-  return requestJson(`/api/workspaces/${id}/members/${userId}`, {
-    method: "DELETE",
-  });
-}
-
-export function listKnowledgeBaseMembers(
-  id: string,
-): Promise<{ items: KnowledgeBaseMember[] }> {
-  return requestJson(`/api/knowledge-bases/${id}/members`);
-}
-
-export function addKnowledgeBaseMember(
-  id: string,
-  input: { username: string; role: "editor" | "viewer" },
-): Promise<{ member: KnowledgeBaseMember }> {
-  return requestJson(`/api/knowledge-bases/${id}/members`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function updateKnowledgeBaseMemberRole(
-  id: string,
-  userId: string,
-  role: "editor" | "viewer",
-): Promise<{ member: KnowledgeBaseMember }> {
-  return requestJson(`/api/knowledge-bases/${id}/members/${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ role }),
-  });
-}
-
-export function removeKnowledgeBaseMember(
-  id: string,
-  userId: string,
-): Promise<void> {
-  return requestJson(`/api/knowledge-bases/${id}/members/${userId}`, {
-    method: "DELETE",
-  });
-}
-
-export function listWorkspaceGroups(
-  workspaceId: string,
-): Promise<{ items: MemberGroup[] }> {
-  return requestJson(`/api/workspaces/${workspaceId}/groups`);
-}
-
-export function createWorkspaceGroup(
-  workspaceId: string,
-  input: { name: string; role: "editor" | "viewer" },
-): Promise<{ group: MemberGroup }> {
-  return requestJson(`/api/workspaces/${workspaceId}/groups`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function getWorkspaceGroup(
-  workspaceId: string,
-  groupId: string,
-): Promise<{ group: MemberGroup; members: GroupMemberItem[] }> {
-  return requestJson(`/api/workspaces/${workspaceId}/groups/${groupId}`);
-}
-
-export function updateWorkspaceGroupRole(
-  workspaceId: string,
-  groupId: string,
-  role: "editor" | "viewer",
-): Promise<{ group: MemberGroup }> {
-  return requestJson(`/api/workspaces/${workspaceId}/groups/${groupId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ role }),
-  });
-}
-
-export function deleteWorkspaceGroup(
-  workspaceId: string,
-  groupId: string,
-): Promise<void> {
-  return requestJson(`/api/workspaces/${workspaceId}/groups/${groupId}`, {
-    method: "DELETE",
-  });
-}
-
-export function addWorkspaceGroupMember(
-  workspaceId: string,
-  groupId: string,
-  input: { username: string },
-): Promise<{ member: GroupMemberItem }> {
-  return requestJson(
-    `/api/workspaces/${workspaceId}/groups/${groupId}/members`,
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export function removeWorkspaceGroupMember(
-  workspaceId: string,
-  groupId: string,
-  userId: string,
-): Promise<void> {
-  return requestJson(
-    `/api/workspaces/${workspaceId}/groups/${groupId}/members/${userId}`,
-    {
-      method: "DELETE",
-    },
-  );
 }
 
 export function getKnowledgeBase(id: string): Promise<KnowledgeBase> {
@@ -1015,6 +1160,63 @@ export function getIngestJob(id: string): Promise<IngestJob> {
   return requestJson(`/api/ingest-jobs/${id}`);
 }
 
+export function listAdminIngestJobs(input: {
+  page?: number;
+  page_size?: number;
+  status?: string;
+  knowledge_base_id?: string;
+} = {}): Promise<AdminIngestJobPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  const query = params.toString();
+  return requestJson(`/api/admin/ingest-jobs${query ? `?${query}` : ""}`);
+}
+
+export function retryAdminDocument(
+  id: string,
+): Promise<{ document: ProductDocument; job: IngestJob }> {
+  return requestJson(`/api/admin/documents/${id}/retry`, { method: "POST" });
+}
+
+export function listAdminRuns(input: {
+  page?: number;
+  page_size?: number;
+  knowledge_base_id?: string;
+  status?: string;
+  trust_status?: string;
+  risk_level?: string;
+  feedback?: string;
+} = {}): Promise<AdminRunPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  const query = params.toString();
+  return requestJson(`/api/admin/runs${query ? `?${query}` : ""}`);
+}
+
+export function getAdminRun(messageId: string): Promise<AdminRunItem> {
+  return requestJson(`/api/admin/runs/${messageId}`);
+}
+
+export function getSystemDiagnostics(): Promise<SystemDiagnostics> {
+  return requestJson(
+    "/api/health/diagnostics",
+    { method: "POST" },
+    [503],
+  );
+}
+
+export function getQueryScope(): Promise<QueryScope> {
+  return requestJson("/api/me/query-scope");
+}
+
 export function retryDocument(id: string) {
   return requestJson(`/api/documents/${id}/retry`, { method: "POST" });
 }
@@ -1031,11 +1233,15 @@ export async function listConversations(): Promise<ConversationSummary[]> {
 }
 
 export function createConversation(
-  knowledgeBaseId: string,
+  knowledgeBaseId?: string,
 ): Promise<ConversationSummary> {
   return requestJson("/api/conversations", {
     method: "POST",
-    body: JSON.stringify({ knowledge_base_id: knowledgeBaseId }),
+    body: JSON.stringify(
+      knowledgeBaseId
+        ? { scope_mode: "fixed", knowledge_base_id: knowledgeBaseId }
+        : { scope_mode: "auto" },
+    ),
   });
 }
 
@@ -1248,12 +1454,20 @@ export type DashboardKpi = {
   delta_pct: number | null;
 };
 
+export type MetricStat = {
+  value: number | null;
+  sample_count: number;
+  numerator: number | null;
+  denominator: number | null;
+};
+
 export type DashboardOverview = {
   updated_at: string;
   kpis: {
     users: DashboardKpi;
     knowledge_bases: DashboardKpi;
     documents: DashboardKpi & { ready?: number | null; failed?: number | null };
+    answers_today: DashboardKpi;
     conversations: DashboardKpi;
     messages: DashboardKpi;
     feedback: DashboardKpi;
@@ -1266,6 +1480,14 @@ export type DashboardOverview = {
     critical: number;
     partial: number;
     unknown: number;
+  };
+  quality: {
+    success_rate: MetricStat;
+    negative_feedback_rate: MetricStat;
+    feedback_coverage_rate: MetricStat;
+    uncited_answer_count: MetricStat;
+    average_latency_ms: MetricStat;
+    cancelled_count: number;
   };
 };
 

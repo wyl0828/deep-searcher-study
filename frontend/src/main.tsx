@@ -5,6 +5,7 @@ import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import { App } from "./App";
+import "./design-tokens.css";
 import "./styles.css";
 
 const rootElement = document.getElementById("root");

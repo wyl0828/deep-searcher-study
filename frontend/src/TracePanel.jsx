@@ -15,6 +15,10 @@ function reflectionText(value) {
   return "未执行反思";
 }
 
+function traceValue(value) {
+  return value == null ? "尚无结论" : value;
+}
+
 function retrievalValue(document) {
   const metric = document.metric_type && document.metric_type !== "UNKNOWN"
     ? ` ${document.metric_type}`
@@ -110,11 +114,17 @@ export function TracePanel({ trace, logs = [], onClearLogs, state = "idle" }) {
                 </div>
                 <div>
                   <span>实际迭代</span>
-                  <strong>{trace.summary?.iteration_count ?? trace.iterations?.length ?? 0} 轮</strong>
+                  <strong>
+                    {traceValue(
+                      trace.summary?.iteration_count ??
+                        (trace.iterations ? trace.iterations.length : null),
+                    )}{" "}
+                    轮
+                  </strong>
                 </div>
                 <div>
                   <span>采用文档</span>
-                  <strong>{trace.summary?.supported_document_count ?? 0} 条</strong>
+                  <strong>{traceValue(trace.summary?.supported_document_count)} 条</strong>
                 </div>
                 <div>
                   <span>总 Token</span>
@@ -190,7 +200,7 @@ export function TracePanel({ trace, logs = [], onClearLogs, state = "idle" }) {
                               <div className="trace-documents-heading">
                                 <span>检索文档</span>
                                 <small>
-                                  命中 {iteration.retrieved_count ?? 0} 条，仅展示前 {visibleCount} 条
+                                  命中 {traceValue(iteration.retrieved_count)} 条，仅展示前 {visibleCount} 条
                                 </small>
                               </div>
                               {visibleCount ? (

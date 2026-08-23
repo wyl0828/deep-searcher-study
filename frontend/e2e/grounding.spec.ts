@@ -100,3 +100,55 @@ test("移动端引用抽屉可打开、关闭并恢复焦点，页面没有横�
   await expect(page.getByRole("heading", { name: "登录学习工作台" })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("图片引用受控预览，来源默认显示前五条并可在二级层查看原文", async ({ page }) => {
+  const errors = collectPageErrors(page);
+  await login(page);
+  await page.goto("/chat/conv_e2e_media");
+
+  const answer = page.locator("article.assistant-message");
+  const previewImage = answer.locator(".markdown-image-preview img");
+  await expect(previewImage).toBeVisible();
+  const imageBox = await previewImage.boundingBox();
+  expect(imageBox?.height || 0).toBeLessThanOrEqual(180);
+  await expect(answer.getByRole("button", { name: "查看图片" })).toBeVisible();
+
+  await answer.getByRole("button", { name: "查看图片" }).click();
+  const imageDialog = page.getByRole("dialog", { name: "测试原文图片" });
+  await expect(imageDialog).toBeVisible();
+  await imageDialog.getByRole("button", { name: "关闭原文预览" }).click();
+  await expect(imageDialog).toBeHidden();
+
+  const sourceRegion = answer.getByRole("region", { name: "检索引用来源" });
+  await expect(sourceRegion.locator(".answer-source-pill")).toHaveCount(5);
+  await expect(
+    sourceRegion.getByRole("button", { name: /查看更多/ }),
+  ).toBeVisible();
+  await sourceRegion.getByRole("button", { name: /查看更多/ }).click();
+  await expect(sourceRegion.locator(".answer-source-pill")).toHaveCount(27);
+
+  const sourceTrigger = sourceRegion.getByRole("button", {
+    name: "在引用来源中查看 1：media-evidence.pdf，第 1 页",
+  });
+  await sourceTrigger.click();
+  const drawer = page.locator("#citation-drawer");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator(".citation-card")).toHaveCount(5);
+  await expect(drawer.getByRole("button", { name: /查看更多/ })).toBeVisible();
+
+  await drawer
+    .getByRole("button", { name: /查看 media-evidence\.pdf 第 1 页的原文/ })
+    .click();
+  const documentDialog = page.getByRole("dialog", { name: /media-evidence\.pdf/ });
+  await expect(documentDialog).toBeVisible();
+  await expect(documentDialog.locator("iframe")).toBeVisible();
+  await documentDialog.getByRole("button", { name: "关闭原文预览" }).click();
+  await expect(documentDialog).toBeHidden();
+
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+    ),
+  ).toBe(true);
+  expect(errors).toEqual([]);
+});

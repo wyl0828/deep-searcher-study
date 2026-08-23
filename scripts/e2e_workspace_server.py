@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,7 @@ def _seed_workspace() -> None:
         AnswerClaim,
         Citation,
         Conversation,
+        Document,
         KnowledgeBase,
         Message,
         User,
@@ -139,8 +141,70 @@ print('preserved')
                 citation_indices=[],
             ),
         ]
+        media_conversation = Conversation(
+            id="conv_e2e_media",
+            knowledge_base=knowledge_base,
+            owner=user,
+            title="媒体引用自动验收",
+        )
+        media_user_message = Message(
+            id="msg_e2e_media_user",
+            conversation=media_conversation,
+            role="user",
+            content="请验证图片引用和大量来源不会破坏聊天布局。",
+            status="succeeded",
+        )
+        media_assistant_message = Message(
+            id="msg_e2e_media_assistant",
+            conversation=media_conversation,
+            role="assistant",
+            content="图片引用应保持为受控预览，不应撑开聊天流。\n\n![测试原文图片](/deepsearcher-badge.png)",
+            status="succeeded",
+            answer_state="grounded",
+        )
+        media_upload_dir = E2E_ROOT / "data" / "uploads" / knowledge_base.id
+        media_upload_dir.mkdir(parents=True, exist_ok=True)
+        media_pdf_path = media_upload_dir / "e2e-media.pdf"
+        shutil.copyfile(ROOT / "examples" / "data" / "WhatisMilvus.pdf", media_pdf_path)
+        media_document = Document(
+            id="doc_e2e_media",
+            knowledge_base=knowledge_base,
+            display_name="media-evidence.pdf",
+            storage_path=str(media_pdf_path),
+            storage_type="local",
+            size_bytes=1,
+            page_count=27,
+            sha256="0" * 64,
+            status="ready",
+        )
+        media_citations = [
+            Citation(
+                id=f"citation_e2e_media_{index}",
+                message=media_assistant_message,
+                document_id=media_document.id if index == 1 else None,
+                index=index,
+                display_name="media-evidence.pdf" if index == 1 else f"source-{index}.pdf",
+                page_number=index,
+                text=f"第 {index} 条测试证据，用于验证默认只展示前五条来源。",
+                supported=True,
+            )
+            for index in range(1, 28)
+        ]
         session.add_all(
-            [user, knowledge_base, conversation, user_message, assistant_message, citation, *claims]
+            [
+                user,
+                knowledge_base,
+                conversation,
+                user_message,
+                assistant_message,
+                citation,
+                *claims,
+                media_conversation,
+                media_user_message,
+                media_assistant_message,
+                media_document,
+                *media_citations,
+            ]
         )
         session.commit()
 

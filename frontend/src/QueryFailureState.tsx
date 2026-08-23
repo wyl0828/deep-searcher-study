@@ -10,7 +10,7 @@ type QueryFailureStateProps = {
   error: Error;
   pending: boolean;
   onRetry: () => void;
-  onOpenKnowledgeBase: () => void;
+  onOpenKnowledgeBase?: () => void;
 };
 
 const INDEX_ERRORS = new Set([
@@ -53,16 +53,16 @@ export function QueryFailureState({
       <button
         className="secondary-button"
         type="button"
-        onClick={indexNeedsAttention ? onOpenKnowledgeBase : onRetry}
+        onClick={indexNeedsAttention && onOpenKnowledgeBase ? onOpenKnowledgeBase : onRetry}
         disabled={pending}
       >
-        {indexNeedsAttention ? (
+        {indexNeedsAttention && onOpenKnowledgeBase ? (
           <CircleStackIcon aria-hidden="true" />
         ) : (
           <ArrowPathIcon aria-hidden="true" />
         )}
-        {indexNeedsAttention
-          ? "查看知识库"
+        {indexNeedsAttention && onOpenKnowledgeBase
+          ? "刷新状态"
           : pending
             ? "正在重试…"
             : cancelled
