@@ -1,0 +1,213 @@
+name: GHCR image migration canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Fixed Compose image to mirror
+        required: true
+        type: choice
+        options:
+          - postgres
+          - minio
+          - minio-mc
+          - rocketmq
+          - milvus
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ghcr-image-canary-${{ inputs.image }}
+  cancel-in-progress: false
+
+jobs:
+  mirror-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Resolve fixed image mapping
+        id: mapping
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          case "$IMAGE_KEY" in
+            postgres)
+              source_image="docker.io/library/postgres:16-alpine"
+              target_image="ghcr.io/wyl0828/deepsearcher-postgres:16-alpine"
+              package_name="deepsearcher-postgres"
+              ;;
+            minio)
+              source_image="docker.io/minio/minio:RELEASE.2025-04-22T22-12-26Z"
+              target_image="ghcr.io/wyl0828/deepsearcher-minio:RELEASE.2025-04-22T22-12-26Z"
+              package_name="deepsearcher-minio"
+              ;;
+            minio-mc)
+              source_image="docker.io/minio/mc:RELEASE.2025-04-16T18-13-26Z"
+              target_image="ghcr.io/wyl0828/deepsearcher-minio-mc:RELEASE.2025-04-16T18-13-26Z"
+              package_name="deepsearcher-minio-mc"
+              ;;
+            rocketmq)
+              source_image="docker.io/apache/rocketmq:5.3.2"
+              target_image="ghcr.io/wyl0828/deepsearcher-rocketmq:5.3.2"
+              package_name="deepsearcher-rocketmq"
+              ;;
+            milvus)
+              source_image="docker.io/milvusdb/milvus:v2.5.8"
+              target_image="ghcr.io/wyl0828/deepsearcher-milvus:v2.5.8"
+              package_name="deepsearcher-milvus"
+              ;;
+            *)
+              echo "Unsupported image key: $IMAGE_KEY" >&2
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "source_image=$source_image"
+            echo "target_image=$target_image"
+            echo "package_name=$package_name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install skopeo
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v skopeo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y skopeo
+          fi
+          skopeo --version
+
+      - name: Resolve source linux/amd64 manifest
+        id: source
+        shell: bash
+        env:
+          SOURCE_IMAGE: ${{ steps.mapping.outputs.source_image }}
+        run: |
+          set -euo pipefail
+          source_index="$RUNNER_TEMP/source-index.json"
+          skopeo inspect --raw "docker://$SOURCE_IMAGE" > "$source_index"
+
+          if jq -e '.manifests | type == "array"' "$source_index" >/dev/null; then
+            source_digest="$(jq -r '
+              [.manifests[]
+                | select(
+                    .platform.os == "linux"
+                    and .platform.architecture == "amd64"
+                    and ((.platform.variant // "") == "")
+                  )
+              ][0].digest // empty
+            ' "$source_index")"
+          else
+            source_digest="sha256:$(sha256sum "$source_index" | awk '{print $1}')"
+          fi
+
+          if [[ ! "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Unable to resolve the source linux/amd64 manifest digest" >&2
+            exit 1
+          fi
+
+          echo "digest=$source_digest" >> "$GITHUB_OUTPUT"
+          echo "Source linux/amd64 manifest: $source_digest"
+
+      - name: Log in to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" |
+            skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Copy linux/amd64 image to GHCR
+        shell: bash
+        env:
+          SOURCE_IMAGE: ${{ steps.mapping.outputs.source_image }}
+          TARGET_IMAGE: ${{ steps.mapping.outputs.target_image }}
+        run: |
+          set -euo pipefail
+          skopeo copy \
+            --override-os linux \
+            --override-arch amd64 \
+            "docker://$SOURCE_IMAGE" \
+            "docker://$TARGET_IMAGE"
+
+      - name: Verify target manifest and platform
+        id: target
+        shell: bash
+        env:
+          SOURCE_AMD64_DIGEST: ${{ steps.source.outputs.digest }}
+          TARGET_IMAGE: ${{ steps.mapping.outputs.target_image }}
+        run: |
+          set -euo pipefail
+          target_digest="$(
+            skopeo inspect \
+              --override-os linux \
+              --override-arch amd64 \
+              --format '{{.Digest}}' \
+              "docker://$TARGET_IMAGE"
+          )"
+          target_platform="$(
+            skopeo inspect \
+              --override-os linux \
+              --override-arch amd64 \
+              --format '{{.Os}}/{{.Architecture}}' \
+              "docker://$TARGET_IMAGE"
+          )"
+
+          test "$target_platform" = "linux/amd64"
+          test "$target_digest" = "$SOURCE_AMD64_DIGEST"
+
+          echo "digest=$target_digest" >> "$GITHUB_OUTPUT"
+          echo "platform=$target_platform" >> "$GITHUB_OUTPUT"
+          echo "Target manifest: $target_digest ($target_platform)"
+
+      - name: Record package visibility
+        id: package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ steps.mapping.outputs.package_name }}
+        run: |
+          set -euo pipefail
+          visibility="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/users/$GITHUB_REPOSITORY_OWNER/packages/container/$PACKAGE_NAME" \
+              --jq '.visibility'
+          )"
+          case "$visibility" in
+            private|public|internal) ;;
+            *)
+              echo "Unexpected package visibility: $visibility" >&2
+              exit 1
+              ;;
+          esac
+          echo "visibility=$visibility" >> "$GITHUB_OUTPUT"
+          echo "Package visibility: $visibility"
+
+      - name: Write migration summary
+        shell: bash
+        env:
+          SOURCE_IMAGE: ${{ steps.mapping.outputs.source_image }}
+          TARGET_IMAGE: ${{ steps.mapping.outputs.target_image }}
+          SOURCE_AMD64_DIGEST: ${{ steps.source.outputs.digest }}
+          TARGET_DIGEST: ${{ steps.target.outputs.digest }}
+          TARGET_PLATFORM: ${{ steps.target.outputs.platform }}
+          PACKAGE_VISIBILITY: ${{ steps.package.outputs.visibility }}
+        run: |
+          {
+            echo "## GHCR image migration canary"
+            echo
+            echo "- Source: \`$SOURCE_IMAGE\`"
+            echo "- Source linux/amd64 manifest: \`$SOURCE_AMD64_DIGEST\`"
+            echo "- Target: \`$TARGET_IMAGE\`"
+            echo "- Target manifest: \`$TARGET_DIGEST\`"
+            echo "- Target platform: \`$TARGET_PLATFORM\`"
+            echo "- Package visibility: \`$PACKAGE_VISIBILITY\`"
+          } >> "$GITHUB_STEP_SUMMARY"
