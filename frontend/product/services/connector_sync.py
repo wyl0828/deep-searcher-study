@@ -22,7 +22,7 @@ from croniter import croniter
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
-from frontend.product.connectors import Connector, create_connector
+from frontend.product.connectors import create_connector
 from frontend.product.db import SessionLocal
 from frontend.product.errors import ProductError
 from frontend.product.models import (

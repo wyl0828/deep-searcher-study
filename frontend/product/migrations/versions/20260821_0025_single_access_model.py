@@ -12,7 +12,6 @@ Revises: 20260820_0024
 import sqlalchemy as sa
 from alembic import op
 
-
 revision = "20260821_0025"
 down_revision = "20260820_0024"
 branch_labels = None

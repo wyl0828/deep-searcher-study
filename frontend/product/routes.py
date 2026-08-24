@@ -34,19 +34,15 @@ from frontend.product.models import (
     Department,
     DepartmentKnowledgeBase,
     Document,
-    GroupMember,
     IngestJob,
     KnowledgeBase,
-    KnowledgeBaseMember,
     KnowledgeHealthSnapshot,
-    MemberGroup,
     Message,
     MessageFeedback,
     User,
     UserKnowledgeBaseAccess,
     UserSession,
     Workspace,
-    WorkspaceMember,
     utcnow,
 )
 from frontend.product.repositories import (
@@ -66,6 +62,7 @@ from frontend.product.schemas import (
     DocumentTemporalUpdate,
     GroupMemberAdd,
     HealthActionsRun,
+    KnowledgeAccessReplace,
     KnowledgeBaseCreate,
     KnowledgeBaseMemberAdd,
     KnowledgeBaseMemberRoleUpdate,
@@ -76,7 +73,6 @@ from frontend.product.schemas import (
     MessageResponse,
     UserCreate,
     UserUpdate,
-    KnowledgeAccessReplace,
     WorkspaceCreate,
     WorkspaceMemberAdd,
     WorkspaceMemberRoleUpdate,
@@ -89,9 +85,7 @@ from frontend.product.services.access import (
     create_group,
     create_workspace,
     delete_group,
-    effective_kb_role,
     get_group,
-    get_workspace,
     list_group_members,
     list_groups,
     list_kb_members,
@@ -100,29 +94,26 @@ from frontend.product.services.access import (
     remove_group_member,
     remove_kb_member,
     remove_workspace_member,
-    require_workspace_access,
     set_group_role,
     set_kb_member_role,
     set_member_role,
     workspace_response,
 )
+from frontend.product.services.audit import page_audit_logs, record_operation
 from frontend.product.services.authorization import (
     access_summary_for_knowledge_base,
     list_accessible_knowledge_bases,
     personal_extra_knowledge_base_ids,
-    require_knowledge_base_access as require_accessible_knowledge_base,
     user_knowledge_access_summary,
 )
-from frontend.product.services.audit import page_audit_logs, record_operation
+from frontend.product.services.authorization import (
+    require_knowledge_base_access as require_accessible_knowledge_base,
+)
 from frontend.product.services.connector_sync import (
     compute_next_run,
     validate_cron,
 )
 from frontend.product.services.conversations import stream_message_events, submit_message
-from frontend.product.services.query_scope import (
-    resolve_conversation_scope,
-    resolve_user_query_scope,
-)
 from frontend.product.services.dashboard import (
     overview as dashboard_overview,
 )
@@ -154,6 +145,10 @@ from frontend.product.services.knowledge_health import (
     latest_health_snapshot,
     list_health_snapshots,
     run_health_actions,
+)
+from frontend.product.services.query_scope import (
+    resolve_conversation_scope,
+    resolve_user_query_scope,
 )
 
 router = APIRouter(prefix="/api")

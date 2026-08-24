@@ -16,7 +16,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from frontend.product.models import (
     AnswerRun,
@@ -31,7 +31,6 @@ from frontend.product.models import (
     User,
     utcnow,
 )
-from sqlalchemy.orm import selectinload
 from frontend.product.services.knowledge_health import get_health_level
 
 _DASHBOARD_TIMEZONE = timezone.utc

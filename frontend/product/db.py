@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-import sqlalchemy as sa
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import sqlalchemy as sa
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
