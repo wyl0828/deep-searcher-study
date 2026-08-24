@@ -629,3 +629,231 @@ it("审计旧快照只回退到 ID，新权限快照展示名称", async () => {
   expect(screen.getByText("kb_legacy")).toBeVisible();
   expect(screen.getByText("新权限资料")).toBeVisible();
 });
+
+function chatFixture(overrides = {}) {
+  return {
+    ...message,
+    id: "msg_chat",
+    role: "assistant",
+    content: "你好，我是通用 AI 助手。",
+    answer_state: null,
+    trust_status: null,
+    policy_action: null,
+    risk_level: null,
+    citations: [],
+    claims: [],
+    ...overrides,
+  };
+}
+
+function conversationFixture(assistantMessage) {
+  return {
+    id: "conv_chat",
+    scope_mode: "auto",
+    knowledge_base: null,
+    messages: [
+      {
+        id: "msg_question",
+        role: "user",
+        content: "你好",
+        status: "succeeded",
+        answer_state: null,
+        citations: [],
+        claims: [],
+        created_at: timestamp,
+      },
+      assistantMessage,
+    ],
+    title: "你好",
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+}
+
+const knowledgeCitation = {
+  id: "cit-kb-1",
+  index: 1,
+  document_id: "doc-1",
+  display_name: "员工手册.pdf",
+  page_number: 3,
+  chunk_index: 1,
+  section_title: "请假",
+  section_path: null,
+  char_start: 12,
+  char_end: 44,
+  bbox: null,
+  location_id: null,
+  source_locator: null,
+  parser_version: "p1",
+  extraction_method: "ocr",
+  source_type: "knowledge_base",
+  source_url: null,
+  source_domain: null,
+  trusted: true,
+  published_at: null,
+  effective_at: null,
+  superseded_at: null,
+  temporal_metadata_source: null,
+  version_family: null,
+  version_family_source: null,
+  text: "员工请假应先提交申请，由直属主管审批。",
+  supported: true,
+};
+
+it("chat 模式只显示普通 AI 回答，不显示知识来源或证据大 UI", async () => {
+  productApi.getConversation.mockResolvedValue(
+    conversationFixture(chatFixture({ answer_mode: "chat" })),
+  );
+  window.history.pushState({}, "", "/chat/conv_chat");
+  render(<App />);
+
+  expect(await screen.findByText("你好，我是通用 AI 助手。")).toBeVisible();
+  expect(screen.queryByText("企业知识")).not.toBeInTheDocument();
+  expect(screen.queryByText("引用来源（0）")).not.toBeInTheDocument();
+  expect(screen.queryByText("检索引用来源")).not.toBeInTheDocument();
+  expect(screen.queryByText("查看回答依据")).not.toBeInTheDocument();
+  expect(screen.queryByText(/逐条证据核验/)).not.toBeInTheDocument();
+  expect(screen.queryByText("本次可信判断谱系")).not.toBeInTheDocument();
+});
+
+it("knowledge 模式保留行内引用和一个轻量来源入口，抽屉不展示审计元数据", async () => {
+  productApi.getConversation.mockResolvedValue(
+    conversationFixture(
+      chatFixture({
+        answer_mode: "knowledge",
+        content: "员工请假应先提交申请。",
+        citations: [knowledgeCitation],
+        claims: [],
+      }),
+    ),
+  );
+  window.history.pushState({}, "", "/chat/conv_chat");
+  render(<App />);
+
+  expect(await screen.findByText("企业知识")).toBeVisible();
+  expect(screen.getByRole("button", { name: "引用来源（1）" })).toBeVisible();
+  expect(screen.queryByRole("region", { name: "检索引用来源" })).not.toBeInTheDocument();
+  expect(screen.queryByText("查看回答依据")).not.toBeInTheDocument();
+  expect(screen.queryByText(/逐条证据核验/)).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "引用来源（1）" }));
+  expect(await screen.findByRole("heading", { name: "引用来源" })).toBeVisible();
+  expect(screen.getByText("员工手册.pdf")).toBeVisible();
+  expect(screen.getByText("第 3 页")).toBeVisible();
+  expect(screen.getByText("员工请假应先提交申请，由直属主管审批。".slice(0, 12), { exact: false })).toBeVisible();
+  expect(screen.queryByText(/字符 12/)).not.toBeInTheDocument();
+  expect(screen.queryByText("OCR 识别")).not.toBeInTheDocument();
+  expect(screen.queryByText("域名白名单")).not.toBeInTheDocument();
+});
+
+it("web 模式显示联网 badge 和一个来源入口", async () => {
+  productApi.getConversation.mockResolvedValue(
+    conversationFixture(
+      chatFixture({
+        answer_mode: "web",
+        content: "网页资料摘要。",
+        citations: [{
+          ...knowledgeCitation,
+          id: "cit-web-1",
+          display_name: "公开网页",
+          document_id: null,
+          page_number: null,
+          source_type: "web",
+          source_url: "https://example.com/source",
+          source_domain: "example.com",
+        }],
+      }),
+    ),
+  );
+  window.history.pushState({}, "", "/chat/conv_chat");
+  render(<App />);
+
+  expect(await screen.findByText("联网")).toBeVisible();
+  expect(screen.getByRole("button", { name: "引用来源（1）" })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "引用来源（1）" }));
+  expect(await screen.findByText("example.com")).toBeVisible();
+  expect(screen.getByRole("link", { name: "打开原文" })).toHaveAttribute(
+    "href",
+    "https://example.com/source",
+  );
+});
+
+it("历史 answer_mode=null 只有引用或 grounded 状态才兼容为企业知识", async () => {
+  productApi.getConversation.mockResolvedValue(
+    conversationFixture(
+      chatFixture({
+        answer_mode: null,
+        answer_state: null,
+        citations: [],
+      }),
+    ),
+  );
+  window.history.pushState({}, "", "/chat/conv_chat");
+  render(<App />);
+  expect(await screen.findByText("通用 AI 助手")).toBeVisible();
+  expect(screen.queryByText("企业知识")).not.toBeInTheDocument();
+
+  productApi.getConversation.mockResolvedValue(
+    conversationFixture(
+      chatFixture({
+        answer_mode: null,
+        answer_state: "fully_grounded",
+        content: "历史知识回答。",
+      }),
+    ),
+  );
+  window.history.pushState({}, "", "/chat/conv_grounded");
+  render(<App />);
+  expect(await screen.findByText("企业知识")).toBeVisible();
+});
+
+it("insufficient 状态只显示必要中文提示，不直出内部英文", async () => {
+  productApi.getConversation.mockResolvedValue(
+    conversationFixture(
+      chatFixture({
+        answer_mode: "knowledge",
+        answer_state: "insufficient_evidence",
+        content: "No relevant documents found.",
+      }),
+    ),
+  );
+  window.history.pushState({}, "", "/chat/conv_chat");
+  render(<App />);
+
+  expect(await screen.findByText("当前资料不足以可靠回答这个问题。")).toBeVisible();
+  expect(screen.queryByText("No relevant documents found.")).not.toBeInTheDocument();
+});
+
+it("管理员回答详情展示路由审计、执行阶段、失败码和初始最终风险", async () => {
+  setAuth(adminUser);
+  productApi.getAdminRun.mockResolvedValue({
+    ...adminRun,
+    message: { ...message, answer_mode: "knowledge", risk_level: "medium", risk_factors: ["INITIAL_FACTOR"] },
+    answer_run: {
+      ...adminRun.answer_run,
+      answer_mode: "knowledge",
+      routing_decision: {
+        intent: "policy",
+        source: "router",
+        reason: "命中企业知识路由",
+        confidence: 0.92,
+        router_version: "router-v2",
+      },
+      current_stage: "answer_generated",
+      failure_code: "",
+      effective_risk_level: "low",
+      effective_risk_factors: ["FINAL_FACTOR"],
+    },
+  });
+  window.history.pushState({}, "", "/admin/runs/msg_trace");
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "路由与执行事实" })).toBeVisible();
+  expect(screen.getByText("企业知识")).toBeVisible();
+  expect(screen.getByText("命中企业知识路由")).toBeVisible();
+  expect(screen.getByText("92%")).toBeVisible();
+  expect(screen.getByText("router-v2")).toBeVisible();
+  expect(screen.getAllByText("answer_generated").length).toBeGreaterThan(0);
+  expect(screen.getByText("INITIAL_FACTOR")).toBeVisible();
+  expect(screen.getByText("FINAL_FACTOR")).toBeVisible();
+});

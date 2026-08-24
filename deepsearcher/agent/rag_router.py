@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 from deepsearcher.agent.base import RAGAgent
 from deepsearcher.agent.selection import parse_one_based_index
 from deepsearcher.llm.base import BaseLLM, chat_with_stage
+from deepsearcher.retrieval_mode import resolve_retrieval_mode
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
 
@@ -109,14 +110,28 @@ class RAGRouter(RAGAgent):
         log.color_print(f"<route> Selected agent [{selected_agent.__class__.__name__}] </route>\n")
         return self.rag_agents[selected_agent_index], chat_response.total_tokens
 
-    def _select_agent(self, query: str, *, use_web_search: bool = False) -> Tuple[RAGAgent, int]:
-        if use_web_search:
+    def _select_agent(
+        self,
+        query: str,
+        *,
+        use_web_search: bool = False,
+        retrieval_mode: str | None = None,
+    ) -> Tuple[RAGAgent, int]:
+        effective_mode = resolve_retrieval_mode(
+            retrieval_mode,
+            use_web_search=use_web_search,
+        )
+        if effective_mode in {"web", "hybrid"}:
             for index, agent in enumerate(self.rag_agents):
                 if getattr(agent, "supports_web_search", False):
                     self._record_route_decision(
                         {
                             "source": "request_capability",
-                            "requested": ["web_search"],
+                            "requested": (
+                                ["web_search"]
+                                if retrieval_mode is None
+                                else ["web_search", effective_mode]
+                            ),
                             "selected": [index],
                             "rejected": [],
                             "fallback_used": False,
@@ -136,6 +151,7 @@ class RAGRouter(RAGAgent):
             agent, n_token_router = self._select_agent(
                 query,
                 use_web_search=bool(kwargs.get("use_web_search", False)),
+                retrieval_mode=kwargs.get("retrieval_mode"),
             )
         finally:
             self._trace_collector.reset(token)
@@ -155,6 +171,7 @@ class RAGRouter(RAGAgent):
             agent, n_token_router = self._select_agent(
                 query,
                 use_web_search=bool(kwargs.get("use_web_search", False)),
+                retrieval_mode=kwargs.get("retrieval_mode"),
             )
         finally:
             self._trace_collector.reset(token)

@@ -54,6 +54,38 @@ function statusLabel(value: string): string {
   return "处理中";
 }
 
+function answerModeLabel(item: AdminRunItem): string {
+  const mode = item.answer_run?.answer_mode ?? item.message.answer_mode;
+  const resolved = mode || (
+    (Array.isArray(item.message.citations) && item.message.citations.length > 0) ||
+    item.message.answer_state === "grounded" ||
+    item.message.answer_state === "fully_grounded"
+      ? "knowledge"
+      : "chat"
+  );
+  if (resolved === "knowledge") return "企业知识";
+  if (resolved === "web") return "联网";
+  return "通用 AI";
+}
+
+function routingField(
+  decision: Record<string, unknown> | null | undefined,
+  keys: string[],
+): string {
+  for (const key of keys) {
+    const value = decision?.[key];
+    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+  }
+  return "未记录";
+}
+
+function routingConfidence(decision: Record<string, unknown> | null | undefined): string {
+  const value = decision?.confidence;
+  if (typeof value !== "number") return "未记录";
+  return value >= 0 && value <= 1 ? `${Math.round(value * 100)}%` : String(value);
+}
+
 type TraceStage = {
   key: string;
   label: string;
@@ -142,9 +174,11 @@ function ExecutionScope({ item }: { item: AdminRunItem }) {
 
 function ExecutionStages({ item }: { item: AdminRunItem }) {
   const stages = traceStages(item);
+  const currentStage = item.answer_run?.current_stage;
   return (
     <section className="admin-card trace-card">
       <div className="admin-section-heading"><div><h2>执行阶段</h2><p>只展示 AnswerRun 中真实持久化的阶段；没有 instrumentation 时标记为未采集。</p></div></div>
+      {currentStage ? <div className="trace-current-stage"><span>当前阶段</span><strong>{currentStage}</strong></div> : null}
       {stages.length ? <ol className="trace-timeline">{stages.map((stage) => <li key={stage.key} className={`trace-timeline-item trace-timeline-item--${stage.status}`}><div className="trace-timeline-marker" aria-hidden="true" /><div className="trace-timeline-content"><div><strong>{stage.label}</strong><StatusBadge status={stage.status} /></div><p>{stage.detail}</p></div></li>)}</ol> : <EmptyState title="未采集" description="当前 AnswerRun 没有保存可展示的阶段结果，不补写执行节点或耗时。" />}
     </section>
   );
@@ -154,8 +188,33 @@ function RequestLink({ item }: { item: AdminRunItem }) {
   return (
     <dl className="trace-request-details">
       <div><dt>request_id</dt><dd>{item.answer_run?.request_id || "未记录"}</dd></div>
+      <div><dt>failure_code</dt><dd>{item.answer_run?.failure_code || "未记录"}</dd></div>
       <div><dt>系统状态</dt><dd><Link to="/admin/diagnostics">查看系统状态</Link></dd></div>
     </dl>
+  );
+}
+
+function RoutingAudit({ item }: { item: AdminRunItem }) {
+  const decision = item.answer_run?.routing_decision;
+  return (
+    <section className="admin-card trace-content-card">
+      <div className="admin-section-heading">
+        <div>
+          <h2>路由与执行事实</h2>
+          <p>只展示 AnswerRun 保存的路由字段；历史缺失值保留为未记录。</p>
+        </div>
+      </div>
+      <dl className="trace-definition-list">
+        <div><dt>路由模式</dt><dd>{answerModeLabel(item)}</dd></div>
+        <div><dt>intent</dt><dd>{routingField(decision, ["intent", "query_type"])}</dd></div>
+        <div><dt>source</dt><dd>{routingField(decision, ["source", "source_type"])}</dd></div>
+        <div><dt>reason</dt><dd>{routingField(decision, ["reason", "route_reason"])}</dd></div>
+        <div><dt>confidence</dt><dd>{routingConfidence(decision)}</dd></div>
+        <div><dt>router 版本</dt><dd>{routingField(decision, ["router_version", "version"])}</dd></div>
+        <div><dt>执行阶段</dt><dd>{item.answer_run?.current_stage || "未记录"}</dd></div>
+        <div><dt>failure code</dt><dd>{item.answer_run?.failure_code || "未记录"}</dd></div>
+      </dl>
+    </section>
   );
 }
 
@@ -191,12 +250,13 @@ export function AdminRunDetailPage() {
 
       <ExecutionStages item={item} />
       <ExecutionScope item={item} />
+      <RoutingAudit item={item} />
 
       {!isFailure ? (
         <>
           <div className="admin-dashboard-grid trace-detail-grid">
             <section className="admin-card trace-content-card"><div className="admin-section-heading"><div><h2>回答</h2><p>内容来自持久化 assistant message。</p></div></div><div className="trace-answer-copy">{message.content || "未记录"}</div></section>
-            <section className="admin-card trace-content-card"><div className="admin-section-heading"><div><h2>可信度 / 风险</h2><p>缺失字段保留为未知，不转换成 0 或成功。</p></div></div><dl className="trace-definition-list"><div><dt>可信度状态</dt><dd><TrustStatusBadge status={trustBadgeStatus(message.trust_status)} /></dd></div><div><dt>策略动作</dt><dd>{message.policy_action || "未记录"}</dd></div><div><dt>风险等级</dt><dd><RiskBadge status={riskBadgeStatus(message.risk_level)} /></dd></div><div><dt>查询类型</dt><dd>{message.query_type || "未记录"}</dd></div><div><dt>Provenance</dt><dd>{message.provenance_digest ? message.provenance_digest.slice(0, 24) + "…" : "未记录"}</dd></div><div><dt>用户反馈</dt><dd>{item.feedback.positive} 个赞 · {item.feedback.negative} 个踩 · {item.feedback.comment_count} 条评论</dd></div></dl></section>
+            <section className="admin-card trace-content-card"><div className="admin-section-heading"><div><h2>可信度 / 风险</h2><p>缺失字段保留为未知，不转换成 0 或成功。</p></div></div><dl className="trace-definition-list"><div><dt>可信度状态</dt><dd><TrustStatusBadge status={trustBadgeStatus(message.trust_status)} /></dd></div><div><dt>策略动作</dt><dd>{message.policy_action || "未记录"}</dd></div><div><dt>初始风险</dt><dd><RiskBadge status={riskBadgeStatus(message.risk_level)} />{message.risk_factors?.length ? <small>{message.risk_factors.join("、")}</small> : null}</dd></div><div><dt>最终风险</dt><dd><RiskBadge status={riskBadgeStatus(item.answer_run?.effective_risk_level ?? null)} />{item.answer_run?.effective_risk_factors?.length ? <small>{item.answer_run.effective_risk_factors.join("、")}</small> : null}</dd></div><div><dt>查询类型</dt><dd>{message.query_type || "未记录"}</dd></div><div><dt>Provenance</dt><dd>{message.provenance_digest ? message.provenance_digest.slice(0, 24) + "…" : "未记录"}</dd></div><div><dt>用户反馈</dt><dd>{item.feedback.positive} 个赞 · {item.feedback.negative} 个踩 · {item.feedback.comment_count} 条评论</dd></div></dl></section>
           </div>
 
           <section className="admin-card trace-content-card trace-feedback-card"><div className="admin-section-heading"><div><h2>反馈分析</h2><p>只展示未取消的真实反馈；原因和评论用于定位回答质量问题。</p></div><span className="trace-feedback-summary">{item.feedback.positive} 个赞 · {item.feedback.negative} 个踩 · {item.feedback.comment_count} 条评论</span></div>{item.feedback_items.length ? <ul className="trace-feedback-list">{item.feedback_items.map((feedback, index) => <li key={`${feedback.created_at}-${index}`}><div><StatusBadge status={feedback.vote === -1 ? "failed" : feedback.vote === 1 ? "completed" : "unknown"} label={feedback.vote === -1 ? "负反馈" : feedback.vote === 1 ? "正反馈" : "未评分"} /><time dateTime={feedback.created_at}>{formatDate(feedback.created_at)}</time></div><strong>{feedback.reason || "未选择反馈原因"}</strong><p>{feedback.comment || "未填写补充评论。"}</p></li>)}</ul> : <EmptyState title="没有有效反馈" description="当前回答没有未取消的反馈记录，反馈样本不足。" />}</section>

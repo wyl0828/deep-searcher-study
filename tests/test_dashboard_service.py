@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from frontend.product.db import Base, create_database_engine
 from frontend.product.models import (
+    AnswerRun,
     ConnectorSync,
     Conversation,
     Document,
@@ -168,6 +169,57 @@ def test_overview_aggregates_counts(session):
     assert result["kpis"]["messages"]["value"] == 1
     assert result["kpis"]["feedback"]["value"] == 1
     assert result["kpis"]["connector_syncs"]["value"] == 1
+
+
+def test_answers_today_uses_shanghai_half_open_day_and_all_run_statuses(session, monkeypatch):
+    current = _kb(session)
+    user = User(username="answers-today", display_name="Answers", password_hash="x" * 60, role="member")
+    session.add(user)
+    session.flush()
+    conversation = Conversation(owner_id=user.id, knowledge_base_id=current.id)
+    session.add(conversation)
+    session.flush()
+    question = Message(conversation_id=conversation.id, role="user", content="q", status="succeeded")
+    session.add(question)
+    session.flush()
+    session.add_all([
+        AnswerRun(
+            conversation_id=conversation.id,
+            question_message_id=question.id,
+            status="succeeded",
+            created_at=datetime(2026, 8, 20, 15, 59, 59, tzinfo=timezone.utc),
+            query_scope_snapshot={},
+        ),
+        AnswerRun(
+            conversation_id=conversation.id,
+            question_message_id=question.id,
+            status="failed",
+            created_at=datetime(2026, 8, 20, 16, 0, 0, tzinfo=timezone.utc),
+            query_scope_snapshot={},
+        ),
+        AnswerRun(
+            conversation_id=conversation.id,
+            question_message_id=question.id,
+            status="cancelled",
+            created_at=datetime(2026, 8, 21, 15, 59, 59, tzinfo=timezone.utc),
+            query_scope_snapshot={},
+        ),
+        AnswerRun(
+            conversation_id=conversation.id,
+            question_message_id=question.id,
+            status="succeeded",
+            created_at=datetime(2026, 8, 21, 16, 0, 0, tzinfo=timezone.utc),
+            query_scope_snapshot={},
+        ),
+    ])
+    session.commit()
+    monkeypatch.setattr(
+        "frontend.product.services.dashboard.utcnow",
+        lambda: datetime(2026, 8, 20, 16, 0, 0, tzinfo=timezone.utc),
+    )
+
+    result = overview(session)
+    assert result["kpis"]["answers_today"]["value"] == 2
 
 
 def test_health_distribution_unknown_invariant(session):

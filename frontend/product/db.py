@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlalchemy as sa
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -504,6 +505,95 @@ def ensure_conversation_summary_table(engine: Engine) -> None:
     ConversationSummary.__table__.create(bind=engine, checkfirst=True)
 
 
+def ensure_conversation_scope_schema(engine: Engine) -> None:
+    """Upgrade local SQLite conversations to auto/fixed scope semantics."""
+
+    inspector = inspect(engine)
+    conversation_columns = {
+        column["name"] for column in inspector.get_columns("conversations")
+    }
+    knowledge_base_column = next(
+        (
+            column
+            for column in inspector.get_columns("conversations")
+            if column["name"] == "knowledge_base_id"
+        ),
+        None,
+    )
+    needs_scope_column = "scope_mode" not in conversation_columns
+    needs_nullable_knowledge_base = bool(
+        knowledge_base_column is not None and not knowledge_base_column.get("nullable", True)
+    )
+    if needs_scope_column or needs_nullable_knowledge_base:
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+
+        with engine.begin() as connection:
+            operations = Operations(MigrationContext.configure(connection))
+            with operations.batch_alter_table("conversations", recreate="always") as batch:
+                if needs_nullable_knowledge_base:
+                    batch.alter_column(
+                        "knowledge_base_id",
+                        existing_type=sa.String(length=40),
+                        nullable=True,
+                    )
+                if needs_scope_column:
+                    batch.add_column(
+                        sa.Column(
+                            "scope_mode",
+                            sa.String(length=16),
+                            nullable=False,
+                            server_default="fixed",
+                        )
+                    )
+
+    from frontend.product.models import AnswerRun
+
+    AnswerRun.__table__.create(bind=engine, checkfirst=True)
+
+
+def ensure_product_access_schema(engine: Engine) -> None:
+    """Make the single department/company/direct access model available locally.
+
+    The normal deployment path is Alembic.  Local SQLite workspaces have
+    historically been upgraded by ``init_database`` as well, so keep this
+    small additive compatibility step for existing developer databases.
+    """
+
+    from frontend.product.models import (
+        Department,
+        DepartmentKnowledgeBase,
+        UserKnowledgeBaseAccess,
+    )
+
+    Department.__table__.create(bind=engine, checkfirst=True)
+    DepartmentKnowledgeBase.__table__.create(bind=engine, checkfirst=True)
+    UserKnowledgeBaseAccess.__table__.create(bind=engine, checkfirst=True)
+
+    user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    if "department_id" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN department_id VARCHAR(40)"))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_users_department_id "
+                    "ON users (department_id)"
+                )
+            )
+
+    knowledge_base_columns = {
+        column["name"] for column in inspect(engine).get_columns("knowledge_bases")
+    }
+    if "is_company_wide" not in knowledge_base_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE knowledge_bases ADD COLUMN "
+                    "is_company_wide BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
+
+
 def ensure_workspace_schema(engine: Engine) -> None:
     """Attach local SQLite knowledge bases to personal workspaces (v0.5.0)."""
 
@@ -540,6 +630,8 @@ def init_database() -> None:
         ensure_document_version_family_columns(ENGINE)
         ensure_document_storage_columns(ENGINE)
         ensure_conversation_summary_table(ENGINE)
+        ensure_conversation_scope_schema(ENGINE)
+        ensure_product_access_schema(ENGINE)
         ensure_workspace_schema(ENGINE)
     else:
         validate_alembic_schema(ENGINE)

@@ -93,8 +93,17 @@ class TraceCollector:
         reference_time: datetime | str | None = None,
         token_control: Dict[str, Any] | None = None,
         required_trust_calls: int = 0,
+        retrieval_mode: str | None = None,
     ):
         self.risk_profile = dict(risk_profile or classify_query_risk(original_query))
+        normalized_retrieval_mode = (
+            str(retrieval_mode).strip().lower() if isinstance(retrieval_mode, str) else None
+        )
+        self.retrieval_mode = (
+            normalized_retrieval_mode
+            if normalized_retrieval_mode in {"knowledge", "web", "hybrid"}
+            else None
+        )
         self.freshness_intent = classify_query_freshness(original_query)
         del original_query
         self.agent: Optional[str] = None
@@ -655,6 +664,7 @@ class TraceCollector:
         ]
         trace = {
             "version": self.VERSION,
+            "retrieval_mode": self.retrieval_mode,
             "agent": self.agent,
             "contextualization": self.contextualization,
             "routing": self.routing_decision,

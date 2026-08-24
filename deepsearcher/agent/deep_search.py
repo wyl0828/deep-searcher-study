@@ -18,6 +18,7 @@ from deepsearcher.embedding.base import BaseEmbedding
 from deepsearcher.grounding import GROUNDING_PROMPT, format_grounding_evidence
 from deepsearcher.llm.base import BaseLLM, chat_with_stage
 from deepsearcher.query_planner import merge_ranked_results, plan_explicit_queries
+from deepsearcher.retrieval_mode import resolve_retrieval_mode
 from deepsearcher.utils import log
 from deepsearcher.vector_db import RetrievalResult
 from deepsearcher.vector_db.base import BaseVectorDB, deduplicate_results
@@ -805,6 +806,10 @@ class DeepSearch(RAGAgent):
         trace_collector = kwargs.pop("trace_collector", None)
         top_k = max(int(kwargs.pop("top_k", 10)), 1)
         use_web_search = bool(kwargs.pop("use_web_search", False))
+        retrieval_mode = resolve_retrieval_mode(
+            kwargs.pop("retrieval_mode", None),
+            use_web_search=use_web_search,
+        )
         retrieval_queries = tuple(kwargs.pop("retrieval_queries", ()) or ())
         retrieval_concurrency = max(
             int(kwargs.pop("retrieval_concurrency", self.retrieval_concurrency)),
@@ -832,6 +837,7 @@ class DeepSearch(RAGAgent):
                 trace_collector=trace_collector,
                 top_k=top_k,
                 use_web_search=use_web_search,
+                retrieval_mode=retrieval_mode,
                 retrieval_concurrency=retrieval_concurrency,
                 external_call_timeout_seconds=external_call_timeout_seconds,
                 retrieval_queries=retrieval_queries,
@@ -849,6 +855,7 @@ class DeepSearch(RAGAgent):
         trace_collector,
         top_k: int,
         use_web_search: bool,
+        retrieval_mode: str,
         retrieval_concurrency: int,
         external_call_timeout_seconds: float,
         retrieval_queries: tuple[str, ...],
@@ -856,6 +863,11 @@ class DeepSearch(RAGAgent):
         semaphore = asyncio.Semaphore(retrieval_concurrency)
         self._selection_events = []
         selection_events = self._selection_events
+        if trace_collector is not None and getattr(trace_collector, "retrieval_mode", None) is None:
+            try:
+                trace_collector.retrieval_mode = retrieval_mode
+            except Exception:
+                pass
         if trace_collector is not None:
             trace_collector.raise_if_cancelled()
         ### SUB QUERIES ###
@@ -864,6 +876,8 @@ class DeepSearch(RAGAgent):
         all_sub_queries = []
         total_tokens = 0
         web_search_summaries = []
+        use_vector_retrieval = retrieval_mode in {"knowledge", "hybrid"}
+        use_web_retrieval = retrieval_mode in {"web", "hybrid"}
 
         if retrieval_queries:
             explicit_plan = plan_explicit_queries(original_query, retrieval_queries)
@@ -906,30 +920,37 @@ class DeepSearch(RAGAgent):
             log.color_print(f">> Iteration: {iter + 1}\n")
             if trace_collector is not None:
                 trace_collector.start_iteration(iter + 1)
-            vector_search = asyncio.gather(
-                *(
-                    self._retrieve_chunks_from_vectordb(
-                        query,
-                        collection_names=collection_names,
-                        allowed_collections=allowed_collections,
-                        top_k=top_k,
-                        semaphore=semaphore,
-                        timeout_seconds=external_call_timeout_seconds,
-                        trace_collector=trace_collector,
-                        iteration=iter + 1,
+            vector_search = None
+            if use_vector_retrieval:
+                vector_search = asyncio.gather(
+                    *(
+                        self._retrieve_chunks_from_vectordb(
+                            query,
+                            collection_names=collection_names,
+                            allowed_collections=allowed_collections,
+                            top_k=top_k,
+                            semaphore=semaphore,
+                            timeout_seconds=external_call_timeout_seconds,
+                            trace_collector=trace_collector,
+                            iteration=iter + 1,
+                        )
+                        for query in sub_gap_queries
                     )
-                    for query in sub_gap_queries
                 )
-            )
-            if use_web_search:
-                search_results, (web_candidate_groups, web_summary) = await asyncio.gather(
-                    vector_search,
-                    self._retrieve_chunks_from_web(
-                        sub_gap_queries,
-                        semaphore=semaphore,
-                        timeout_seconds=external_call_timeout_seconds,
-                    ),
+            if use_web_retrieval:
+                web_search_task = self._retrieve_chunks_from_web(
+                    sub_gap_queries,
+                    semaphore=semaphore,
+                    timeout_seconds=external_call_timeout_seconds,
                 )
+                if vector_search is not None:
+                    search_results, (web_candidate_groups, web_summary) = await asyncio.gather(
+                        vector_search,
+                        web_search_task,
+                    )
+                else:
+                    search_results = []
+                    web_candidate_groups, web_summary = await web_search_task
                 web_search_summaries.append(web_summary)
                 if trace_collector is not None:
                     trace_collector.record_web_search(web_summary)
@@ -938,8 +959,11 @@ class DeepSearch(RAGAgent):
                     f"{web_summary['status']}; accepted {web_summary['result_count']} snippet(s) "
                     "</search>\n"
                 )
-            else:
+            elif vector_search is not None:
                 search_results = await vector_search
+                web_candidate_groups = []
+            else:
+                search_results = []
                 web_candidate_groups = []
             candidate_groups = []
             for result in search_results:
@@ -992,7 +1016,7 @@ class DeepSearch(RAGAgent):
             )
             if (
                 iter == 0
-                and not use_web_search
+                and retrieval_mode == "knowledge"
                 and not self._is_comprehensive_query(original_query)
                 and risk_level != "high"
                 and len(deduplicate_results(all_search_res)) >= 4

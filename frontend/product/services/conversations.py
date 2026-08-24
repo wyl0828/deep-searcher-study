@@ -6,7 +6,8 @@ import math
 import os
 import re
 from collections.abc import AsyncIterator
-from datetime import date
+from datetime import date, datetime, timezone
+from time import perf_counter
 
 import httpx
 from sqlalchemy import select
@@ -22,12 +23,21 @@ from deepsearcher.versioning import extract_document_version_metadata
 from deepsearcher.web_search.tavily import canonical_public_url
 from frontend.product.backend import backend_request_headers
 from frontend.product.errors import ProductError
-from frontend.product.models import AnswerClaim, Citation, Conversation, Document, Message
+from frontend.product.models import (
+    AnswerClaim,
+    AnswerRun,
+    Citation,
+    Conversation,
+    Document,
+    Message,
+)
 from frontend.product.schemas import MessageResponse
+from frontend.product.services.context_policy import ANSWER_MODES, ContextPolicy
 from frontend.product.services.conversation_summaries import (
     build_summary_aware_history,
     summarize_if_needed,
 )
+from frontend.product.services.query_scope import QueryScopeResolution
 
 BACKEND_URL = os.environ.get("DEEPSEARCHER_API_URL", "http://127.0.0.1:8500").rstrip("/")
 
@@ -92,6 +102,21 @@ QUERY_ERROR_MESSAGES = {
         502,
         True,
     ),
+    "CHAT_FAILED": (
+        "通用问答服务没有完成本次回答，请稍后重试。",
+        502,
+        True,
+    ),
+    "CHAT_TIMEOUT": (
+        "通用问答服务超过时间限制，请稍后重试。",
+        504,
+        True,
+    ),
+    "CHAT_BLOCKED_BY_RISK": (
+        "这个请求需要在安全问答流程中处理。",
+        403,
+        False,
+    ),
 }
 SAFE_STAGE_EVENTS = {
     "started",
@@ -104,11 +129,69 @@ SAFE_STAGE_EVENTS = {
     "reflection",
 }
 TERMINAL_EVENTS = {"completed", "error", "cancelled"}
+ROUTING_STAGES = {
+    "routing",
+    "chat_generation",
+    "retrieval",
+    "answer_generation",
+    "completed",
+}
+RISK_LEVELS = {"low", "medium", "high"}
+RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
+ROUTE_INTENTS = {
+    "social",
+    "context_followup",
+    "general_question",
+    "enterprise_fact",
+    "external_fact",
+    "ambiguous",
+}
+ROUTE_SOURCES = {"rule", "model", "fallback", "user_override", "router", "legacy"}
+ROUTE_REFUSAL_MESSAGE = "出于安全原因，我不能协助提供或披露凭据、密钥或令牌。"
 SAFE_REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 MAX_SSE_LINE_CHARS = 1_000_000
 MAX_SSE_EVENT_CHARS = 1_000_000
 MAX_SSE_DATA_LINES = 256
 MAX_PERSISTED_CITATIONS = 20
+
+
+def _legacy_fixed_scope(conversation: Conversation) -> QueryScopeResolution:
+    knowledge_base = conversation.knowledge_base
+    if knowledge_base is None:
+        raise ProductError(
+            "QUERY_SCOPE_INVALID",
+            "这个对话没有可用的知识范围。",
+            status_code=409,
+        )
+    snapshot = {
+        "schema_version": 1,
+        "mode": "fixed",
+        "knowledge_base_ids": [knowledge_base.id],
+        "collection_names": [knowledge_base.collection_name],
+        "resolved_at": datetime.now(timezone.utc).isoformat(),
+        "status_counts": {
+            "usable": 1,
+            "no_documents": 0,
+            "processing": 0,
+            "failed": 0,
+            "needs_rebuild": 0,
+            "unknown": 0,
+        },
+    }
+    return QueryScopeResolution(
+        mode="fixed",
+        knowledge_bases=(knowledge_base,),
+        collection_names=(knowledge_base.collection_name,),
+        payload={
+            "state": "ready",
+            "askable": True,
+            "accessible_knowledge_base_count": 1,
+            "usable_knowledge_base_count": 1,
+            "status_counts": snapshot["status_counts"],
+            "primary_action": None,
+        },
+        snapshot=snapshot,
+    )
 
 
 def _safe_nonnegative_int(value: object) -> int:
@@ -166,6 +249,161 @@ def _safe_confidence(value: object) -> float | None:
     except (TypeError, ValueError, OverflowError):
         return None
     return confidence if math.isfinite(confidence) and 0 <= confidence <= 1 else None
+
+
+def _safe_answer_mode(value: object) -> str | None:
+    mode = str(value or "").strip().lower()
+    return mode if mode in ANSWER_MODES else None
+
+
+def _safe_risk_level(value: object) -> str | None:
+    level = str(value or "").strip().lower()
+    return level if level in RISK_LEVELS else None
+
+
+def _risk_max(*levels: str | None) -> str | None:
+    valid = [level for level in levels if level in RISK_LEVELS]
+    return max(valid, key=lambda level: RISK_ORDER[level]) if valid else None
+
+
+def _merge_reason_codes(*values: object) -> list[str]:
+    merged: list[str] = []
+    for value in values:
+        for code in _safe_reason_codes(value):
+            if code not in merged:
+                merged.append(code)
+    return merged[:32]
+
+
+def _route_decision_payload(value: object) -> dict | None:
+    """Validate and redact the Core route contract before persisting it."""
+
+    if not isinstance(value, dict):
+        return None
+    answer_mode = _safe_answer_mode(value.get("answer_mode"))
+    route_intent = _safe_identifier(value.get("route_intent"), max_length=32)
+    route_source = _safe_identifier(value.get("route_source"), max_length=32)
+    reason_code = _safe_identifier(value.get("reason_code"), max_length=64)
+    confidence = _safe_confidence(value.get("confidence"))
+    router_version = _safe_identifier(value.get("router_version"), max_length=32)
+    initial_risk_level = _safe_risk_level(value.get("initial_risk_level"))
+    initial_risk_factors = _safe_reason_codes(value.get("initial_risk_factors"))
+    if (
+        answer_mode is None
+        or route_intent not in ROUTE_INTENTS
+        or route_source not in ROUTE_SOURCES
+        or reason_code is None
+        or confidence is None
+        or router_version is None
+        or initial_risk_level is None
+    ):
+        return None
+    return {
+        "answer_mode": answer_mode,
+        "route_intent": route_intent,
+        "route_source": route_source,
+        "reason_code": reason_code,
+        "confidence": confidence,
+        "router_version": router_version,
+        "initial_risk_level": initial_risk_level,
+        "initial_risk_factors": initial_risk_factors,
+    }
+
+
+def _extract_final_risk(payload: object) -> tuple[str | None, list[str]]:
+    if not isinstance(payload, dict):
+        return None, []
+    message_payload = payload.get("message")
+    if not isinstance(message_payload, dict):
+        message_payload = payload.get("assistant_message")
+    if not isinstance(message_payload, dict):
+        message_payload = {}
+    trace = payload.get("trace") if isinstance(payload.get("trace"), dict) else {}
+    if not trace and isinstance(message_payload.get("trace"), dict):
+        trace = message_payload["trace"]
+    trust = trace.get("trust") if isinstance(trace.get("trust"), dict) else {}
+    risk = trust.get("risk") if isinstance(trust.get("risk"), dict) else {}
+    if not risk and isinstance(trace.get("risk"), dict):
+        risk = trace["risk"]
+    if not risk and isinstance(payload.get("risk"), dict):
+        risk = payload["risk"]
+    raw_level = (
+        risk.get("risk_level") or risk.get("level") if isinstance(risk, dict) else None
+    )
+    level = _safe_risk_level(
+        raw_level or payload.get("risk_level") or message_payload.get("risk_level")
+    )
+    raw_factors = (
+        risk.get("risk_factors") or risk.get("factors") if isinstance(risk, dict) else []
+    )
+    factors = _safe_reason_codes(raw_factors)
+    if not factors:
+        factors = _safe_reason_codes(
+            payload.get("risk_factors") or message_payload.get("risk_factors")
+        )
+    return level, factors
+
+
+def _effective_risk(
+    routing_decision: dict | None,
+    payload: object = None,
+) -> tuple[str | None, list[str]]:
+    initial_level = (
+        _safe_risk_level(routing_decision.get("initial_risk_level"))
+        if isinstance(routing_decision, dict)
+        else None
+    )
+    initial_factors = (
+        _safe_reason_codes(routing_decision.get("initial_risk_factors"))
+        if isinstance(routing_decision, dict)
+        else []
+    )
+    final_level, final_factors = _extract_final_risk(payload)
+    return _risk_max(initial_level, final_level), _merge_reason_codes(initial_factors, final_factors)
+
+
+def _is_credential_disclosure(decision: dict | None) -> bool:
+    if not isinstance(decision, dict):
+        return False
+    factors = _safe_reason_codes(decision.get("initial_risk_factors"))
+    return "CREDENTIAL_DISCLOSURE_REQUEST" in factors or decision.get("reason_code") == (
+        "CREDENTIAL_DISCLOSURE_REQUEST"
+    )
+
+
+def _route_request_payload(
+    *,
+    question: str,
+    conversation_history: list[dict],
+    scope: QueryScopeResolution,
+    use_web_search: bool,
+) -> dict:
+    # ``use_web_search`` is retained solely as an explicit legacy override for
+    # the router.  It is never forwarded to a selected downstream mode.
+    return {
+        "original_query": question,
+        "conversation_history": conversation_history,
+        "use_web_search": bool(use_web_search),
+    }
+
+
+def _downstream_payload(
+    *,
+    mode: str,
+    question: str,
+    conversation_history: list[dict],
+    scope: QueryScopeResolution,
+) -> dict:
+    payload = {
+        "original_query": question,
+        "conversation_history": conversation_history,
+    }
+    if mode in {"knowledge", "web"}:
+        payload["max_iter"] = 3
+        payload["include_trace"] = True
+        payload["collection_names"] = list(scope.collection_names)
+        payload["retrieval_mode"] = mode
+    return payload
 
 
 def _safe_citation_spans(
@@ -504,6 +742,28 @@ def query_error_from_response(response: httpx.Response) -> ProductError:
     )
 
 
+def route_error_from_response(response: httpx.Response) -> ProductError:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    if isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,64}", code):
+        return ProductError(
+            code,
+            "问答路由服务暂时不可用，请稍后重试。",
+            status_code=502,
+            retryable=True,
+        )
+    return ProductError(
+        "ROUTING_FAILED",
+        "问答路由服务暂时不可用，请稍后重试。",
+        status_code=502,
+        retryable=True,
+    )
+
+
 def query_error_from_event(error: dict) -> ProductError:
     code = str(error.get("code") or "QUERY_FAILED")
     if code in QUERY_ERROR_MESSAGES:
@@ -526,12 +786,87 @@ def _serialize_message(message: Message) -> dict:
     return MessageResponse.model_validate(message).model_dump(mode="json")
 
 
+def _set_answer_run_stage(session: Session, answer_run: AnswerRun, stage: str) -> None:
+    if stage not in ROUTING_STAGES:
+        stage = "routing"
+    answer_run.current_stage = stage
+    session.commit()
+
+
+def _persist_routing_decision(
+    session: Session,
+    *,
+    answer_run: AnswerRun,
+    assistant_message: Message,
+    decision: dict,
+) -> None:
+    answer_run.routing_decision = decision
+    answer_run.answer_mode = decision["answer_mode"]
+    factors = _merge_reason_codes(
+        decision["initial_risk_factors"],
+        ["CREDENTIAL_DISCLOSURE_REQUEST"] if _is_credential_disclosure(decision) else [],
+    )
+    if _is_credential_disclosure(decision) and decision["initial_risk_level"] != "high":
+        decision["initial_risk_level"] = "high"
+    decision["initial_risk_factors"] = factors
+    answer_run.effective_risk_level = decision["initial_risk_level"]
+    answer_run.effective_risk_factors = factors
+    # Keep the durable stage at routing until the Product scheduler commits a
+    # concrete downstream call.
+    answer_run.current_stage = "routing"
+    assistant_message.answer_mode = decision["answer_mode"]
+    assistant_message.risk_level = decision["initial_risk_level"]
+    assistant_message.risk_factors = factors
+    session.commit()
+
+
+async def _call_route(
+    client: httpx.AsyncClient,
+    *,
+    question: str,
+    conversation_history: list[dict],
+    scope: QueryScopeResolution,
+    use_web_search: bool,
+) -> dict:
+    response = await client.post(
+        f"{BACKEND_URL}/route",
+        json=_route_request_payload(
+            question=question,
+            conversation_history=conversation_history,
+            scope=scope,
+            use_web_search=use_web_search,
+        ),
+    )
+    if not response.is_success:
+        raise route_error_from_response(response)
+    try:
+        payload = response.json()
+    except (TypeError, ValueError) as exc:
+        raise ProductError(
+            "ROUTING_INVALID",
+            "问答路由服务返回了无效结果，请稍后重试。",
+            status_code=502,
+            retryable=True,
+        ) from exc
+    decision = _route_decision_payload(payload)
+    if decision is None:
+        raise ProductError(
+            "ROUTING_INVALID",
+            "问答路由服务返回了无效结果，请稍后重试。",
+            status_code=502,
+            retryable=True,
+        )
+    return decision
+
+
 def _create_pending_messages(
     session: Session,
     *,
     conversation: Conversation,
     question: str,
-) -> tuple[Message, Message]:
+    scope: QueryScopeResolution,
+    request_id: str | None,
+) -> tuple[Message, Message, AnswerRun]:
     user_message = Message(
         conversation_id=conversation.id,
         role="user",
@@ -547,10 +882,105 @@ def _create_pending_messages(
     session.add_all([user_message, assistant_message])
     if conversation.title == "新对话":
         conversation.title = question[:36]
+    session.flush()
+    answer_run = AnswerRun(
+        conversation_id=conversation.id,
+        question_message_id=user_message.id,
+        answer_message_id=assistant_message.id,
+        status="running",
+        request_id=request_id,
+        query_scope_snapshot=scope.snapshot,
+        current_stage="routing",
+    )
+    session.add(answer_run)
     session.commit()
     session.refresh(user_message)
     session.refresh(assistant_message)
-    return user_message, assistant_message
+    session.refresh(answer_run)
+    return user_message, assistant_message, answer_run
+
+
+def _finish_answer_run(
+    session: Session,
+    *,
+    answer_run: AnswerRun,
+    started_at: float,
+    status: str,
+    payload: dict | None = None,
+) -> None:
+    payload = payload if isinstance(payload, dict) else {}
+    answer_run.status = status
+    if status == "succeeded" and not answer_run.failure_code:
+        answer_run.current_stage = "completed"
+    answer_run.finished_at = datetime.now(timezone.utc)
+    answer_run.total_latency_ms = max(round((perf_counter() - started_at) * 1000), 0)
+    provider = payload.get("provider")
+    model = payload.get("model")
+    if isinstance(provider, str) and provider.strip():
+        answer_run.provider = provider.strip()[:160]
+    if isinstance(model, str) and model.strip():
+        answer_run.model = model.strip()[:160]
+    attempts = payload.get("attempts")
+    if isinstance(attempts, list):
+        answer_run.attempts = attempts[:32]
+    stage_results = payload.get("stage_results")
+    if isinstance(stage_results, list):
+        answer_run.stage_results = [
+            item for item in stage_results[:64] if isinstance(item, dict)
+        ]
+    effective_level, effective_factors = _effective_risk(answer_run.routing_decision, payload)
+    if effective_level is not None:
+        answer_run.effective_risk_level = effective_level
+    if effective_factors:
+        answer_run.effective_risk_factors = effective_factors
+    session.commit()
+
+
+def _apply_effective_risk(
+    session: Session,
+    *,
+    assistant_message: Message,
+    answer_run: AnswerRun,
+    payload: object = None,
+) -> None:
+    effective_level, effective_factors = _effective_risk(answer_run.routing_decision, payload)
+    if effective_level is not None:
+        assistant_message.risk_level = effective_level
+        answer_run.effective_risk_level = effective_level
+    if effective_factors:
+        assistant_message.risk_factors = effective_factors
+        answer_run.effective_risk_factors = effective_factors
+    session.commit()
+
+
+def _finish_credential_refusal(
+    session: Session,
+    *,
+    assistant_message: Message,
+    answer_run: AnswerRun,
+    started_at: float,
+) -> None:
+    """Persist a deterministic pre-retrieval refusal without calling Core."""
+
+    assistant_message.content = ROUTE_REFUSAL_MESSAGE
+    assistant_message.status = "succeeded"
+    assistant_message.answer_state = None
+    assistant_message.safety_status = "unsafe"
+    assistant_message.policy_action = "refuse"
+    assistant_message.policy_reason_codes = ["CREDENTIAL_DISCLOSURE_REQUEST"]
+    assistant_message.risk_level = "high"
+    assistant_message.risk_factors = _merge_reason_codes(
+        answer_run.effective_risk_factors,
+        ["CREDENTIAL_DISCLOSURE_REQUEST"],
+    )
+    answer_run.current_stage = "completed"
+    answer_run.effective_risk_level = "high"
+    answer_run.effective_risk_factors = assistant_message.risk_factors
+    session.commit()
+    answer_run.status = "succeeded"
+    answer_run.finished_at = datetime.now(timezone.utc)
+    answer_run.total_latency_ms = max(round((perf_counter() - started_at) * 1000), 0)
+    session.commit()
 
 
 def _finish_assistant_message(
@@ -558,9 +988,31 @@ def _finish_assistant_message(
     *,
     assistant_message: Message,
     payload: dict,
+    allowed_knowledge_base_ids: set[str] | None = None,
 ) -> Message:
-    assistant_message.content = str(payload.get("result") or "")
-    trace = payload.get("trace") or {}
+    nested_message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+    assistant_message.content = str(
+        payload.get("result") or nested_message.get("content") or ""
+    )
+    if assistant_message.answer_mode == "chat":
+        # Core public Chat intentionally returns prose only.  Never infer a
+        # RAG answer state or persist evidence if a provider accidentally adds
+        # trace-like fields to that response.
+        assistant_message.answer_state = None
+        assistant_message.trust_status = "not_assessed"
+        assistant_message.safety_status = "safe"
+        assistant_message.policy_action = "allow"
+        assistant_message.policy_profile = None
+        assistant_message.policy_reason_codes = []
+        assistant_message.risk_level = None
+        assistant_message.risk_factors = None
+        assistant_message.citations.clear()
+        assistant_message.claims.clear()
+        assistant_message.status = "succeeded"
+        session.commit()
+        session.refresh(assistant_message)
+        return assistant_message
+    trace = payload.get("trace") or nested_message.get("trace") or {}
     grounding = trace.get("grounding") if isinstance(trace, dict) else None
     trust = trace.get("trust") if isinstance(trace, dict) else None
     has_structured_trust = isinstance(trust, dict) and trust.get("version") == 1
@@ -569,6 +1021,7 @@ def _finish_assistant_message(
         session,
         message=assistant_message,
         trace=trace,
+        allowed_knowledge_base_ids=allowed_knowledge_base_ids,
     )
     claims = collect_answer_claims(
         session,
@@ -632,16 +1085,39 @@ def _finish_assistant_message(
     return assistant_message
 
 
-def _fail_assistant_message(
+def _persist_answer_failure(
     session: Session,
     *,
     assistant_message: Message,
+    answer_run: AnswerRun,
     message: str,
+    started_at: float,
+    status: str,
+    failure_code: str | None = None,
+    current_stage: str | None = None,
 ) -> None:
-    assistant_message.status = "failed"
-    assistant_message.answer_state = "failed"
-    assistant_message.content = message
+    """Commit failure facts after clearing any failed business transaction."""
+
+    session.rollback()
+    persisted_assistant = session.get(Message, assistant_message.id)
+    if persisted_assistant is not None:
+        persisted_assistant.status = "failed"
+        persisted_assistant.answer_state = "failed"
+        persisted_assistant.content = message
     session.commit()
+
+    persisted_run = session.get(AnswerRun, answer_run.id)
+    if persisted_run is not None:
+        if current_stage:
+            persisted_run.current_stage = current_stage[:32]
+        if failure_code:
+            persisted_run.failure_code = _safe_identifier(failure_code, max_length=64)
+        _finish_answer_run(
+            session,
+            answer_run=persisted_run,
+            started_at=started_at,
+            status=status,
+        )
 
 
 async def _iter_sse_events(response: httpx.Response) -> AsyncIterator[tuple[str, dict]]:
@@ -682,15 +1158,31 @@ async def _iter_sse_events(response: httpx.Response) -> AsyncIterator[tuple[str,
             yield event_name, payload
 
 
-def _safe_stage_envelope(event_name: str, envelope: dict) -> dict | None:
+def _safe_stage_envelope(
+    event_name: str,
+    envelope: dict,
+    *,
+    answer_mode: str = "knowledge",
+) -> dict | None:
     if event_name not in SAFE_STAGE_EVENTS or envelope.get("event") != event_name:
+        return None
+    if answer_mode not in ANSWER_MODES:
+        answer_mode = "knowledge"
+    if answer_mode == "chat" and event_name in {"retrieval", "web_search"}:
+        # Chat is not allowed to masquerade as a retrieval run in the browser.
         return None
     raw_data = envelope.get("data")
     if not isinstance(raw_data, dict):
         return None
     data: dict = {}
     if event_name == "started":
-        data["stage"] = "query_started"
+        expected_stage = "chat_started" if answer_mode == "chat" else "query_started"
+        upstream_stage = str(raw_data.get("stage") or expected_stage)
+        if upstream_stage not in {expected_stage, "query_started", "chat_started"}:
+            return None
+        if upstream_stage != expected_stage:
+            return None
+        data["stage"] = expected_stage
     elif event_name == "contextualization":
         data["depends_on_history"] = bool(raw_data.get("depends_on_history", False))
         data["history_turn_count"] = min(
@@ -753,34 +1245,26 @@ def _safe_stage_envelope(event_name: str, envelope: dict) -> dict | None:
 def build_conversation_history(
     conversation: Conversation,
     session: Session | None = None,
+    *,
+    answer_mode: str | None = None,
+    max_messages: int | None = None,
 ) -> list[dict]:
-    """Build bounded history without trusting failed or weakly grounded answers."""
-    if session is not None:
+    """Build policy-filtered history without trusting weak answers."""
+    mode = answer_mode if answer_mode in ANSWER_MODES else "knowledge"
+    policy = ContextPolicy.for_mode(
+        mode,
+        max_messages=max_messages or (6 if mode == "chat" else 12),
+    )
+    if session is not None and policy.include_summary:
         return build_summary_aware_history(session, conversation)
-    history: list[dict] = []
-    for message in conversation.messages:
-        content = message.content.strip()
-        if message.status != "succeeded" or not content:
-            continue
-        if message.role == "assistant":
-            if message.answer_state not in {"grounded", "fully_grounded"}:
-                continue
-            history.append(
-                {
-                    "role": "assistant",
-                    "content": content[:1200],
-                    "grounded": True,
-                }
-            )
-        elif message.role == "user":
-            history.append(
-                {
-                    "role": "user",
-                    "content": content[:1200],
-                    "grounded": False,
-                }
-            )
-    return history[-12:]
+    return policy.history(session, conversation) if session is not None else [
+        {
+            "role": message.role,
+            "content": re.sub(r"\[(?:E|W)\d+\]", "", message.content.strip())[:1200],
+            "grounded": message.role == "assistant",
+        }
+        for message in policy.eligible_messages(conversation)[-policy.max_messages :]
+    ]
 
 
 def _grounding_evidence(trace: dict) -> list[tuple[dict, str | None]]:
@@ -814,6 +1298,7 @@ def _collect_supported_citations(
     *,
     message: Message,
     trace: dict,
+    allowed_knowledge_base_ids: set[str] | None = None,
 ) -> tuple[list[Citation], dict[str, int]]:
     citations: list[Citation] = []
     evidence_to_citation: dict[str, int] = {}
@@ -850,11 +1335,16 @@ def _collect_supported_citations(
             continue
         source_document = None
         if source_identifier:
+            allowed_ids = allowed_knowledge_base_ids
+            if allowed_ids is None and message.conversation.knowledge_base_id:
+                allowed_ids = {message.conversation.knowledge_base_id}
+            document_conditions = [
+                (Document.id == source_identifier) | (Document.sha256 == source_identifier)
+            ]
+            if allowed_ids is not None:
+                document_conditions.append(Document.knowledge_base_id.in_(allowed_ids))
             source_document = session.scalar(
-                select(Document).where(
-                    Document.knowledge_base_id == message.conversation.knowledge_base_id,
-                    (Document.id == source_identifier) | (Document.sha256 == source_identifier),
-                )
+                select(Document).where(*document_conditions)
             )
         display_name = _safe_text(
             (
@@ -927,11 +1417,13 @@ def collect_supported_citations(
     *,
     message: Message,
     trace: dict,
+    allowed_knowledge_base_ids: set[str] | None = None,
 ) -> list[Citation]:
     citations, _ = _collect_supported_citations(
         session,
         message=message,
         trace=trace,
+        allowed_knowledge_base_ids=allowed_knowledge_base_ids,
     )
     return citations
 
@@ -1043,6 +1535,7 @@ async def submit_message(
     session: Session,
     *,
     conversation: Conversation,
+    scope: QueryScopeResolution | None = None,
     content: str,
     request_id: str | None = None,
     use_web_search: bool = False,
@@ -1050,13 +1543,26 @@ async def submit_message(
     question = content.strip()
     if not question:
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
-
-    conversation_history = build_conversation_history(conversation, session)
-    user_message, assistant_message = _create_pending_messages(
+    scope = scope or _legacy_fixed_scope(conversation)
+    # Routing has no trusted mode yet, so it receives only bounded recent
+    # context.  A persisted knowledge summary is deliberately unavailable to
+    # the P0 chat path and is only added after a knowledge route is selected.
+    route_history = build_conversation_history(
+        conversation,
+        session,
+        answer_mode="chat",
+        max_messages=6,
+    )
+    user_message, assistant_message, answer_run = _create_pending_messages(
         session,
         conversation=conversation,
         question=question,
+        scope=scope,
+        request_id=request_id,
     )
+    started_at = perf_counter()
+    current_stage = "routing"
+    answer_mode = "knowledge"
 
     try:
         async with httpx.AsyncClient(
@@ -1064,40 +1570,129 @@ async def submit_message(
             trust_env=False,
             headers=backend_request_headers(request_id),
         ) as client:
-            response = await client.post(
-                f"{BACKEND_URL}/query",
-                json={
-                    "original_query": question,
-                    "conversation_history": conversation_history,
-                    "max_iter": 3,
-                    "include_trace": True,
-                    "collection_names": [conversation.knowledge_base.collection_name],
-                    "use_web_search": use_web_search,
-                },
+            decision = await _call_route(
+                client,
+                question=question,
+                conversation_history=route_history,
+                scope=scope,
+                use_web_search=use_web_search,
             )
-        if not response.is_success:
-            raise query_error_from_response(response)
-        payload = response.json()
-        _finish_assistant_message(
-            session,
-            assistant_message=assistant_message,
-            payload=payload,
-        )
-        try:
-            summarize_if_needed(session, conversation)
-        except Exception:
-            pass
+            _persist_routing_decision(
+                session,
+                answer_run=answer_run,
+                assistant_message=assistant_message,
+                decision=decision,
+            )
+            answer_mode = decision["answer_mode"]
+            if _is_credential_disclosure(decision):
+                _finish_credential_refusal(
+                    session,
+                    assistant_message=assistant_message,
+                    answer_run=answer_run,
+                    started_at=started_at,
+                )
+                return user_message, assistant_message
+
+            conversation_history = (
+                route_history
+                if answer_mode == "chat"
+                else build_conversation_history(
+                    conversation,
+                    session,
+                    answer_mode=answer_mode,
+                    max_messages=12,
+                )
+            )
+            current_stage = "chat_generation" if answer_mode == "chat" else "retrieval"
+            _set_answer_run_stage(session, answer_run, current_stage)
+            downstream_path = "chat" if answer_mode == "chat" else "query"
+            response = await client.post(
+                f"{BACKEND_URL}/{downstream_path}",
+                json=_downstream_payload(
+                    mode=answer_mode,
+                    question=question,
+                    conversation_history=conversation_history,
+                    scope=scope,
+                ),
+            )
+            if not response.is_success:
+                raise query_error_from_response(response)
+            payload = response.json()
+            _set_answer_run_stage(session, answer_run, "answer_generation")
+            _finish_assistant_message(
+                session,
+                assistant_message=assistant_message,
+                payload=payload,
+                allowed_knowledge_base_ids=set(scope.snapshot["knowledge_base_ids"]),
+            )
+            _finish_answer_run(
+                session,
+                answer_run=answer_run,
+                started_at=started_at,
+                status="succeeded",
+                payload=payload,
+            )
+            _apply_effective_risk(
+                session,
+                assistant_message=assistant_message,
+                answer_run=answer_run,
+                payload=payload,
+            )
+        if answer_mode == "knowledge":
+            try:
+                summarize_if_needed(session, conversation)
+            except Exception:
+                pass
         return user_message, assistant_message
-    except (httpx.RequestError, ValueError, ProductError) as exc:
-        _fail_assistant_message(
+    except asyncio.CancelledError:
+        _persist_answer_failure(
             session,
             assistant_message=assistant_message,
-            message=(
-                exc.message if isinstance(exc, ProductError) else "问答服务暂时不可用，请稍后重试。"
+            answer_run=answer_run,
+            started_at=started_at,
+            message="本次回答已停止。",
+            status="cancelled",
+            failure_code="QUERY_CANCELLED",
+            current_stage=current_stage,
+        )
+        raise
+    except (httpx.RequestError, ValueError, ProductError) as exc:
+        failure_message = (
+            exc.message if isinstance(exc, ProductError) else "问答服务暂时不可用，请稍后重试。"
+        )
+        _persist_answer_failure(
+            session,
+            assistant_message=assistant_message,
+            answer_run=answer_run,
+            started_at=started_at,
+            message=failure_message,
+            status="failed",
+            failure_code=(
+                exc.code
+                if isinstance(exc, ProductError)
+                else ("ROUTING_UNAVAILABLE" if current_stage == "routing" else "QUERY_UNAVAILABLE")
             ),
+            current_stage=current_stage,
         )
         if isinstance(exc, ProductError):
             raise
+        raise ProductError(
+            "QUERY_UNAVAILABLE",
+            "问答服务暂时不可用，请稍后重试。",
+            status_code=503,
+            retryable=True,
+        ) from exc
+    except Exception as exc:
+        _persist_answer_failure(
+            session,
+            assistant_message=assistant_message,
+            answer_run=answer_run,
+            started_at=started_at,
+            message="问答服务暂时不可用，请稍后重试。",
+            status="failed",
+            failure_code=("ROUTING_UNAVAILABLE" if current_stage == "routing" else "QUERY_UNAVAILABLE"),
+            current_stage=current_stage,
+        )
         raise ProductError(
             "QUERY_UNAVAILABLE",
             "问答服务暂时不可用，请稍后重试。",
@@ -1110,6 +1705,7 @@ async def stream_message_events(
     session: Session,
     *,
     conversation: Conversation,
+    scope: QueryScopeResolution | None = None,
     content: str,
     request_id: str | None = None,
     use_web_search: bool = False,
@@ -1118,35 +1714,100 @@ async def stream_message_events(
     question = content.strip()
     if not question:
         raise ProductError("MESSAGE_EMPTY", "请输入你想了解的问题。")
-
-    conversation_history = build_conversation_history(conversation, session)
-    user_message, assistant_message = _create_pending_messages(
+    scope = scope or _legacy_fixed_scope(conversation)
+    route_history = build_conversation_history(
+        conversation,
+        session,
+        answer_mode="chat",
+        max_messages=6,
+    )
+    user_message, assistant_message, answer_run = _create_pending_messages(
         session,
         conversation=conversation,
         question=question,
+        scope=scope,
+        request_id=request_id,
     )
+    started_at = perf_counter()
     terminal_emitted = False
     expected_event_request_id = _safe_request_id(request_id)
     last_sequence = 0
+    current_stage = "routing"
+    answer_mode = "knowledge"
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(300.0, connect=10.0),
             trust_env=False,
             headers=backend_request_headers(request_id),
         ) as client:
+            decision = await _call_route(
+                client,
+                question=question,
+                conversation_history=route_history,
+                scope=scope,
+                use_web_search=use_web_search,
+            )
+            _persist_routing_decision(
+                session,
+                answer_run=answer_run,
+                assistant_message=assistant_message,
+                decision=decision,
+            )
+            answer_mode = decision["answer_mode"]
+            if _is_credential_disclosure(decision):
+                _finish_credential_refusal(
+                    session,
+                    assistant_message=assistant_message,
+                    answer_run=answer_run,
+                    started_at=started_at,
+                )
+                terminal_emitted = True
+                started_stage = "chat_started" if answer_mode == "chat" else "query_started"
+                yield {
+                    "version": 1,
+                    "request_id": expected_event_request_id,
+                    "sequence": 1,
+                    "event": "started",
+                    "data": {"stage": started_stage},
+                }
+                yield {
+                    "version": 1,
+                    "request_id": expected_event_request_id,
+                    "sequence": 2,
+                    "event": "completed",
+                    "data": {
+                        "user_message": _serialize_message(user_message),
+                        "assistant_message": _serialize_message(assistant_message),
+                    },
+                }
+                return
+
+            conversation_history = (
+                route_history
+                if answer_mode == "chat"
+                else build_conversation_history(
+                    conversation,
+                    session,
+                    answer_mode=answer_mode,
+                    max_messages=12,
+                )
+            )
+            current_stage = "chat_generation" if answer_mode == "chat" else "retrieval"
+            _set_answer_run_stage(session, answer_run, current_stage)
+            downstream_path = "chat/stream" if answer_mode == "chat" else "query/stream"
             async with client.stream(
                 "POST",
-                f"{BACKEND_URL}/query/stream",
-                json={
-                    "original_query": question,
-                    "conversation_history": conversation_history,
-                    "max_iter": 3,
-                    "collection_names": [conversation.knowledge_base.collection_name],
-                    "use_web_search": use_web_search,
-                },
+                f"{BACKEND_URL}/{downstream_path}",
+                json=_downstream_payload(
+                    mode=answer_mode,
+                    question=question,
+                    conversation_history=conversation_history,
+                    scope=scope,
+                ),
             ) as response:
                 if not response.is_success:
-                    await response.aread()
+                    if hasattr(response, "aread"):
+                        await response.aread()
                     raise query_error_from_response(response)
                 async for event_name, envelope in _iter_sse_events(response):
                     event_request_id, last_sequence = _validate_stream_envelope(
@@ -1157,23 +1818,47 @@ async def stream_message_events(
                     )
                     if not expected_event_request_id:
                         expected_event_request_id = event_request_id
-                    safe_stage = _safe_stage_envelope(event_name, envelope)
+                    safe_stage = _safe_stage_envelope(
+                        event_name,
+                        envelope,
+                        answer_mode=answer_mode,
+                    )
+                    if event_name == "started" and safe_stage is None:
+                        raise _invalid_stream_error()
                     if safe_stage is not None:
                         yield safe_stage
+                        continue
+                    if answer_mode == "chat" and event_name in {"retrieval", "web_search"}:
                         continue
                     data = envelope.get("data") if isinstance(envelope, dict) else {}
                     if not isinstance(data, dict):
                         data = {}
                     if event_name == "completed":
+                        _set_answer_run_stage(session, answer_run, "answer_generation")
                         _finish_assistant_message(
                             session,
                             assistant_message=assistant_message,
                             payload=data,
+                            allowed_knowledge_base_ids=set(scope.snapshot["knowledge_base_ids"]),
                         )
-                        try:
-                            summarize_if_needed(session, conversation)
-                        except Exception:
-                            pass
+                        _finish_answer_run(
+                            session,
+                            answer_run=answer_run,
+                            started_at=started_at,
+                            status="succeeded",
+                            payload=data,
+                        )
+                        _apply_effective_risk(
+                            session,
+                            assistant_message=assistant_message,
+                            answer_run=answer_run,
+                            payload=data,
+                        )
+                        if answer_mode == "knowledge":
+                            try:
+                                summarize_if_needed(session, conversation)
+                            except Exception:
+                                pass
                         terminal_emitted = True
                         yield {
                             "version": 1,
@@ -1202,11 +1887,17 @@ async def stream_message_events(
                     retryable=True,
                 )
     except asyncio.CancelledError:
-        _fail_assistant_message(
+        _persist_answer_failure(
             session,
             assistant_message=assistant_message,
+            answer_run=answer_run,
+            started_at=started_at,
             message="本次回答已停止。",
+            status="cancelled",
+            failure_code="QUERY_CANCELLED",
+            current_stage=current_stage,
         )
+        terminal_emitted = True
         raise
     except (httpx.RequestError, ValueError, ProductError) as exc:
         product_error = (
@@ -1219,10 +1910,15 @@ async def stream_message_events(
                 retryable=True,
             )
         )
-        _fail_assistant_message(
+        _persist_answer_failure(
             session,
             assistant_message=assistant_message,
+            answer_run=answer_run,
+            started_at=started_at,
             message=product_error.message,
+            status=("cancelled" if product_error.code == "QUERY_CANCELLED" else "failed"),
+            failure_code=product_error.code,
+            current_stage=current_stage,
         )
         terminal_emitted = True
         yield {
@@ -1236,10 +1932,38 @@ async def stream_message_events(
                 "retryable": product_error.retryable,
             },
         }
+    except Exception:
+        _persist_answer_failure(
+            session,
+            assistant_message=assistant_message,
+            answer_run=answer_run,
+            started_at=started_at,
+            message="问答服务暂时不可用，请稍后重试。",
+            status="failed",
+            failure_code=("ROUTING_UNAVAILABLE" if current_stage == "routing" else "QUERY_UNAVAILABLE"),
+            current_stage=current_stage,
+        )
+        terminal_emitted = True
+        yield {
+            "version": 1,
+            "request_id": "",
+            "sequence": 0,
+            "event": "error",
+            "data": {
+                "code": "QUERY_UNAVAILABLE",
+                "message": "问答服务暂时不可用，请稍后重试。",
+                "retryable": True,
+            },
+        }
     finally:
         if not terminal_emitted and assistant_message.status == "pending":
-            _fail_assistant_message(
+            _persist_answer_failure(
                 session,
                 assistant_message=assistant_message,
+                answer_run=answer_run,
+                started_at=started_at,
                 message="本次回答已停止。",
+                status="cancelled",
+                failure_code="QUERY_CANCELLED",
+                current_stage=current_stage,
             )

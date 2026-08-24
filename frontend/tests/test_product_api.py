@@ -19,10 +19,14 @@ from frontend.product.auth import require_user
 from frontend.product.db import Base, create_database_engine, get_session
 from frontend.product.errors import ProductError
 from frontend.product.models import (
+    AnswerRun,
     Citation,
     Conversation,
+    Department,
+    DepartmentKnowledgeBase,
     Document,
     KnowledgeBase,
+    KnowledgeHealthSnapshot,
     Message,
     MessageFeedback,
     User,
@@ -39,6 +43,7 @@ from frontend.product.services.conversations import (
     query_error_from_response,
     stream_message_events,
 )
+from frontend.product.services.query_scope import resolve_conversation_scope
 from frontend.server import app
 
 
@@ -90,6 +95,34 @@ def parse_sse_events(payload: str) -> list[dict]:
         if data_lines:
             events.append(json.loads("\n".join(data_lines)))
     return events
+
+
+def _route_payload(mode: str = "knowledge") -> dict:
+    intent = {
+        "chat": "general_question",
+        "knowledge": "enterprise_fact",
+        "web": "external_fact",
+    }[mode]
+    return {
+        "answer_mode": mode,
+        "route_intent": intent,
+        "route_source": "rule",
+        "reason_code": "test_route",
+        "confidence": 0.95,
+        "router_version": "query-router-v1",
+        "initial_risk_level": "medium",
+        "initial_risk_factors": [],
+    }
+
+
+class _RouteResponse:
+    is_success = True
+
+    def __init__(self, mode: str = "knowledge"):
+        self._payload = _route_payload(mode)
+
+    def json(self):
+        return self._payload
 
 
 def test_stream_envelope_requires_matching_request_id_and_contiguous_sequence():
@@ -1473,6 +1506,48 @@ def test_conversation_history_excludes_failed_and_weakly_grounded_answers():
     ]
 
 
+def test_chat_completion_does_not_create_grounding_state_or_citations(tmp_path):
+    """Public Chat prose must remain outside the RAG evidence contract."""
+
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "Chat 回归库", "description": ""},
+        ).json()
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        ).json()
+
+        with client.product_session_factory() as session:
+            assistant = Message(
+                conversation_id=conversation["id"],
+                role="assistant",
+                content="",
+                status="pending",
+                answer_mode="chat",
+            )
+            session.add(assistant)
+            session.commit()
+            _finish_assistant_message(
+                session,
+                assistant_message=assistant,
+                payload={
+                    "result": "这是通用回答。",
+                    "trace": {
+                        "grounding": {
+                            "version": 1,
+                            "evidence": [{"text": "不应成为引用", "supported": True}],
+                        }
+                    },
+                },
+            )
+            assert assistant.answer_state is None
+            assert assistant.trust_status == "not_assessed"
+            assert assistant.citations == []
+            assert assistant.claims == []
+
+
 def test_upload_query_and_citation_flow_uses_internal_collection_scope(
     tmp_path,
     monkeypatch,
@@ -1536,6 +1611,10 @@ def test_upload_query_and_citation_flow_uses_internal_collection_scope(
             return None
 
         async def post(self, url, json):
+            if url.endswith("/route"):
+                captured["route_url"] = url
+                captured["route_json"] = json
+                return _RouteResponse("knowledge")
             captured["url"] = url
             captured["json"] = json
             return Response()
@@ -1563,6 +1642,15 @@ def test_upload_query_and_citation_flow_uses_internal_collection_scope(
         assert persisted_job.status_code == 200
         assert persisted_job.json()["document_id"] == product_document_id
         assert persisted_job.json()["status"] == "queued"
+
+        # Frozen scope contract: a fixed conversation can query only after the
+        # document has become ready and the index manifest is verified.
+        with client.product_session_factory() as session:
+            session.get(Document, product_document_id).status = "ready"
+            session.get(KnowledgeBase, knowledge_base["id"]).index_manifest = json.dumps(
+                {"schema_version": 1}
+            )
+            session.commit()
 
         conversation = client.post(
             "/api/conversations",
@@ -1618,6 +1706,8 @@ def test_upload_query_and_citation_flow_uses_internal_collection_scope(
         assert persisted_citation["location_id"] == "location-query-flow"
 
     assert captured["url"].endswith("/query")
+    assert captured["route_url"].endswith("/route")
+    assert captured["route_json"]["use_web_search"] is False
     assert captured["json"]["collection_names"][0].startswith("kb_")
     assert captured["json"]["original_query"] == "DeepSearcher 的查询流程是什么？"
     assert captured["json"]["conversation_history"] == []
@@ -1771,6 +1861,12 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
         async def __aexit__(self, *_args):
             return None
 
+        async def post(self, url, json):
+            assert url.endswith("/route")
+            captured["route_url"] = url
+            captured["route_json"] = json
+            return _RouteResponse("web")
+
         def stream(self, method, url, *, json):
             captured["method"] = method
             captured["url"] = url
@@ -1787,6 +1883,21 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
             "/api/knowledge-bases",
             json={"name": "实时回答知识库", "description": ""},
         ).json()
+        with client.product_session_factory() as session:
+            session.add(
+                Document(
+                    knowledge_base_id=knowledge_base["id"],
+                    display_name="stream-guide.pdf",
+                    storage_path=str(tmp_path / "stream-guide.pdf"),
+                    size_bytes=10,
+                    sha256="s" * 64,
+                    status="ready",
+                )
+            )
+            session.get(KnowledgeBase, knowledge_base["id"]).index_manifest = json.dumps(
+                {"schema_version": 1}
+            )
+            session.commit()
         conversation = client.post(
             "/api/conversations",
             json={"knowledge_base_id": knowledge_base["id"]},
@@ -1860,9 +1971,12 @@ def test_product_query_stream_relays_safe_stages_and_persists_completion(
         assert web_citation["document_id"] is None
 
     assert captured["method"] == "POST"
+    assert captured["route_url"].endswith("/route")
+    assert captured["route_json"]["use_web_search"] is True
     assert captured["url"].endswith("/query/stream")
     assert captured["json"]["collection_names"][0].startswith("kb_")
-    assert captured["json"]["use_web_search"] is True
+    assert captured["json"]["retrieval_mode"] == "web"
+    assert "use_web_search" not in captured["json"]
     assert captured["client_kwargs"]["trust_env"] is False
     assert captured["client_kwargs"]["headers"]["X-Request-ID"] == "product-stream-test-1"
 
@@ -1904,6 +2018,10 @@ def test_closing_product_query_stream_marks_pending_answer_as_stopped(
 
         async def __aexit__(self, *_args):
             return None
+
+        async def post(self, url, json):
+            assert url.endswith("/route")
+            return _RouteResponse("knowledge")
 
         def stream(self, *_args, **_kwargs):
             return StreamContext()
@@ -2000,7 +2118,9 @@ def test_vector_database_failure_is_visible_and_persisted_as_failed_answer(
         async def __aexit__(self, *_args):
             return None
 
-        async def post(self, _url, json):
+        async def post(self, url, json):
+            if url.endswith("/route"):
+                return _RouteResponse("knowledge")
             assert json
             return Response()
 
@@ -2014,6 +2134,21 @@ def test_vector_database_failure_is_visible_and_persisted_as_failed_answer(
             "/api/knowledge-bases",
             json={"name": "故障可见知识库", "description": ""},
         ).json()
+        with client.product_session_factory() as session:
+            session.add(
+                Document(
+                    knowledge_base_id=knowledge_base["id"],
+                    display_name="failure-guide.pdf",
+                    storage_path=str(tmp_path / "failure-guide.pdf"),
+                    size_bytes=10,
+                    sha256="f" * 64,
+                    status="ready",
+                )
+            )
+            session.get(KnowledgeBase, knowledge_base["id"]).index_manifest = json.dumps(
+                {"schema_version": 1}
+            )
+            session.commit()
         conversation = client.post(
             "/api/conversations",
             json={"knowledge_base_id": knowledge_base["id"]},
@@ -2026,7 +2161,8 @@ def test_vector_database_failure_is_visible_and_persisted_as_failed_answer(
 
         assert response.status_code == 503
         payload = response.json()
-        assert payload["error"].pop("request_id")
+        request_id = payload["error"].pop("request_id")
+        assert request_id
         assert payload == {
             "error": {
                 "code": "VECTOR_DB_UNAVAILABLE",
@@ -2041,6 +2177,79 @@ def test_vector_database_failure_is_visible_and_persisted_as_failed_answer(
         assert assistant["answer_state"] == "failed"
         assert assistant["content"] == "向量检索服务暂时不可用，请稍后重试。"
         assert assistant["citations"] == []
+        with client.product_session_factory() as session:
+            run = session.scalar(
+                select(AnswerRun).where(
+                    AnswerRun.conversation_id == conversation["id"],
+                )
+            )
+            assert run is not None
+            assert run.status == "failed"
+            assert run.request_id == request_id
+
+
+def test_unexpected_retrieval_exception_still_persists_failed_answer_run(tmp_path, monkeypatch):
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, json):
+            if url.endswith("/route"):
+                return _RouteResponse("knowledge")
+            assert json["collection_names"]
+            raise RuntimeError("retrieval exploded")
+
+    monkeypatch.setattr(
+        "frontend.product.services.conversations.httpx.AsyncClient",
+        Client,
+    )
+
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "异常检索资料", "description": ""},
+        ).json()
+        with client.product_session_factory() as session:
+            session.add(
+                Document(
+                    knowledge_base_id=knowledge_base["id"],
+                    display_name="unexpected-failure.pdf",
+                    storage_path=str(tmp_path / "unexpected-failure.pdf"),
+                    size_bytes=10,
+                    sha256="u" * 64,
+                    status="ready",
+                )
+            )
+            session.get(KnowledgeBase, knowledge_base["id"]).index_manifest = json.dumps({"schema_version": 1})
+            session.commit()
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        ).json()
+
+        response = client.post(
+            f"/api/conversations/{conversation['id']}/messages",
+            headers={"X-Request-ID": "unexpected-retrieval-1"},
+            json={"content": "这个检索会直接抛异常"},
+        )
+        assert response.status_code == 503
+        assert response.json()["error"]["request_id"] == "unexpected-retrieval-1"
+
+        with client.product_session_factory() as session:
+            run = session.scalar(
+                select(AnswerRun).where(AnswerRun.conversation_id == conversation["id"])
+            )
+            assert run is not None
+            assert run.status == "failed"
+            assert run.request_id == "unexpected-retrieval-1"
+            assert run.current_stage == "retrieval"
+            assert run.failure_code == "QUERY_UNAVAILABLE"
 
 
 def test_citation_maps_product_document_id_back_to_original_filename(
@@ -2087,7 +2296,9 @@ def test_citation_maps_product_document_id_back_to_original_filename(
         async def __aexit__(self, *_args):
             return None
 
-        async def post(self, _url, json):
+        async def post(self, url, json):
+            if url.endswith("/route"):
+                return _RouteResponse("knowledge")
             assert json
             return Response()
 
@@ -2112,6 +2323,12 @@ def test_citation_maps_product_document_id_back_to_original_filename(
             },
         ).json()
         captured["document_id"] = upload["document"]["id"]
+        with client.product_session_factory() as session:
+            session.get(Document, captured["document_id"]).status = "ready"
+            session.get(KnowledgeBase, knowledge_base["id"]).index_manifest = json.dumps(
+                {"schema_version": 1}
+            )
+            session.commit()
         conversation = client.post(
             "/api/conversations",
             json={"knowledge_base_id": knowledge_base["id"]},
@@ -2173,7 +2390,7 @@ def test_knowledge_health_trend_and_actions_api(tmp_path):
         assert bad.status_code == 400
 
 
-def test_team_trust_revocation_blocks_old_conversation(tmp_path):
+def test_single_access_model_revocation_blocks_old_conversation(tmp_path):
     with product_client(tmp_path) as client:
         created = client.post(
             "/api/admin/users",
@@ -2186,6 +2403,17 @@ def test_team_trust_revocation_blocks_old_conversation(tmp_path):
         )
         assert created.status_code == 201
         member_id = created.json()["user"]["id"]
+        department = client.post(
+            "/api/admin/departments",
+            json={"name": "研发部"},
+        )
+        assert department.status_code == 201
+        department_id = department.json()["department"]["id"]
+        assigned = client.patch(
+            f"/api/admin/users/{member_id}",
+            json={"department_id": department_id},
+        )
+        assert assigned.status_code == 200
         with client.product_session_factory() as session:
             member_user = session.scalar(select(User).where(User.username == "member"))
 
@@ -2209,6 +2437,12 @@ def test_team_trust_revocation_blocks_old_conversation(tmp_path):
         assert knowledge_base.status_code == 201
         knowledge_base_id = knowledge_base.json()["id"]
 
+        access = client.put(
+            f"/api/admin/departments/{department_id}/knowledge-access",
+            json={"knowledge_base_ids": [knowledge_base_id]},
+        )
+        assert access.status_code == 200
+
         # member (viewer) can create a conversation while membership exists
         app.dependency_overrides[require_user] = lambda: member_user
         conversation = client.post(
@@ -2218,10 +2452,13 @@ def test_team_trust_revocation_blocks_old_conversation(tmp_path):
         assert conversation.status_code == 201
         conversation_id = conversation.json()["id"]
 
-        # owner removes the member; the old conversation must not be usable
+        # Removing the department grant must invalidate the old fixed scope.
         app.dependency_overrides[require_user] = lambda: client.admin_user
-        removed = client.delete(f"/api/workspaces/{workspace_id}/members/{member_id}")
-        assert removed.status_code == 204
+        removed = client.put(
+            f"/api/admin/departments/{department_id}/knowledge-access",
+            json={"knowledge_base_ids": []},
+        )
+        assert removed.status_code == 200
 
         app.dependency_overrides[require_user] = lambda: member_user
         denied = client.post(
@@ -2779,7 +3016,397 @@ def test_admin_dashboard_trends_days_validation(tmp_path):
             )
 
 
+def test_admin_knowledge_inventory_and_ingestion_routes_are_admin_only(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "管理员资料库", "description": "运营检查"},
+        ).json()
+
+        inventory = client.get("/api/admin/knowledge-bases")
+        assert inventory.status_code == 200
+        assert [item["id"] for item in inventory.json()["items"]] == [knowledge_base["id"]]
+
+        documents = client.get(
+            f"/api/admin/knowledge-bases/{knowledge_base['id']}/documents"
+        )
+        assert documents.status_code == 200
+        assert documents.json() == {"items": []}
+
+        health = client.get(
+            f"/api/admin/knowledge-bases/{knowledge_base['id']}/health"
+        )
+        assert health.status_code == 200
+        assert health.json()["snapshot"] is None
+        assert health.json()["current"]["status"] == "partial"
+
+        jobs = client.get("/api/admin/ingest-jobs")
+        assert jobs.status_code == 200
+        assert jobs.json()["total"] == 0
+
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "inventory-member",
+                "password": "password1234",
+                "display_name": "普通成员",
+                "role": "member",
+            },
+        )
+        with client.product_session_factory() as session:
+            viewer = session.scalar(select(User).where(User.username == "inventory-member"))
+        app.dependency_overrides[require_user] = lambda: viewer
+        try:
+            assert client.get("/api/admin/knowledge-bases").status_code == 403
+            assert client.get(
+                f"/api/admin/knowledge-bases/{knowledge_base['id']}/documents"
+            ).status_code == 403
+            assert client.get(
+                f"/api/admin/knowledge-bases/{knowledge_base['id']}/health"
+            ).status_code == 403
+            assert client.get("/api/admin/ingest-jobs").status_code == 403
+        finally:
+            app.dependency_overrides.pop(require_user, None)
+
+
+def test_admin_knowledge_inventory_includes_latest_health_summary(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "带健康快照的资料库", "description": ""},
+        ).json()
+        with client.product_session_factory() as session:
+            session.add(
+                KnowledgeHealthSnapshot(
+                    knowledge_base_id=knowledge_base["id"],
+                    owner_id=client.admin_user.id,
+                    formula_version="1.1",
+                    status="complete",
+                    overall_score=72.5,
+                    data_score=80,
+                    retrieval_score=70,
+                    trust_score=65,
+                    metrics={},
+                    deductions=[],
+                    actions=[],
+                )
+            )
+            session.commit()
+
+        inventory = client.get("/api/admin/knowledge-bases")
+
+    assert inventory.status_code == 200
+    item = inventory.json()["items"][0]
+    assert item["health_status"] == "healthy"
+    assert item["health_score"] == 72.5
+    assert item["health_updated_at"]
+
+
+def test_admin_runs_expose_only_persisted_answer_evidence_and_are_admin_only(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post(
+            "/api/knowledge-bases",
+            json={"name": "Trace 资料库", "description": "真实运行记录"},
+        ).json()
+        conversation = client.post(
+            "/api/conversations",
+            json={"knowledge_base_id": knowledge_base["id"]},
+        ).json()
+
+        with client.product_session_factory() as session:
+            session.add_all(
+                [
+                    Message(
+                        conversation_id=conversation["id"],
+                        role="user",
+                        content="这个回答的依据是什么？",
+                        status="succeeded",
+                    ),
+                    Message(
+                        conversation_id=conversation["id"],
+                        role="assistant",
+                        content="这是一个真实持久化的回答。",
+                        status="succeeded",
+                        answer_state="fully_grounded",
+                        trust_status="fully_grounded",
+                        policy_action="allow",
+                        risk_level="low",
+                    ),
+                ]
+            )
+            session.commit()
+            assistant = session.scalar(
+                select(Message).where(
+                    Message.conversation_id == conversation["id"],
+                    Message.role == "assistant",
+                )
+            )
+            assistant_id = assistant.id
+            session.add(
+                MessageFeedback(
+                    message_id=assistant_id,
+                    user_id=client.admin_user.id,
+                    vote=-1,
+                    reason="证据不足",
+                    comment="希望看到更明确的来源。",
+                )
+            )
+            session.commit()
+
+        response = client.get(
+            "/api/admin/runs?trust_status=fully_grounded&risk_level=low&feedback=negative"
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        item = payload["items"][0]
+        assert item["message"]["id"] == assistant_id
+        assert item["message"]["trust_status"] == "fully_grounded"
+        assert item["message"]["citations"] == []
+        assert item["message"]["claims"] == []
+        assert item["knowledge_base"]["id"] == knowledge_base["id"]
+        assert item["feedback"] == {"positive": 0, "negative": 1, "comment_count": 1}
+        assert len(item["feedback_items"]) == 1
+        assert item["feedback_items"][0]["vote"] == -1
+        assert item["feedback_items"][0]["reason"] == "证据不足"
+        assert item["feedback_items"][0]["comment"] == "希望看到更明确的来源。"
+        assert item["feedback_items"][0]["created_at"]
+
+        detail = client.get(f"/api/admin/runs/{assistant_id}")
+        assert detail.status_code == 200
+        assert detail.json()["message"]["content"] == "这是一个真实持久化的回答。"
+
+        client.post(
+            "/api/admin/users",
+            json={
+                "username": "trace-member",
+                "password": "password1234",
+                "display_name": "Trace 成员",
+                "role": "member",
+            },
+        )
+        with client.product_session_factory() as session:
+            viewer = session.scalar(select(User).where(User.username == "trace-member"))
+        app.dependency_overrides[require_user] = lambda: viewer
+        try:
+            assert client.get("/api/admin/runs").status_code == 403
+            assert client.get(f"/api/admin/runs/{assistant_id}").status_code == 403
+        finally:
+            app.dependency_overrides.pop(require_user, None)
+
+
+def test_admin_runs_filter_auto_scope_by_execution_snapshot(tmp_path):
+    with product_client(tmp_path) as client:
+        first = client.post("/api/knowledge-bases", json={"name": "范围 A"}).json()
+        second = client.post("/api/knowledge-bases", json={"name": "范围 B"}).json()
+        conversation = client.post("/api/conversations", json={}).json()
+
+        with client.product_session_factory() as session:
+            question = Message(
+                conversation_id=conversation["id"],
+                role="user",
+                content="自动范围问题",
+                status="succeeded",
+            )
+            answer = Message(
+                conversation_id=conversation["id"],
+                role="assistant",
+                content="自动范围回答",
+                status="succeeded",
+            )
+            session.add_all([question, answer])
+            session.flush()
+            session.add(
+                AnswerRun(
+                    conversation_id=conversation["id"],
+                    question_message_id=question.id,
+                    answer_message_id=answer.id,
+                    status="succeeded",
+                    total_latency_ms=120,
+                    query_scope_snapshot={
+                        "schema_version": 1,
+                        "mode": "auto",
+                        "knowledge_base_ids": [first["id"], second["id"]],
+                        "collection_names": ["collection_a", "collection_b"],
+                        "resolved_at": "2026-08-20T10:00:00+08:00",
+                        "status_counts": {
+                            "usable": 2,
+                            "no_documents": 0,
+                            "processing": 0,
+                            "failed": 0,
+                            "needs_rebuild": 0,
+                            "unknown": 0,
+                        },
+                    },
+                )
+            )
+            session.commit()
+
+        response = client.get(f"/api/admin/runs?knowledge_base_id={second['id']}")
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+        assert response.json()["items"][0]["scope"]["knowledge_base_ids"] == [first["id"], second["id"]]
+
+
 # A minimal valid 1x1 transparent PNG (image upload without OCR).
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
+
+
+def test_query_scope_reports_partial_counts_and_auto_conversation_has_no_kb_anchor(tmp_path):
+    with product_client(tmp_path) as client:
+        first = client.post("/api/knowledge-bases", json={"name": "可用资料"}).json()
+        second = client.post("/api/knowledge-bases", json={"name": "准备中资料"}).json()
+        with client.product_session_factory() as session:
+            session.add(
+                Document(
+                    knowledge_base_id=first["id"],
+                    display_name="ready.pdf",
+                    storage_path=str(tmp_path / "ready.pdf"),
+                    size_bytes=1,
+                    sha256="r" * 64,
+                    status="ready",
+                )
+            )
+            session.add(
+                Document(
+                    knowledge_base_id=second["id"],
+                    display_name="processing.pdf",
+                    storage_path=str(tmp_path / "processing.pdf"),
+                    size_bytes=1,
+                    sha256="p" * 64,
+                    status="processing",
+                )
+            )
+            session.get(KnowledgeBase, first["id"]).index_manifest = json.dumps({"schema_version": 1})
+            session.commit()
+
+        scope = client.get("/api/me/query-scope")
+        assert scope.status_code == 200
+        assert scope.json()["state"] == "partial"
+        assert scope.json()["askable"] is True
+        assert scope.json()["primary_action"] is None
+        counts = scope.json()["status_counts"]
+        assert counts == {
+            "usable": 1,
+            "no_documents": 0,
+            "processing": 1,
+            "failed": 0,
+            "needs_rebuild": 0,
+            "unknown": 0,
+        }
+        assert sum(counts.values()) == scope.json()["accessible_knowledge_base_count"]
+
+        conversation = client.post("/api/conversations", json={}).json()
+        assert conversation["scope_mode"] == "auto"
+        assert conversation["knowledge_base_id"] is None
+
+
+def test_fixed_scope_is_reauthorized_after_department_access_revoke(tmp_path):
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post("/api/knowledge-bases", json={"name": "撤权验证"}).json()
+        with client.product_session_factory() as session:
+            member = User(
+                username="scope-member",
+                display_name="Scope 成员",
+                password_hash="disabled",
+                role="member",
+            )
+            session.add(member)
+            session.flush()
+            department = Department(name="Scope 部门")
+            session.add(department)
+            session.flush()
+            member.department_id = department.id
+            knowledge_base_row = session.get(KnowledgeBase, knowledge_base["id"])
+            session.add(
+                Document(
+                    knowledge_base_id=knowledge_base["id"],
+                    display_name="scope.pdf",
+                    storage_path=str(tmp_path / "scope.pdf"),
+                    size_bytes=1,
+                    sha256="q" * 64,
+                    status="ready",
+                )
+            )
+            knowledge_base_row.index_manifest = json.dumps({"schema_version": 1})
+            department_access = DepartmentKnowledgeBase(
+                department_id=department.id,
+                knowledge_base_id=knowledge_base_row.id,
+            )
+            session.add(department_access)
+            conversation = Conversation(
+                owner_id=member.id,
+                knowledge_base_id=knowledge_base["id"],
+                scope_mode="fixed",
+            )
+            session.add(conversation)
+            session.commit()
+            session.refresh(conversation)
+            assert resolve_conversation_scope(session, member, conversation).payload["askable"] is True
+            session.delete(department_access)
+            session.commit()
+            with pytest.raises(ProductError) as exc_info:
+                resolve_conversation_scope(session, member, conversation)
+            assert exc_info.value.status_code == 404
+
+
+def test_answer_run_persists_execution_scope_snapshot(tmp_path, monkeypatch):
+    class Response:
+        is_success = True
+
+        @staticmethod
+        def json():
+            return {"result": "可审计回答", "provider": "test", "model": "test-model", "trace": {}}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, json):
+            if url.endswith("/route"):
+                return _RouteResponse("knowledge")
+            assert json["collection_names"]
+            return Response()
+
+    monkeypatch.setattr("frontend.product.services.conversations.httpx.AsyncClient", Client)
+
+    with product_client(tmp_path) as client:
+        knowledge_base = client.post("/api/knowledge-bases", json={"name": "快照资料"}).json()
+        with client.product_session_factory() as session:
+            session.add(
+                Document(
+                    knowledge_base_id=knowledge_base["id"],
+                    display_name="snapshot.pdf",
+                    storage_path=str(tmp_path / "snapshot.pdf"),
+                    size_bytes=1,
+                    sha256="t" * 64,
+                    status="ready",
+                )
+            )
+            session.get(KnowledgeBase, knowledge_base["id"]).index_manifest = json.dumps({"schema_version": 1})
+            session.commit()
+        conversation = client.post("/api/conversations", json={}).json()
+        response = client.post(
+            f"/api/conversations/{conversation['id']}/messages",
+            json={"content": "快照问题"},
+        )
+        assert response.status_code == 200
+        with client.product_session_factory() as session:
+            run = session.scalar(select(AnswerRun).where(AnswerRun.conversation_id == conversation["id"]))
+            assert run is not None
+            assert run.status == "succeeded"
+            assert run.answer_message_id is not None
+            assert run.query_scope_snapshot["schema_version"] == 1
+            assert run.query_scope_snapshot["mode"] == "auto"
+            assert run.query_scope_snapshot["knowledge_base_ids"] == [knowledge_base["id"]]
+            assert run.query_scope_snapshot["collection_names"]
+            assert run.provider == "test"
+            assert run.model == "test-model"

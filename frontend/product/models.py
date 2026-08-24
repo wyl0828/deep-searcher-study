@@ -45,6 +45,19 @@ class TimestampMixin:
     )
 
 
+class Department(TimestampMixin, Base):
+    __tablename__ = "departments"
+    __table_args__ = (UniqueConstraint("name", name="uq_departments_name"),)
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("dep"))
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    users: Mapped[list["User"]] = relationship(back_populates="department")
+    knowledge_access: Mapped[list["DepartmentKnowledgeBase"]] = relationship(
+        back_populates="department", cascade="all, delete-orphan"
+    )
+
+
 class User(TimestampMixin, Base):
     __tablename__ = "users"
 
@@ -54,12 +67,20 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     role: Mapped[str] = mapped_column(String(16), default="member", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    department_id: Mapped[str | None] = mapped_column(
+        ForeignKey("departments.id", ondelete="SET NULL"),
+        index=True,
+    )
 
     sessions: Mapped[list["UserSession"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship(back_populates="owner")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner")
+    department: Mapped[Department | None] = relationship(back_populates="users")
+    direct_knowledge_access: Mapped[list["UserKnowledgeBaseAccess"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     owned_workspaces: Mapped[list["Workspace"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
@@ -258,6 +279,9 @@ class KnowledgeBase(TimestampMixin, Base):
     index_manifest: Mapped[str | None] = mapped_column(Text)
     index_previous_collection: Mapped[str | None] = mapped_column(String(64))
     is_current: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_company_wide: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
 
     owner: Mapped[User] = relationship(back_populates="knowledge_bases")
     workspace: Mapped[Workspace] = relationship(back_populates="knowledge_bases")
@@ -274,6 +298,56 @@ class KnowledgeBase(TimestampMixin, Base):
     health_snapshots: Mapped[list["KnowledgeHealthSnapshot"]] = relationship(
         back_populates="knowledge_base", cascade="all, delete-orphan"
     )
+    department_access: Mapped[list["DepartmentKnowledgeBase"]] = relationship(
+        back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
+    user_access: Mapped[list["UserKnowledgeBaseAccess"]] = relationship(
+        back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
+
+
+class DepartmentKnowledgeBase(TimestampMixin, Base):
+    __tablename__ = "department_knowledge_bases"
+    __table_args__ = (
+        UniqueConstraint(
+            "department_id",
+            "knowledge_base_id",
+            name="uq_department_knowledge_bases_department_kb",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("dep_kb"))
+    department_id: Mapped[str] = mapped_column(
+        ForeignKey("departments.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+
+    department: Mapped[Department] = relationship(back_populates="knowledge_access")
+    knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="department_access")
+
+
+class UserKnowledgeBaseAccess(TimestampMixin, Base):
+    __tablename__ = "user_knowledge_base_access"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "knowledge_base_id",
+            name="uq_user_knowledge_base_access_user_kb",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("usr_kb"))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+
+    user: Mapped[User] = relationship(back_populates="direct_knowledge_access")
+    knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="user_access")
 
 
 class Document(TimestampMixin, Base):
@@ -298,7 +372,7 @@ class Document(TimestampMixin, Base):
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("doc"))
-    knowledge_base_id: Mapped[str] = mapped_column(
+    knowledge_base_id: Mapped[str | None] = mapped_column(
         ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
@@ -379,15 +453,21 @@ class Conversation(TimestampMixin, Base):
         index=True,
         nullable=False,
     )
-    knowledge_base_id: Mapped[str] = mapped_column(
+    knowledge_base_id: Mapped[str | None] = mapped_column(
         ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
         index=True,
+        nullable=True,
+    )
+    scope_mode: Mapped[str] = mapped_column(
+        String(16),
+        default="fixed",
+        server_default="fixed",
         nullable=False,
     )
     title: Mapped[str] = mapped_column(String(80), default="新对话", nullable=False)
 
     owner: Mapped[User] = relationship(back_populates="conversations")
-    knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="conversations")
+    knowledge_base: Mapped[KnowledgeBase | None] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
@@ -397,6 +477,12 @@ class Conversation(TimestampMixin, Base):
         back_populates="conversation",
         cascade="all, delete-orphan",
         order_by="ConversationSummary.created_at",
+    )
+    answer_runs: Mapped[list["AnswerRun"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        foreign_keys="AnswerRun.conversation_id",
+        order_by="AnswerRun.created_at",
     )
 
 
@@ -427,6 +513,7 @@ class Message(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    answer_mode: Mapped[str | None] = mapped_column(String(16))
     answer_state: Mapped[str | None] = mapped_column(String(32))
     trust_contract_version: Mapped[int | None] = mapped_column(Integer)
     trust_status: Mapped[str | None] = mapped_column(String(32))
@@ -455,6 +542,70 @@ class Message(TimestampMixin, Base):
     feedback_records: Mapped[list["MessageFeedback"]] = relationship(
         back_populates="message",
         cascade="all, delete-orphan",
+    )
+    question_answer_runs: Mapped[list["AnswerRun"]] = relationship(
+        back_populates="question_message",
+        foreign_keys="AnswerRun.question_message_id",
+    )
+    answer_runs: Mapped[list["AnswerRun"]] = relationship(
+        back_populates="answer_message",
+        foreign_keys="AnswerRun.answer_message_id",
+    )
+
+
+class AnswerRun(TimestampMixin, Base):
+    """Durable execution fact for one product answer.
+
+    Scope and collection data are immutable execution facts. They are never
+    recomputed from the current ACL when an administrator opens a historical
+    answer record.
+    """
+
+    __tablename__ = "answer_runs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: make_id("run"))
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    question_message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    answer_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(16), default="running", nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    answer_mode: Mapped[str | None] = mapped_column(String(16))
+    routing_decision: Mapped[dict | None] = mapped_column(JSON)
+    current_stage: Mapped[str | None] = mapped_column(String(32))
+    failure_code: Mapped[str | None] = mapped_column(String(64))
+    effective_risk_level: Mapped[str | None] = mapped_column(String(16))
+    effective_risk_factors: Mapped[list[str] | None] = mapped_column(JSON)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    total_latency_ms: Mapped[int | None] = mapped_column(Integer)
+    provider: Mapped[str | None] = mapped_column(String(160))
+    model: Mapped[str | None] = mapped_column(String(160))
+    attempts: Mapped[list[dict] | None] = mapped_column(JSON)
+    query_scope_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    stage_results: Mapped[list[dict] | None] = mapped_column(JSON)
+
+    conversation: Mapped[Conversation] = relationship(
+        back_populates="answer_runs",
+        foreign_keys=[conversation_id],
+    )
+    question_message: Mapped[Message] = relationship(
+        back_populates="question_answer_runs",
+        foreign_keys=[question_message_id],
+    )
+    answer_message: Mapped[Message | None] = relationship(
+        back_populates="answer_runs",
+        foreign_keys=[answer_message_id],
     )
 
 

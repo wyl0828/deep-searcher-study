@@ -4,6 +4,7 @@ import {
   type QueryStageEvent,
   ProductApiError,
   cancelMessageFeedback,
+  resolveMessageAnswerMode,
   streamMessage,
   submitMessageFeedback,
 } from "./product-api";
@@ -83,6 +84,42 @@ it("跨网络分片解析阶段事件并返回最终消息", async () => {
     content: "问题",
     use_web_search: true,
   });
+});
+
+it("兼容聊天模式的 started 阶段，不要求 retrieval 事件", async () => {
+  const started =
+    'event: started\ndata: {"version":1,"request_id":"request-chat-1",' +
+    '"sequence":1,"event":"started","data":{"stage":"chat_started"}}\n\n';
+  const completed =
+    'event: completed\ndata: {"version":1,"request_id":"request-chat-1",' +
+    '"sequence":2,"event":"completed","data":{"user_message":{"id":"user-1"},' +
+    '"assistant_message":{"id":"assistant-1","content":"普通回答"}}}\n\n';
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(streamResponse([started + completed])));
+  const stages: QueryStageEvent[] = [];
+
+  const result = await streamMessage(
+    "conversation-1",
+    "你好",
+    (stage) => stages.push(stage),
+  );
+
+  expect(stages[0]).toMatchObject({
+    event: "started",
+    data: { stage: "chat_started" },
+  });
+  expect(result.assistant_message.answer_mode).toBeNull();
+});
+
+it("历史消息只在有引用或明确 grounded 状态时兼容为企业知识", () => {
+  expect(
+    resolveMessageAnswerMode({ answer_mode: null, answer_state: null, citations: [] }),
+  ).toBe("chat");
+  expect(
+    resolveMessageAnswerMode({ answer_mode: null, answer_state: "fully_grounded", citations: [] }),
+  ).toBe("knowledge");
+  expect(
+    resolveMessageAnswerMode({ answer_mode: null, answer_state: "partially_grounded", citations: [] }),
+  ).toBe("chat");
 });
 
 it("把流式错误转换成稳定的 ProductApiError", async () => {

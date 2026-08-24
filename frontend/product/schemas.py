@@ -24,6 +24,26 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=10, max_length=128)
     display_name: str = Field(min_length=1, max_length=50)
     role: Literal["admin", "member"] = "member"
+    department_id: str | None = Field(default=None, min_length=1)
+
+
+class UserUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=50)
+    role: Literal["admin", "member"] | None = None
+    department_id: str | None = None
+    is_active: bool | None = None
+
+
+class DepartmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class DepartmentUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class KnowledgeAccessReplace(BaseModel):
+    knowledge_base_ids: list[str] = Field(default_factory=list)
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -73,7 +93,18 @@ class HealthActionsRun(BaseModel):
 
 
 class ConversationCreate(BaseModel):
-    knowledge_base_id: str
+    scope_mode: Literal["auto", "fixed"] | None = None
+    knowledge_base_id: str | None = None
+
+    @model_validator(mode="after")
+    def normalize_scope(self):
+        if self.scope_mode is None:
+            self.scope_mode = "fixed" if self.knowledge_base_id else "auto"
+        if self.scope_mode == "auto" and self.knowledge_base_id is not None:
+            raise ValueError("auto scope must not include knowledge_base_id")
+        if self.scope_mode == "fixed" and not self.knowledge_base_id:
+            raise ValueError("fixed scope requires knowledge_base_id")
+        return self
 
 
 class MessageCreate(BaseModel):
@@ -179,6 +210,7 @@ class MessageResponse(ProductModel):
     role: str
     content: str
     status: str
+    answer_mode: str | None = None
     answer_state: str | None
     trust_contract_version: int | None = None
     trust_status: str | None = None
@@ -196,3 +228,22 @@ class MessageResponse(ProductModel):
     feedback: dict | None = None
     citations: list[CitationResponse] = Field(default_factory=list)
     claims: list[AnswerClaimResponse] = Field(default_factory=list)
+
+
+class AnswerRunResponse(ProductModel):
+    id: str
+    status: str
+    request_id: str | None = None
+    answer_mode: str | None = None
+    routing_decision: dict | None = None
+    current_stage: str | None = None
+    failure_code: str | None = None
+    effective_risk_level: str | None = None
+    effective_risk_factors: list[str] | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    total_latency_ms: int | None = None
+    provider: str | None = None
+    model: str | None = None
+    attempts: list[dict] | None = None
+    stage_results: list[dict] | None = None

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Literal
 
 import yaml
 
 from deepsearcher.collection_manifest import bind_embedding_identity
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from deepsearcher.agent import NaiveRAG
@@ -193,10 +196,25 @@ class ModuleFactory:
             config = candidate.get("config") or {}
             if not provider or not isinstance(config, dict):
                 raise ValueError("each llm candidate requires provider and config")
+            required_envs = [
+                str(config.get(key)).strip()
+                for key in ("api_key_env", "base_url_env")
+                if config.get(key)
+            ]
+            missing_envs = [env_name for env_name in required_envs if not os.getenv(env_name)]
+            if missing_envs:
+                logger.warning(
+                    "llm_candidate_skipped provider=%s missing_env=%s",
+                    provider,
+                    ",".join(missing_envs),
+                )
+                continue
             candidates.append(getattr(module, provider)(**config))
         routing = settings.get("routing") or {}
         if not isinstance(routing, dict):
             raise ValueError("llm.routing must be a mapping")
+        if not candidates:
+            raise ValueError("llm.candidates has no usable provider credentials")
         return module.RoutingLLM(candidates, **routing)
 
     def create_embedding(self) -> BaseEmbedding:

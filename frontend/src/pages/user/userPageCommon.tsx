@@ -42,7 +42,7 @@ export function displayAnswerContent(content: string) {
 
 function stageLabel(stage: QueryStageEvent) {
   switch (stage.event) {
-    case "started": return "已开始处理问题";
+    case "started": return stage.data.stage === "chat_started" ? "已开始生成回答" : "已开始处理问题";
     case "contextualization": return stage.data.depends_on_history ? `已结合 ${stage.data.history_turn_count} 条历史消息理解追问` : "当前问题可独立检索";
     case "routing": return `已选择 ${stage.data.agent} 检索流程`;
     case "iteration": return `正在进行第 ${stage.data.iteration} 轮检索`;
@@ -55,9 +55,12 @@ function stageLabel(stage: QueryStageEvent) {
 
 export function QueryProgress({ stages, onStop }: { stages: QueryStageEvent[]; onStop: () => void }) {
   const visibleStages = stages.slice(-5);
+  const chatStarted = stages.some(
+    (stage) => stage.event === "started" && stage.data.stage === "chat_started",
+  );
   return (
     <section className="query-progress" role="status" aria-live="polite">
-      <div className="query-progress-heading"><span><ArrowPathIcon className="spin" aria-hidden="true" /> 正在检索并生成回答</span><button type="button" onClick={onStop}><XMarkIcon aria-hidden="true" /> 停止生成</button></div>
+      <div className="query-progress-heading"><span><ArrowPathIcon className="spin" aria-hidden="true" /> {chatStarted ? "正在生成回答" : "正在检索并生成回答"}</span><button type="button" onClick={onStop}><XMarkIcon aria-hidden="true" /> 停止生成</button></div>
       {visibleStages.length ? <ol>{visibleStages.map((stage) => <li key={`${stage.request_id}-${stage.sequence}`}><CheckCircleIcon aria-hidden="true" />{stageLabel(stage)}</li>)}</ol> : <p>正在连接问答服务…</p>}
       <small>这里展示的是系统执行阶段，不是模型的思维链。</small>
     </section>

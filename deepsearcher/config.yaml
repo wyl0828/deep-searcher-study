@@ -10,8 +10,8 @@ provide_settings:
       - provider: "DeepSeek"
         config:
           model: "deepseek-v4-flash"
-          api_key_env: "DEEPSEEK_OFFICIAL_API_KEY"
-          base_url_env: "DEEPSEEK_OFFICIAL_BASE_URL"
+          api_key_env: "DeepSeek_API_KEY"
+          base_url_env: "DeepSeek_BASE_URL"
       - provider: "DeepSeek"
         config:
           model: "deepseek-v4-flash"

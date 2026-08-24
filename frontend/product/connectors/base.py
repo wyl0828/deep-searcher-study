@@ -65,11 +65,3 @@ class Connector:
 
     def detect_changes(self, cursor: dict[str, dict[str, Any]] | None) -> ChangeSet:
         raise NotImplementedError
-
-    def fetch_permissions(self, path: str) -> list[dict[str, str]]:
-        """Declared permission grants for a source path (additive-only sync).
-
-        v0.6 permission sync is explicitly ADDITIVE: grants are applied with
-        add_kb_member / set_kb_member_role and revocation is not performed.
-        """
-        return []

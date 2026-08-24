@@ -307,6 +307,34 @@ export type AdminIngestJobPage = {
   page_size: number;
 };
 
+/**
+ * The answer mode is optional on purpose: messages created before routing was
+ * persisted do not have this field.  Callers must resolve a missing value
+ * through resolveMessageAnswerMode instead of treating every historical
+ * answer as knowledge-grounded.
+ */
+export type AnswerMode = "chat" | "knowledge" | "web";
+export type NullableAnswerMode = AnswerMode | null;
+
+export type AnswerRun = {
+  id: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  answer_mode?: NullableAnswerMode;
+  routing_decision?: Record<string, unknown> | null;
+  current_stage?: string | null;
+  failure_code?: string | null;
+  effective_risk_level?: "low" | "medium" | "high" | null;
+  effective_risk_factors?: string[] | null;
+  request_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  total_latency_ms: number | null;
+  provider: string | null;
+  model: string | null;
+  attempts: Array<Record<string, unknown>> | null;
+  stage_results: Array<Record<string, unknown>> | null;
+};
+
 export type AdminRunItem = {
   question: string | null;
   message: Message;
@@ -323,18 +351,7 @@ export type AdminRunItem = {
   scope: QueryScopeSnapshot & {
     knowledge_bases: Array<{ id: string; name: string }>;
   };
-  answer_run: {
-    id: string;
-    status: "running" | "succeeded" | "failed" | "cancelled";
-    request_id: string | null;
-    started_at: string;
-    finished_at: string | null;
-    total_latency_ms: number | null;
-    provider: string | null;
-    model: string | null;
-    attempts: Array<Record<string, unknown>> | null;
-    stage_results: Array<Record<string, unknown>> | null;
-  } | null;
+  answer_run: AnswerRun | null;
   owner: {
     id: string;
     username: string;
@@ -591,6 +608,8 @@ export type Message = {
     | "insufficient_evidence"
     | "failed"
     | null;
+  /** Nullable/optional for historical messages returned by older APIs. */
+  answer_mode?: NullableAnswerMode;
   trust_contract_version: number | null;
   trust_status:
     | "fully_grounded"
@@ -690,7 +709,7 @@ export type QueryStageEvent =
       request_id: string;
       sequence: number;
       event: "started";
-      data: { stage: "query_started" };
+      data: { stage: "query_started" | "chat_started" };
     }
   | {
       version: 1;
@@ -810,6 +829,35 @@ export type QueryScopeSnapshot = {
   status_counts: QueryScope["status_counts"];
 };
 
+const GROUNDED_ANSWER_STATES = new Set([
+  "grounded",
+  "fully_grounded",
+]);
+
+/**
+ * Resolve the UI mode without promoting every successful historical answer
+ * to a knowledge answer.  Only explicit citations or a grounded state are a
+ * safe compatibility signal for records where answer_mode was not persisted.
+ */
+export function resolveMessageAnswerMode(
+  message: Pick<Message, "answer_mode" | "answer_state" | "citations">,
+): AnswerMode {
+  if (
+    message.answer_mode === "chat" ||
+    message.answer_mode === "knowledge" ||
+    message.answer_mode === "web"
+  ) {
+    return message.answer_mode;
+  }
+  if (
+    (Array.isArray(message.citations) && message.citations.length > 0) ||
+    GROUNDED_ANSWER_STATES.has(message.answer_state || "")
+  ) {
+    return "knowledge";
+  }
+  return "chat";
+}
+
 type ProductErrorPayload = {
   error?: {
     code?: string;
@@ -837,6 +885,41 @@ export class ProductApiError extends Error {
     this.retryable = retryable;
     this.requestId = requestId;
   }
+}
+
+/**
+ * Keep the UI safe when reading records written before the nullable answer
+ * fields were introduced.  The server remains the source of truth; this only
+ * supplies collection defaults needed by the renderer.
+ */
+export function normalizeMessage(
+  value: Partial<Message> | null | undefined,
+): Message {
+  const message = (value || {}) as Message;
+  return {
+    ...message,
+    answer_mode: message.answer_mode ?? null,
+    citations: Array.isArray(message.citations) ? message.citations : [],
+    claims: Array.isArray(message.claims) ? message.claims : [],
+  };
+}
+
+function normalizeAdminRunItem(item: AdminRunItem): AdminRunItem {
+  return {
+    ...item,
+    message: normalizeMessage(item.message),
+    answer_run: item.answer_run
+      ? {
+          ...item.answer_run,
+          answer_mode: item.answer_run.answer_mode ?? null,
+          routing_decision: item.answer_run.routing_decision ?? null,
+          current_stage: item.answer_run.current_stage ?? null,
+          failure_code: item.answer_run.failure_code ?? null,
+          effective_risk_level: item.answer_run.effective_risk_level ?? null,
+          effective_risk_factors: item.answer_run.effective_risk_factors ?? null,
+        }
+      : null,
+  };
 }
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -1182,7 +1265,7 @@ export function retryAdminDocument(
   return requestJson(`/api/admin/documents/${id}/retry`, { method: "POST" });
 }
 
-export function listAdminRuns(input: {
+export async function listAdminRuns(input: {
   page?: number;
   page_size?: number;
   knowledge_base_id?: string;
@@ -1198,11 +1281,21 @@ export function listAdminRuns(input: {
     }
   }
   const query = params.toString();
-  return requestJson(`/api/admin/runs${query ? `?${query}` : ""}`);
+  const response = await requestJson<AdminRunPage>(
+    `/api/admin/runs${query ? `?${query}` : ""}`,
+  );
+  return {
+    ...response,
+    items: Array.isArray(response.items)
+      ? response.items.map(normalizeAdminRunItem)
+      : [],
+  };
 }
 
 export function getAdminRun(messageId: string): Promise<AdminRunItem> {
-  return requestJson(`/api/admin/runs/${messageId}`);
+  return requestJson<AdminRunItem>(`/api/admin/runs/${messageId}`).then(
+    normalizeAdminRunItem,
+  );
 }
 
 export function getSystemDiagnostics(): Promise<SystemDiagnostics> {
@@ -1245,23 +1338,38 @@ export function createConversation(
   });
 }
 
-export function getConversation(id: string): Promise<ConversationDetail> {
-  return requestJson(`/api/conversations/${id}`);
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  const response = await requestJson<ConversationDetail>(
+    `/api/conversations/${id}`,
+  );
+  return {
+    ...response,
+    messages: Array.isArray(response.messages)
+      ? response.messages.map(normalizeMessage)
+      : [],
+  };
 }
 
 export function deleteConversation(id: string): Promise<void> {
   return requestJson(`/api/conversations/${id}`, { method: "DELETE" });
 }
 
-export function sendMessage(
+export async function sendMessage(
     conversationId: string,
     content: string,
     useWebSearch = false,
 ): Promise<{ user_message: Message; assistant_message: Message }> {
-  return requestJson(`/api/conversations/${conversationId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ content, use_web_search: useWebSearch }),
-  });
+  const response = await requestJson<MessageResult>(
+    `/api/conversations/${conversationId}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content, use_web_search: useWebSearch }),
+    },
+  );
+  return {
+    user_message: normalizeMessage(response.user_message),
+    assistant_message: normalizeMessage(response.assistant_message),
+  };
 }
 
 export function submitMessageFeedback(
@@ -1399,7 +1507,11 @@ export async function streamMessage(
           } else if (parsed.event === "completed") {
             const data = parsed.payload.data || {};
             if (data.user_message && data.assistant_message) {
-              return data as MessageResult;
+              const result = data as MessageResult;
+              return {
+                user_message: normalizeMessage(result.user_message),
+                assistant_message: normalizeMessage(result.assistant_message),
+              };
             }
             throw new ProductApiError(
               "实时回答缺少完整结果，请重新尝试。",

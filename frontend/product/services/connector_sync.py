@@ -30,14 +30,10 @@ from frontend.product.models import (
     ConnectorSyncRun,
     Document,
     KnowledgeBase,
-    KnowledgeBaseMember,
-    User,
     utcnow,
 )
 from frontend.product.repositories import create_ingest_job
 from frontend.product.services import documents as document_service
-from frontend.product.services.access import add_kb_member, set_kb_member_role
-from frontend.product.services.audit import AuditContext, bind_audit_context
 
 logger = logging.getLogger("deepsearcher.connector_sync")
 
@@ -261,54 +257,8 @@ async def _delete_removed(*, sync: ConnectorSync, external_id: str) -> bool:
     return True
 
 
-def _apply_permissions(
-    *, sync: ConnectorSync, knowledge_base: KnowledgeBase, connector: Connector
-) -> int:
-    """Additive-only permission sync (grants applied; revocation is not performed)."""
-    bind_audit_context(
-        AuditContext(
-            operator_id=knowledge_base.owner_id,
-            operator_name="connector-sync",
-            operator_role="owner",
-        )
-    )
-    applied = 0
-    try:
-        with SessionLocal() as session:
-            for grant in connector.fetch_permissions(""):
-                username = (grant or {}).get("username") or ""
-                role = (grant or {}).get("role") or ""
-                if not username or not role:
-                    continue
-                user = session.scalar(select(User).where(User.username == username))
-                if user is None:
-                    continue
-                member = session.scalar(
-                    select(KnowledgeBaseMember).where(
-                        KnowledgeBaseMember.knowledge_base_id == knowledge_base.id,
-                        KnowledgeBaseMember.user_id == user.id,
-                    )
-                )
-                if member is None:
-                    try:
-                        add_kb_member(session, knowledge_base, user.id, role)
-                        applied += 1
-                    except ProductError:
-                        continue
-                elif member.role != role:
-                    try:
-                        set_kb_member_role(session, knowledge_base, user.id, role)
-                        applied += 1
-                    except ProductError:
-                        continue
-            session.commit()
-        return applied
-    finally:
-        bind_audit_context(None)
-
-
 async def process_due_sync(sync_id: str, *, worker_id: str) -> None:
-    """Run one claimed sync: changes -> enqueue -> delete -> permissions -> run record."""
+    """Run one claimed sync: changes -> enqueue -> delete -> run record."""
     with SessionLocal() as session:
         sync = session.get(ConnectorSync, sync_id)
         if sync is None or sync.status != SYNC_STATUS_ACTIVE or not sync.lock_owner:
@@ -400,13 +350,6 @@ async def process_due_sync(sync_id: str, *, worker_id: str) -> None:
                 counts["deleted"] += 1
             else:
                 retained_removed.append(external_id)
-
-        with SessionLocal() as session:
-            if _should_abort_for_lease_loss(session, lease, "permissions"):
-                release_lease(session, lease)
-                finalize(RUN_STATUS_ABORTED, "同步锁已丢失")
-                return
-        _apply_permissions(sync=sync, knowledge_base=knowledge_base, connector=connector)
 
         # Success: advance cursor + next_run_at, release the lease.
         new_cursor = changes.cursor

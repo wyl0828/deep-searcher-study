@@ -50,6 +50,7 @@ import {
 import {
   type Citation,
   type CitationSpan,
+  type AnswerMode,
   type KnowledgeBase,
   type Message,
   type QueryScope,
@@ -79,6 +80,17 @@ import {
   QueryProgress,
   SUGGESTED_QUESTIONS,
 } from "../user/userPageCommon";
+
+function resolveChatAnswerMode(message: Pick<Message, "answer_mode" | "answer_state" | "citations">): AnswerMode {
+  if (message.answer_mode === "chat" || message.answer_mode === "knowledge" || message.answer_mode === "web") {
+    return message.answer_mode;
+  }
+  return (Array.isArray(message.citations) && message.citations.length > 0) ||
+    message.answer_state === "grounded" ||
+    message.answer_state === "fully_grounded"
+    ? "knowledge"
+    : "chat";
+}
 
 function QuestionComposer({
   knowledgeBase,
@@ -340,7 +352,6 @@ export function NewChatPage() {
 function CitationDrawer({
   citations,
   selectedId,
-  selectedSpan,
   focusSelected,
   modal,
   onSelect,
@@ -349,7 +360,6 @@ function CitationDrawer({
 }: {
   citations: Citation[];
   selectedId: string | null;
-  selectedSpan: CitationSpan | null;
   focusSelected: boolean;
   modal: boolean;
   onSelect: (citation: Citation) => void;
@@ -408,7 +418,7 @@ function CitationDrawer({
         </button>
       </div>
       <p className="citation-intro">
-        回答中的引用来自以下文档或网页。默认展示前 {DEFAULT_CITATION_LIMIT} 条，点击引用可核对片段，原文在预览层打开。
+        回答中的引用来自以下文档或网页。选择来源查看短摘录，或打开原文。
       </p>
       <div className="citation-list">
         {visibleCitations.map((citation) => (
@@ -438,55 +448,13 @@ function CitationDrawer({
                   {citation.display_name}
                 </strong>
                 <div className="citation-location">
-                  {citation.page_number ? (
+                  {citation.source_type === "knowledge_base" && citation.page_number ? (
                     <span>第 {citation.page_number} 页</span>
-                  ) : null}
-                  {citation.section_title ? (
-                    <span>{citation.section_title}</span>
-                  ) : null}
-                  {citation.char_start != null &&
-                  citation.char_end != null ? (
-                    <span>
-                      字符 {citation.char_start}–{citation.char_end}
-                    </span>
-                  ) : null}
-                  {citation.extraction_method === "ocr" ? (
-                    <span>OCR 识别</span>
-                  ) : null}
-                  {citation.source_type === "web" && citation.source_domain ? (
+                  ) : citation.source_type === "web" && citation.source_domain ? (
                     <span>{citation.source_domain}</span>
                   ) : null}
-                  {citation.source_type === "web" && citation.trusted ? (
-                    <span>域名白名单</span>
-                  ) : null}
                 </div>
-                <p>
-                  {citation.text &&
-                  citation.id === selectedId &&
-                  selectedSpan?.citation_index === citation.index &&
-                  selectedSpan.start != null &&
-                  selectedSpan.end != null &&
-                  selectedSpan.start >= 0 &&
-                  selectedSpan.end > selectedSpan.start &&
-                  selectedSpan.end <= citation.text.length ? (
-                    <>
-                      {citation.text.slice(0, selectedSpan.start)}
-                      <mark
-                        className={`citation-span citation-span--${selectedSpan.match_type}`}
-                        title={
-                          selectedSpan.match_type === "normalized_exact"
-                            ? "声明文字在证据中的精确位置"
-                            : "与声明最相关的证据句，仅用于定位"
-                        }
-                      >
-                        {citation.text.slice(selectedSpan.start, selectedSpan.end)}
-                      </mark>
-                      {citation.text.slice(selectedSpan.end)}
-                    </>
-                  ) : (
-                    citation.text || "该来源暂时无法预览。"
-                  )}
-                </p>
+                <p>{citationExcerpt(citation.text)}</p>
               </div>
             </button>
             {citation.source_type === "web" &&
@@ -498,7 +466,7 @@ function CitationDrawer({
                 target="_blank"
                 rel="noreferrer"
               >
-                打开网页来源
+                打开原文
                 <ArrowTopRightOnSquareIcon aria-hidden="true" />
               </a>
             ) : citation.document_id ? (
@@ -510,8 +478,7 @@ function CitationDrawer({
                   citation.page_number ? ` 第 ${citation.page_number} 页` : ""
                 }的原文`}
               >
-                查看原文
-                {citation.page_number ? `第 ${citation.page_number} 页` : ""}
+                打开原文
                 <ArrowTopRightOnSquareIcon aria-hidden="true" />
               </button>
             ) : (
@@ -539,6 +506,14 @@ function CitationDrawer({
 }
 
 const DEFAULT_CITATION_LIMIT = 5;
+
+function citationExcerpt(value: string | null | undefined, maxLength = 220) {
+  const excerpt = String(value || "").replace(/\s+/g, " ").trim();
+  if (!excerpt) return "该来源暂时无法预览。";
+  return excerpt.length > maxLength
+    ? `${excerpt.slice(0, maxLength).trimEnd()}…`
+    : excerpt;
+}
 
 type ImagePreviewTarget = {
   kind: "image";
@@ -644,11 +619,13 @@ function MarkdownImagePreview({
 function AnswerContent({
   content,
   message,
+  citationsEnabled = true,
   onCitation,
   onImageOpen,
 }: {
   content: string;
   message: Message;
+  citationsEnabled?: boolean;
   onCitation: (
     citation: Citation,
     trigger: HTMLButtonElement,
@@ -656,7 +633,8 @@ function AnswerContent({
   ) => void;
   onImageOpen: (image: ImagePreviewTarget) => void;
 }) {
-  const claims = message.claims || [];
+  const claims = Array.isArray(message.claims) ? message.claims : [];
+  const citations = Array.isArray(message.citations) ? message.citations : [];
 
   return (
     <div className="markdown-answer">
@@ -672,10 +650,10 @@ function AnswerContent({
                 (paragraphText.includes(claimText) || claimText.includes(paragraphText))
               );
             });
-            const matchingCitations = matchingClaims.flatMap((claim) =>
+            const matchingCitations = citationsEnabled ? matchingClaims.flatMap((claim) =>
               claim.citation_indices
                 .map((index) => ({
-                  citation: message.citations.find((item) => item.index === index),
+                  citation: citations.find((item) => item.index === index),
                   span: claim.citation_spans?.find(
                     (item) => item.citation_index === index && item.match_type !== "not_found",
                   ),
@@ -688,7 +666,7 @@ function AnswerContent({
                 ),
             ).filter((item, index, items) =>
               items.findIndex(({ citation }) => citation.id === item.citation.id) === index,
-            );
+            ) : [];
 
             return (
               <p>
@@ -1652,6 +1630,220 @@ function AssistantMessage({
   );
 }
 
+function answerNotice(message: Message): { tone: "warning" | "danger" | "info"; text: string } | null {
+  if (message.status === "failed" || message.answer_state === "failed") {
+    return { tone: "danger", text: "本次回答未完成，请稍后重试。" };
+  }
+  if (message.answer_state === "insufficient_evidence") {
+    return { tone: "warning", text: "当前资料不足以可靠回答这个问题。" };
+  }
+  if (message.answer_state === "conflicting_evidence") {
+    return { tone: "danger", text: "现有来源存在冲突，请核对引用来源。" };
+  }
+  if (message.policy_action === "refuse") {
+    return { tone: "warning", text: "该问题暂时无法回答。" };
+  }
+  if (message.risk_level === "high") {
+    return { tone: "warning", text: "这是一个高风险问题，请在作出决定前核实相关信息。" };
+  }
+  return null;
+}
+
+function safeAnswerContent(message: Message) {
+  if (message.status === "failed" || message.answer_state === "failed") return "";
+  const content = displayAnswerContent(message.content || "");
+  if (
+    message.answer_state === "insufficient_evidence" &&
+    /\bno relevant\b/i.test(content)
+  ) {
+    return "";
+  }
+  return content.replace(
+    /\bno relevant (?:information|documents?|sources?|results?|context|evidence|answer)[^.!?\n]*(?:[.!?]|$)/gi,
+    "当前资料中没有找到足够依据。",
+  );
+}
+
+/**
+ * The chat surface intentionally keeps quality/audit details out of the
+ * answer stream.  Administrators can inspect those fields from Runs detail.
+ */
+function CompactAssistantMessage({
+  conversationId,
+  message,
+  onCitation,
+  onOpenSource,
+  onImageOpen,
+  onRegenerate,
+  queryPending,
+  regenerating,
+  queryDisabled,
+}: {
+  conversationId: string;
+  message: Message;
+  onCitation: (
+    citation: Citation,
+    trigger: HTMLButtonElement,
+    span?: CitationSpan,
+  ) => void;
+  onOpenSource: (citation: Citation) => void;
+  onImageOpen: (image: ImagePreviewTarget) => void;
+  onRegenerate: () => void;
+  queryPending: boolean;
+  regenerating: boolean;
+  queryDisabled: boolean;
+}) {
+  const queryCache = useQueryClient();
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"helpful" | "unhelpful" | null>(
+    message.feedback && !message.feedback.cancelled
+      ? message.feedback.vote === 1
+        ? "helpful"
+        : "unhelpful"
+      : null,
+  );
+  const [feedbackPending, setFeedbackPending] = useState(false);
+  const answerMode: AnswerMode = resolveChatAnswerMode(message);
+  const citations = Array.isArray(message.citations) ? message.citations : [];
+  const citationsEnabled = answerMode === "knowledge" || answerMode === "web";
+  const content = safeAnswerContent(message);
+  const notice = answerNotice(message);
+
+  useEffect(() => {
+    setFeedback(
+      message.feedback && !message.feedback.cancelled
+        ? message.feedback.vote === 1
+          ? "helpful"
+          : "unhelpful"
+        : null,
+    );
+  }, [message.id, message.feedback?.vote, message.feedback?.cancelled]);
+
+  const applyFeedback = async (vote: "helpful" | "unhelpful") => {
+    if (feedbackPending) return;
+    setFeedbackPending(true);
+    try {
+      if (feedback === vote) {
+        await cancelMessageFeedback(conversationId, message.id);
+        setFeedback(null);
+      } else {
+        await submitMessageFeedback(conversationId, message.id, {
+          vote: vote === "helpful" ? 1 : -1,
+        });
+        setFeedback(vote);
+      }
+      await queryCache.invalidateQueries({
+        queryKey: ["conversation", conversationId],
+      });
+    } catch {
+      // Feedback is optional; keep the previous selection on a transient error.
+    } finally {
+      setFeedbackPending(false);
+    }
+  };
+
+  return (
+    <article className="assistant-message">
+      <div className="assistant-avatar">
+        <img src="/deepsearcher-badge.png" alt="" />
+      </div>
+      <div className="assistant-body">
+        {notice ? (
+          <div className={`answer-notice answer-notice--${notice.tone}`} role="status">
+            {notice.text}
+          </div>
+        ) : null}
+        <section className="assistant-answer-card" aria-label="AI 回答">
+          <header className="assistant-answer-header">
+            <div className="assistant-identity">
+              <span className="assistant-identity-mark" aria-hidden="true">
+                <img src="/deepsearcher-badge.png" alt="" />
+              </span>
+              <div>
+                <strong>DeepSearcher AI</strong>
+                <span>{answerMode === "chat" ? "通用 AI 助手" : "企业知识问答助手"}</span>
+              </div>
+            </div>
+            {answerMode === "knowledge" ? (
+              <span className="answer-mode-badge answer-mode-badge--knowledge">企业知识</span>
+            ) : answerMode === "web" ? (
+              <span className="answer-mode-badge answer-mode-badge--web">联网</span>
+            ) : null}
+          </header>
+          {content ? (
+            <AnswerContent
+              content={content}
+              message={message}
+              citationsEnabled={citationsEnabled}
+              onCitation={onCitation}
+              onImageOpen={onImageOpen}
+            />
+          ) : null}
+        </section>
+        {citationsEnabled && citations.length ? (
+          <button
+            className="answer-citations-trigger"
+            type="button"
+            aria-label={`引用来源（${citations.length}）`}
+            onClick={(event) => onCitation(citations[0], event.currentTarget)}
+          >
+            <DocumentTextIcon aria-hidden="true" />
+            引用来源（{citations.length}）
+          </button>
+        ) : null}
+        <div className="answer-actions">
+          {content ? (
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText(content);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1200);
+              }}
+            >
+              <ClipboardDocumentIcon aria-hidden="true" />
+              {copied ? "已复制" : "复制"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onRegenerate}
+            disabled={queryPending || queryDisabled}
+            title={queryDisabled ? "当前知识资料暂不可用" : undefined}
+          >
+            <ArrowPathIcon aria-hidden="true" />
+            {regenerating ? "正在生成…" : "重新生成"}
+          </button>
+          {content ? (
+            <>
+              <button
+                type="button"
+                className={feedback === "helpful" ? "selected" : ""}
+                aria-pressed={feedback === "helpful"}
+                disabled={feedbackPending}
+                onClick={() => applyFeedback("helpful")}
+              >
+                <HandThumbUpIcon aria-hidden="true" />
+                有帮助
+              </button>
+              <button
+                type="button"
+                className={feedback === "unhelpful" ? "selected" : ""}
+                aria-pressed={feedback === "unhelpful"}
+                disabled={feedbackPending}
+                onClick={() => applyFeedback("unhelpful")}
+              >
+                <HandThumbDownIcon aria-hidden="true" />
+                没帮助
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function SourcePreviewDialog({
   target,
   onClose,
@@ -1745,8 +1937,6 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
   const [showDeleteConversation, setShowDeleteConversation] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
-  const [selectedCitationSpan, setSelectedCitationSpan] =
-    useState<CitationSpan | null>(null);
   const [previewTarget, setPreviewTarget] = useState<SourcePreviewTarget | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [focusDrawerSelection, setFocusDrawerSelection] = useState(false);
@@ -1810,7 +2000,14 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
   });
   const citations = useMemo(
     () =>
-      conversation.data?.messages.flatMap((message) => message.citations || []) || [],
+      conversation.data?.messages.flatMap((message) => {
+        const mode = resolveChatAnswerMode(message);
+        return mode === "knowledge" || mode === "web"
+          ? Array.isArray(message.citations)
+            ? message.citations
+            : []
+          : [];
+      }) || [],
     [conversation.data],
   );
   const messageCount = conversation.data?.messages.length || 0;
@@ -1819,7 +2016,6 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
   useEffect(() => {
     if (!selectedCitation && citations.length) {
       setSelectedCitation(citations[0]);
-      setSelectedCitationSpan(null);
     }
   }, [citations, selectedCitation]);
 
@@ -1848,7 +2044,6 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
   useEffect(() => {
     setDrawerOpen(false);
     setFocusDrawerSelection(false);
-    setSelectedCitationSpan(null);
     setPreviewTarget(null);
   }, [compactViewport, conversationId]);
 
@@ -1956,11 +2151,10 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
                 <UserCircleIcon aria-hidden="true" />
               </article>
             ) : (
-              <AssistantMessage
+              <CompactAssistantMessage
                 key={message.id}
                 conversationId={conversationId}
                 message={message}
-                isAdmin={isAdmin}
                 onOpenSource={(citation) =>
                   setPreviewTarget({ kind: "citation", citation })
                 }
@@ -1985,7 +2179,6 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
                 onCitation={(citation, trigger, span) => {
                   lastCitationTriggerRef.current = trigger;
                   setSelectedCitation(citation);
-                  setSelectedCitationSpan(span || null);
                   setFocusDrawerSelection(true);
                   setDrawerOpen(true);
                 }}
@@ -2043,13 +2236,11 @@ export function ChatPage({ isAdmin = false }: { isAdmin?: boolean }) {
           <CitationDrawer
             citations={citations}
             selectedId={selectedCitation?.id || null}
-            selectedSpan={selectedCitationSpan}
             focusSelected={focusDrawerSelection}
             modal={compactViewport}
             onSelect={(citation) => {
               setFocusDrawerSelection(false);
               setSelectedCitation(citation);
-              setSelectedCitationSpan(null);
             }}
             onOpenSource={(citation) =>
               setPreviewTarget({ kind: "citation", citation })

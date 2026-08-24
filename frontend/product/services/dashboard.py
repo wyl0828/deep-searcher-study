@@ -11,13 +11,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from frontend.product.models import (
+    AnswerRun,
     ConnectorSync,
     Conversation,
     Document,
@@ -29,9 +31,11 @@ from frontend.product.models import (
     User,
     utcnow,
 )
+from sqlalchemy.orm import selectinload
 from frontend.product.services.knowledge_health import get_health_level
 
 _DASHBOARD_TIMEZONE = timezone.utc
+_ANSWERS_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def _kpi(
@@ -50,9 +54,115 @@ def _kpi(
     }
 
 
+def _metric(
+    *,
+    value: float | None,
+    sample_count: int,
+    numerator: float | None,
+    denominator: float | None,
+) -> dict[str, Any]:
+    return {
+        "value": round(value, 2) if value is not None else None,
+        "sample_count": sample_count,
+        "numerator": numerator,
+        "denominator": denominator,
+    }
+
+
+def _answer_quality(session: Session) -> dict[str, Any]:
+    runs = session.scalars(
+        select(AnswerRun).options(
+            selectinload(AnswerRun.answer_message).selectinload(Message.citations),
+        )
+    ).all()
+    succeeded = [run for run in runs if run.status == "succeeded"]
+    failed = [run for run in runs if run.status == "failed"]
+    cancelled = [run for run in runs if run.status == "cancelled"]
+    success_denominator = len(succeeded) + len(failed)
+
+    valid_feedback = session.scalars(
+        select(MessageFeedback).where(
+            MessageFeedback.cancelled.is_(False),
+            MessageFeedback.vote.in_([-1, 1]),
+        )
+    ).all()
+    negative_feedback = sum(item.vote == -1 for item in valid_feedback)
+    terminal_count = len(succeeded) + len(failed) + len(cancelled)
+    latency_values = [run.total_latency_ms for run in runs if run.total_latency_ms is not None]
+    uncited_count = sum(
+        run.answer_message is None or len(run.answer_message.citations) == 0
+        for run in succeeded
+    )
+
+    return {
+        "success_rate": _metric(
+            value=(len(succeeded) / success_denominator * 100) if success_denominator else None,
+            sample_count=success_denominator,
+            numerator=len(succeeded) if success_denominator else None,
+            denominator=success_denominator if success_denominator else None,
+        ),
+        "negative_feedback_rate": _metric(
+            value=(negative_feedback / len(valid_feedback) * 100) if valid_feedback else None,
+            sample_count=len(valid_feedback),
+            numerator=negative_feedback if valid_feedback else None,
+            denominator=len(valid_feedback) if valid_feedback else None,
+        ),
+        "feedback_coverage_rate": _metric(
+            value=(len(valid_feedback) / terminal_count * 100) if terminal_count else None,
+            sample_count=terminal_count,
+            numerator=len(valid_feedback) if terminal_count else None,
+            denominator=terminal_count if terminal_count else None,
+        ),
+        "uncited_answer_count": _metric(
+            value=float(uncited_count) if succeeded else None,
+            sample_count=len(succeeded),
+            numerator=uncited_count if succeeded else None,
+            denominator=len(succeeded) if succeeded else None,
+        ),
+        "average_latency_ms": _metric(
+            value=(sum(latency_values) / len(latency_values)) if latency_values else None,
+            sample_count=len(latency_values),
+            numerator=sum(latency_values) if latency_values else None,
+            denominator=len(latency_values) if latency_values else None,
+        ),
+        "cancelled_count": len(cancelled),
+    }
+
+
 def _count_24h(session: Session, model, column, now: datetime) -> int:
     threshold = now - timedelta(hours=24)
     return int(session.scalar(select(func.count(model.id)).where(column >= threshold)) or 0)
+
+
+def _local_day_utc_bounds(
+    now: datetime,
+    *,
+    timezone_zone: ZoneInfo = _ANSWERS_TIMEZONE,
+) -> tuple[datetime, datetime]:
+    """Return the half-open UTC bounds for the local calendar day."""
+
+    local_now = now.astimezone(timezone_zone)
+    local_start = datetime.combine(local_now.date(), time.min, tzinfo=timezone_zone)
+    local_next_start = local_start + timedelta(days=1)
+    return (
+        local_start.astimezone(timezone.utc),
+        local_next_start.astimezone(timezone.utc),
+    )
+
+
+def _answers_today(session: Session, now: datetime) -> int:
+    """Count AnswerRun creation attempts in today's Asia/Shanghai window."""
+
+    utc_start, utc_end = _local_day_utc_bounds(now)
+    return int(
+        session.scalar(
+            select(func.count(AnswerRun.id)).where(
+                AnswerRun.created_at >= utc_start,
+                AnswerRun.created_at < utc_end,
+            )
+        )
+        or 0
+    )
 
 
 def _daily_series(
@@ -120,6 +230,7 @@ def overview(session: Session) -> dict[str, Any]:
 
     total_messages = int(session.scalar(select(func.count(Message.id))) or 0)
     messages_24h = _count_24h(session, Message, Message.created_at, now)
+    answers_today = _answers_today(session, now)
 
     current_negative_feedback = int(
         session.scalar(
@@ -148,6 +259,7 @@ def overview(session: Session) -> dict[str, Any]:
             "delta": None,
             "delta_pct": None,
         },
+        "answers_today": _kpi(answers_today),
         "conversations": _kpi(
             total_conversations,
             delta=conversations_24h,
@@ -162,6 +274,7 @@ def overview(session: Session) -> dict[str, Any]:
         "updated_at": now.isoformat().replace("+00:00", "Z"),
         "kpis": kpis,
         "health_distribution": _health_distribution(session),
+        "quality": _answer_quality(session),
     }
 
 

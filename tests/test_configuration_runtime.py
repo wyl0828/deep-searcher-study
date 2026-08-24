@@ -49,6 +49,50 @@ def test_module_factory_builds_ordered_chat_candidates(monkeypatch):
     assert [candidate.model for candidate in result.candidates] == ["first", "second"]
 
 
+def test_module_factory_skips_candidates_without_optional_credentials(monkeypatch):
+    import deepsearcher.llm as llm_module
+
+    class FakeProvider:
+        def __init__(self, model, **_kwargs):
+            self.model = model
+
+    monkeypatch.setattr(llm_module, "FakeProvider", FakeProvider, raising=False)
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+    monkeypatch.delenv("MISSING_URL", raising=False)
+    monkeypatch.setenv("AVAILABLE_KEY", "configured")
+    monkeypatch.setenv("AVAILABLE_URL", "https://provider.invalid")
+    config = SimpleNamespace(
+        provide_settings={
+            "llm": {
+                "provider": "FakeProvider",
+                "config": {"model": "legacy"},
+                "candidates": [
+                    {
+                        "provider": "FakeProvider",
+                        "config": {
+                            "model": "unavailable",
+                            "api_key_env": "MISSING_KEY",
+                            "base_url_env": "MISSING_URL",
+                        },
+                    },
+                    {
+                        "provider": "FakeProvider",
+                        "config": {
+                            "model": "available",
+                            "api_key_env": "AVAILABLE_KEY",
+                            "base_url_env": "AVAILABLE_URL",
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    result = configuration.ModuleFactory(config).create_llm()
+
+    assert [candidate.model for candidate in result.candidates] == ["available"]
+
+
 def test_configuration_reads_utf8_yaml_on_windows(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

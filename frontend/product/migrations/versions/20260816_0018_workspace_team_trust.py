@@ -11,8 +11,6 @@ from sqlalchemy.orm import Session
 
 from frontend.product.models import (
     LEGACY_OWNER_ID,
-    KnowledgeBase,
-    User,
     Workspace,
     WorkspaceMember,
 )
@@ -34,27 +32,46 @@ def _backfill_workspaces(bind) -> None:
     to an arbitrary member user.
     """
 
+    # Do not use the live User/KnowledgeBase ORM mappings here.  Historical
+    # migrations must keep working after later revisions add columns to those
+    # models (for example users.department_id in 0025).
+    users = sa.table(
+        "users",
+        sa.column("id", sa.String(length=40)),
+        sa.column("username", sa.String(length=32)),
+        sa.column("role", sa.String(length=16)),
+        sa.column("is_active", sa.Boolean()),
+    )
+    knowledge_bases = sa.table(
+        "knowledge_bases",
+        sa.column("id", sa.String(length=40)),
+        sa.column("owner_id", sa.String(length=40)),
+        sa.column("workspace_id", sa.String(length=40)),
+    )
+
     session = Session(bind=bind, expire_on_commit=False)
     try:
-        users = session.scalars(select(User).where(User.id != LEGACY_OWNER_ID)).all()
-        admin = session.scalars(
-            select(User)
+        user_rows = session.execute(
+            select(users).where(users.c.id != LEGACY_OWNER_ID)
+        ).mappings().all()
+        admin = session.execute(
+            select(users)
             .where(
-                User.id != LEGACY_OWNER_ID,
-                User.role == "admin",
-                User.is_active.is_(True),
+                users.c.id != LEGACY_OWNER_ID,
+                users.c.role == "admin",
+                users.c.is_active.is_(True),
             )
-            .order_by(User.id)
+            .order_by(users.c.id)
             .limit(1)
-        ).first()
-        legacy_owner_id = admin.id if admin is not None else LEGACY_OWNER_ID
+        ).mappings().first()
+        legacy_owner_id = admin["id"] if admin is not None else LEGACY_OWNER_ID
 
         personal: dict[str, Workspace] = {}
-        for user in users:
+        for user in user_rows:
             workspace = Workspace(
-                name=user.username,
+                name=user["username"],
                 description="个人工作区",
-                owner_id=user.id,
+                owner_id=user["id"],
             )
             session.add(workspace)
             session.flush()
@@ -65,7 +82,7 @@ def _backfill_workspaces(bind) -> None:
                     role="owner",
                 )
             )
-            personal[user.id] = workspace
+            personal[user["id"]] = workspace
 
         legacy_workspace = Workspace(
             name="__legacy__",
@@ -82,15 +99,19 @@ def _backfill_workspaces(bind) -> None:
             )
         )
 
-        knowledge_bases = session.scalars(select(KnowledgeBase)).all()
-        for knowledge_base in knowledge_bases:
-            if knowledge_base.owner_id == LEGACY_OWNER_ID:
+        knowledge_base_rows = session.execute(select(knowledge_bases)).mappings().all()
+        for knowledge_base in knowledge_base_rows:
+            if knowledge_base["owner_id"] == LEGACY_OWNER_ID:
                 target = legacy_workspace
             else:
-                target = personal.get(knowledge_base.owner_id)
+                target = personal.get(knowledge_base["owner_id"])
             if target is None:
                 target = legacy_workspace
-            knowledge_base.workspace_id = target.id
+            session.execute(
+                knowledge_bases.update()
+                .where(knowledge_bases.c.id == knowledge_base["id"])
+                .values(workspace_id=target.id)
+            )
 
         session.commit()
     finally:

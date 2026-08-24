@@ -276,6 +276,7 @@ def chat_with_stage(
         "reflection",
         "followup_query",
         "intermediate_answer",
+        "query_router",
     }
     estimated_input = estimate_message_tokens(llm, messages)
     effective_max_tokens = max_tokens
@@ -298,6 +299,7 @@ def chat_with_stage(
                 "reflection": "[]",
                 "followup_query": "",
                 "intermediate_answer": "No relevant information found",
+                "query_router": "{}",
             }.get(stage)
             if fallback is not None:
                 return ChatResponse(content=fallback, total_tokens=0)

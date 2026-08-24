@@ -5,7 +5,6 @@
 - Symlinks are NOT followed by default.
 - detect_changes uses (mtime, size) as a fast candidate filter; the authoritative
   changed decision is made by the sync layer via content_hash from fetch_item.
-- fetch_permissions returns declared grants from the connector config (additive).
 """
 
 from __future__ import annotations
@@ -35,9 +34,8 @@ def _extension_allowed(path: Path) -> bool:
 class LocalDirectoryConnector(Connector):
     source_type = SOURCE_TYPE_LOCAL_DIRECTORY
 
-    def __init__(self, *, root: str, permissions: list[dict[str, str]] | None = None):
+    def __init__(self, *, root: str):
         self.root = Path(root).resolve()
-        self._permissions = list(permissions or [])
 
     def _safe_path(self, item_id: str) -> Path:
         candidate = (self.root / item_id).resolve()
@@ -106,7 +104,3 @@ class LocalDirectoryConnector(Connector):
             removed=removed,
             cursor=current_map,
         )
-
-    def fetch_permissions(self, path: str) -> list[dict[str, str]]:
-        """Additive permission grants declared for the whole root (v0.6)."""
-        return list(self._permissions)

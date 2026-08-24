@@ -16,6 +16,7 @@ from frontend.product.errors import ProductError
 from frontend.product.models import (
     LEGACY_OWNER_ID,
     Conversation,
+    Department,
     KnowledgeBase,
     User,
     UserSession,
@@ -164,6 +165,7 @@ def create_user(
     password: str,
     display_name: str,
     role: str = "member",
+    department_id: str | None = None,
 ) -> User:
     normalized = normalize_username(username)
     display = str(display_name or "").strip()
@@ -171,6 +173,8 @@ def create_user(
         raise ProductError("DISPLAY_NAME_INVALID", "显示名称需为 1–50 个字符。")
     if role not in {"admin", "member"}:
         raise ProductError("ROLE_INVALID", "用户角色无效。")
+    if department_id is not None and session.get(Department, department_id) is None:
+        raise ProductError("DEPARTMENT_NOT_FOUND", "没有找到这个部门。", status_code=404)
     if session.scalar(select(User.id).where(User.username == normalized)) is not None:
         raise ProductError("USERNAME_EXISTS", "这个用户名已经存在。", status_code=409)
     user = User(
@@ -179,6 +183,7 @@ def create_user(
         password_hash=hash_password(password),
         role=role,
         is_active=True,
+        department_id=department_id,
     )
     session.add(user)
     session.flush()
@@ -327,5 +332,7 @@ def user_response(user: User) -> dict[str, object]:
         "display_name": user.display_name,
         "role": user.role,
         "is_active": user.is_active,
+        "department_id": user.department_id,
+        "department_name": user.department.name if user.department is not None else None,
         "created_at": user.created_at,
     }

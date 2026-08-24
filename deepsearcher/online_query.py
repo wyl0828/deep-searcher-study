@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 
 # from deepsearcher.configuration import vector_db, embedding_model, llm
 from deepsearcher import configuration
+from deepsearcher.retrieval_mode import resolve_retrieval_mode
 from deepsearcher.trace import TraceCollector
 from deepsearcher.vector_db.base import RetrievalResult
 
@@ -23,6 +24,8 @@ def query(
     reference_time=None,
     retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
     token_control: Optional[dict] = None,
+    retrieval_mode: str | None = None,
+    risk_profile: Optional[dict] = None,
 ) -> Tuple[str, List[RetrievalResult], int]:
     """
     Query the knowledge base with a question and get an answer.
@@ -41,6 +44,10 @@ def query(
             - The number of tokens consumed during the process
     """
     default_searcher = searcher or configuration.default_searcher
+    effective_retrieval_mode = resolve_retrieval_mode(
+        retrieval_mode,
+        use_web_search=use_web_search,
+    )
     collector = (
         TraceCollector(
             original_query,
@@ -51,6 +58,8 @@ def query(
             temporal_timezone=temporal_timezone,
             reference_time=reference_time,
             token_control=token_control,
+            retrieval_mode=effective_retrieval_mode,
+            risk_profile=risk_profile,
         )
         if enforce_trust
         else None
@@ -62,6 +71,8 @@ def query(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_mode is not None:
+        kwargs["retrieval_mode"] = effective_retrieval_mode
     if retrieval_queries:
         kwargs["retrieval_queries"] = tuple(retrieval_queries)
     answer, results, consume_tokens = default_searcher.query(original_query, **kwargs)
@@ -93,8 +104,14 @@ def query_with_trace(
     reference_time=None,
     retrieval_queries: Optional[List[str] | Tuple[str, ...]] = None,
     token_control: Optional[dict] = None,
+    retrieval_mode: str | None = None,
+    risk_profile: Optional[dict] = None,
 ):
     """Query the knowledge base and return an additional structured execution trace."""
+    effective_retrieval_mode = resolve_retrieval_mode(
+        retrieval_mode,
+        use_web_search=use_web_search,
+    )
     collector = trace_collector or TraceCollector(
         original_query,
         entailment_checker=entailment_checker,
@@ -104,13 +121,22 @@ def query_with_trace(
         temporal_timezone=temporal_timezone,
         reference_time=reference_time,
         token_control=token_control,
+        retrieval_mode=effective_retrieval_mode,
+        risk_profile=risk_profile,
     )
+    if getattr(collector, "retrieval_mode", None) is None:
+        try:
+            collector.retrieval_mode = effective_retrieval_mode
+        except Exception:
+            pass
     default_searcher = searcher or configuration.default_searcher
     kwargs = {"max_iter": max_iter, "trace_collector": collector}
     if collection_names is not None:
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_mode is not None:
+        kwargs["retrieval_mode"] = effective_retrieval_mode
     if retrieval_queries:
         kwargs["retrieval_queries"] = tuple(retrieval_queries)
     answer, results, agent_tokens = default_searcher.query(original_query, **kwargs)
@@ -134,6 +160,7 @@ def retrieve(
     max_iter: int = 2,
     collection_names: Optional[List[str]] = None,
     use_web_search: bool = False,
+    retrieval_mode: str | None = None,
 ) -> Tuple[List[RetrievalResult], List[str], int]:
     """
     Retrieve relevant information from the knowledge base without generating an answer.
@@ -157,6 +184,11 @@ def retrieve(
         kwargs["collection_names"] = list(collection_names)
     if use_web_search:
         kwargs["use_web_search"] = True
+    if retrieval_mode is not None:
+        kwargs["retrieval_mode"] = resolve_retrieval_mode(
+            retrieval_mode,
+            use_web_search=use_web_search,
+        )
     retrieved_results, consume_tokens, metadata = default_searcher.retrieve(
         original_query, **kwargs
     )

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from frontend.product.backend import backend_request_headers
 from frontend.product.models import Conversation, ConversationSummary, Message
+from frontend.product.services.context_policy import ContextPolicy
 
 SUMMARY_PROMPT_VERSION = "conversation-summary-v1"
 SUMMARY_ENABLED = os.environ.get("DEEPSEARCHER_SUMMARY_ENABLED", "false").lower() == "true"
@@ -81,18 +82,13 @@ def latest_summary(session: Session, conversation_id: str) -> ConversationSummar
 
 
 def _eligible_messages(conversation: Conversation) -> list[Message]:
-    eligible: list[Message] = []
-    for message in conversation.messages:
-        if message.status != "succeeded" or not message.content.strip():
-            continue
-        if message.role == "assistant" and message.answer_state not in {
-            "grounded",
-            "fully_grounded",
-        }:
-            continue
-        if message.role in {"user", "assistant"}:
-            eligible.append(message)
-    return eligible
+    # Summaries are a RAG-only trust surface.  In particular, chat/web answers
+    # and partial/conflicting/insufficient answers must never enter the durable
+    # knowledge summary, while legacy null answer_mode + grounded rows remain
+    # readable as historical knowledge answers.
+    return ContextPolicy.rag(max_messages=max(len(conversation.messages), 1)).eligible_messages(
+        conversation
+    )
 
 
 def build_summary_aware_history(session: Session, conversation: Conversation) -> list[dict]:

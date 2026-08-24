@@ -16,8 +16,8 @@ from frontend.product.models import (
     Message,
     User,
     Workspace,
-    WorkspaceMember,
 )
+from frontend.product.services.authorization import list_accessible_knowledge_bases
 
 
 def _resolved_owner_id(session: Session, owner_id: str | None) -> str:
@@ -65,20 +65,16 @@ def list_knowledge_bases(
             conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
         )
     else:
-        query = (
-            query.join(
-                WorkspaceMember,
-                WorkspaceMember.workspace_id == KnowledgeBase.workspace_id,
-            )
-            .where(WorkspaceMember.user_id == user_id)
-            .outerjoin(
-                document_counts,
-                document_counts.c.knowledge_base_id == KnowledgeBase.id,
-            )
-            .outerjoin(
-                conversation_counts,
-                conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
-            )
+        user = session.get(User, user_id)
+        accessible_ids = [
+            item.id for item in list_accessible_knowledge_bases(session, user)
+        ]
+        query = query.where(KnowledgeBase.id.in_(accessible_ids)).outerjoin(
+            document_counts,
+            document_counts.c.knowledge_base_id == KnowledgeBase.id,
+        ).outerjoin(
+            conversation_counts,
+            conversation_counts.c.knowledge_base_id == KnowledgeBase.id,
         )
     rows = session.execute(
         query.order_by(
@@ -108,22 +104,7 @@ def list_knowledge_bases(
                 "index_manifest": index_manifest,
                 "index_status": "verified" if index_manifest is not None else "not_indexed",
                 "index_previous_collection": knowledge_base.index_previous_collection,
-                "workspace_id": knowledge_base.workspace_id,
-                "workspace_name": (
-                    session.get(Workspace, knowledge_base.workspace_id).name
-                    if knowledge_base.workspace_id
-                    else None
-                ),
-                "role": (
-                    session.scalar(
-                        select(WorkspaceMember.role).where(
-                            WorkspaceMember.workspace_id == knowledge_base.workspace_id,
-                            WorkspaceMember.user_id == user_id,
-                        )
-                    )
-                    if user_id is not None
-                    else None
-                ),
+                "is_company_wide": knowledge_base.is_company_wide,
                 "created_at": knowledge_base.created_at,
                 "updated_at": knowledge_base.updated_at,
             }

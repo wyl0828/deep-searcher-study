@@ -1,8 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const conversationPath = "/chat/conv_e2e_grounding";
-const evidenceText =
-  "这是传给最终模型并持久化的同一份较宽证据快照，包含被引用事实。原始回答正文应完整显示。";
 
 function collectPageErrors(page: Page) {
   const errors: string[] = [];
@@ -21,7 +19,7 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { name: "登录学习工作台" })).toBeHidden();
 }
 
-test("保留原答案和代码块，并把 Claim 作为附加核验展示", async ({ page }) => {
+test("保留原答案和代码块，并把来源收缩为轻量入口", async ({ page }) => {
   const errors = collectPageErrors(page);
   await login(page);
   await page.goto(conversationPath);
@@ -47,28 +45,23 @@ test("保留原答案和代码块，并把 Claim 作为附加核验展示", asyn
   expect(codeStyle.background).toBe("rgba(0, 0, 0, 0)");
   expect(codeStyle.color).toBe(codeStyle.parentColor);
 
-  const claimDetails = answer.locator("details.claim-grounding");
-  await expect(claimDetails).not.toHaveAttribute("open", "");
-  await claimDetails.locator("summary").click();
-  await expect(claimDetails).toHaveAttribute("open", "");
-  await expect(claimDetails.getByText("已有依据", { exact: true })).toBeVisible();
-  await expect(claimDetails.getByText("引用无效", { exact: true })).toBeVisible();
+  await expect(answer.locator("details.claim-grounding")).toHaveCount(0);
+  await expect(answer.getByText("查看回答依据", { exact: true })).toHaveCount(0);
+  await expect(answer.getByRole("button", { name: /引用来源（\d+）/ })).toBeVisible();
 
-  await claimDetails
+  await answer
     .getByRole("button", {
-      name: "查看声明 1 的引用 1：grounding-evidence.pdf，第 2 页",
+      name: "查看引用 1：grounding-evidence.pdf，第 2 页",
     })
     .click();
-  await expect(page.getByTitle("声明文字在证据中的精确位置")).toHaveText(
-    "原始回答正文应完整显示。",
-  );
-  await expect(page.getByText(evidenceText, { exact: true })).toBeVisible();
+  await expect(page.locator("#citation-drawer")).toBeVisible();
+  await expect(page.locator("#citation-drawer")).toContainText("这是传给最终模型");
 
   await page.reload();
   await expect(page.locator("article.assistant-message pre code")).toHaveText(
     "print('preserved')",
   );
-  await expect(page.locator("details.claim-grounding")).not.toHaveAttribute("open", "");
+  await expect(page.locator("details.claim-grounding")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -92,7 +85,7 @@ test("移动端引用抽屉可打开、关闭并恢复焦点，页面没有横�
   const drawer = page.getByRole("dialog", { name: "引用来源" });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveAttribute("aria-modal", "true");
-  await expect(drawer.getByText(evidenceText, { exact: true })).toBeVisible();
+  await expect(drawer).toContainText("这是传给最终模型");
   await drawer.getByRole("button", { name: "关闭引用来源" }).click();
   await expect(drawer).toBeHidden();
   await expect(citationTrigger).toBeFocused();
@@ -119,17 +112,7 @@ test("图片引用受控预览，来源默认显示前五条并可在二级层�
   await imageDialog.getByRole("button", { name: "关闭原文预览" }).click();
   await expect(imageDialog).toBeHidden();
 
-  const sourceRegion = answer.getByRole("region", { name: "检索引用来源" });
-  await expect(sourceRegion.locator(".answer-source-pill")).toHaveCount(5);
-  await expect(
-    sourceRegion.getByRole("button", { name: /查看更多/ }),
-  ).toBeVisible();
-  await sourceRegion.getByRole("button", { name: /查看更多/ }).click();
-  await expect(sourceRegion.locator(".answer-source-pill")).toHaveCount(27);
-
-  const sourceTrigger = sourceRegion.getByRole("button", {
-    name: "在引用来源中查看 1：media-evidence.pdf，第 1 页",
-  });
+  const sourceTrigger = answer.getByRole("button", { name: "引用来源（27）" });
   await sourceTrigger.click();
   const drawer = page.locator("#citation-drawer");
   await expect(drawer).toBeVisible();

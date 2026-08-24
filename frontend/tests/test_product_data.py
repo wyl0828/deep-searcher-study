@@ -1,8 +1,12 @@
 import asyncio
+import runpy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import inspect, select, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
@@ -44,7 +48,66 @@ def make_session(tmp_path) -> Session:
 
 
 def test_required_alembic_revision_matches_repository_head():
-    assert required_alembic_heads() == ("20260817_0023",)
+    assert required_alembic_heads() == ("20260824_0027",)
+
+
+def test_answer_orchestration_migration_is_nullable_and_reversible(tmp_path):
+    engine = create_database_engine(f"sqlite:///{(tmp_path / 'migration.db').as_posix()}")
+    migration_path = (
+        Path(__file__).parents[1]
+        / "product"
+        / "migrations"
+        / "versions"
+        / "20260824_0027_answer_orchestration.py"
+    )
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE messages ("
+                "id VARCHAR(40) PRIMARY KEY, "
+                "content TEXT NOT NULL"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE answer_runs ("
+                "id VARCHAR(40) PRIMARY KEY, "
+                "status VARCHAR(16) NOT NULL"
+                ")"
+            )
+        )
+        migration = runpy.run_path(str(migration_path))
+        with Operations.context(MigrationContext.configure(connection)):
+            migration["upgrade"]()
+
+        expected = {
+            "answer_mode",
+            "routing_decision",
+            "current_stage",
+            "failure_code",
+            "effective_risk_level",
+            "effective_risk_factors",
+        }
+        message_columns = {
+            column["name"]: column for column in inspect(connection).get_columns("messages")
+        }
+        answer_run_columns = {
+            column["name"]: column for column in inspect(connection).get_columns("answer_runs")
+        }
+        assert message_columns["answer_mode"]["nullable"] is True
+        assert expected <= set(answer_run_columns)
+        assert all(answer_run_columns[name]["nullable"] is True for name in expected)
+
+        with Operations.context(MigrationContext.configure(connection)):
+            migration["downgrade"]()
+        assert "answer_mode" not in {
+            column["name"] for column in inspect(connection).get_columns("messages")
+        }
+        assert not expected & {
+            column["name"] for column in inspect(connection).get_columns("answer_runs")
+        }
 
 
 def test_citation_id_column_fits_generated_identifier():

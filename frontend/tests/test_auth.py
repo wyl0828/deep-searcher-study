@@ -270,8 +270,7 @@ def test_users_cannot_cross_workspace_or_use_admin_endpoints(tmp_path, monkeypat
             "/api/knowledge-bases",
             json={"name": "共享名称", "description": "成员自己的同名知识库"},
         )
-        assert member_kb.status_code == 201
-        assert member_kb.json()["id"] != admin_kb["id"]
+        assert member_kb.status_code == 403
         assert (
             client.post(
                 "/api/conversations",
